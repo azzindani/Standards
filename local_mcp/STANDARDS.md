@@ -1331,13 +1331,13 @@ def generate_report(
     return engine.generate_report(file_path, output_path, open_after, theme)
 ```
 
-### Default output location — Downloads first
+### Default output location — input file first
 
 When `output_path=""`, use this priority order:
 
-1. **User's Downloads folder** — when no input file context exists (pure generation tools)
+1. **Explicit path** — when the caller passes a non-empty `output_path`
 2. **Same directory as input file** — when an input file is provided
-3. **Explicit path** — when the caller passes a non-empty `output_path`
+3. **User's Downloads folder** — fallback when no input file context exists (pure generation tools)
 
 Implement in `shared/file_utils.py`:
 
@@ -1345,7 +1345,7 @@ Implement in `shared/file_utils.py`:
 from pathlib import Path
 
 def get_default_output_dir(input_path: str | None = None) -> Path:
-    """Return the default output directory. Downloads if no input, else input's parent."""
+    """Return the default output directory. Input file's parent if provided, else ~/Downloads."""
     if input_path:
         p = Path(input_path).resolve()
         if p.parent.exists():
@@ -2233,8 +2233,8 @@ These are absolute prohibitions. Any code that violates them is a defect.
     partial clone — remove it before re-cloning.
 
 26. **Write generated output files next to the server source code or in a temp dir.**
-    Default to the user's Downloads folder, then the input file's directory.
-    Never write to the repo directory or system temp.
+    When an input file is provided, save beside it. Fall back to ~/Downloads only
+    when there is no input file. Never write to the repo directory or system temp.
 
 27. **Use a project-specific environment variable name instead of `MCP_CONSTRAINED_MODE`.**
     All MCP servers use `MCP_CONSTRAINED_MODE`. No project-specific alternatives.
@@ -2337,7 +2337,7 @@ These are absolute prohibitions. Any code that violates them is a defect.
 ### Review
 - [ ] `verify_tool_docstrings.py` — all ≤ 80 chars
 - [ ] No file exceeds 1,000 lines (engine sub-module split if needed)
-- [ ] Output-generating tools default to Downloads folder, then input file location
+- [ ] Output-generating tools default to input file's directory, then ~/Downloads if no input file
 - [ ] Manual test in LM Studio (9B model) — four-tool loop works
 - [ ] Manual test in Claude Desktop — tools appear and execute
 - [ ] 10-step task test — context window not exceeded
@@ -2373,7 +2373,7 @@ These are absolute prohibitions. Any code that violates them is a defect.
 - [ ] Tool annotations set (`readOnlyHint`, `destructiveHint`, etc.)
 - [ ] All parameters have allowed type annotations
 - [ ] Optional parameters have primitive defaults
-- [ ] Output-generating tools: default output goes to Downloads, then input file dir
+- [ ] Output-generating tools: default output goes to input file's directory, then ~/Downloads if no input file
 - [ ] Output-generating tools: use `get_default_output_dir()` from `shared/file_utils.py`
 - [ ] Add success test
 - [ ] Add file-not-found / missing data failure test
