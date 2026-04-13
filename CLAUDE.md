@@ -76,6 +76,7 @@ Central standards library for all projects. Each standard = one directory + one 
 | 30 | `web/` | Routing · middleware · state · auth · frontend/backend | Planned |
 | 31 | `ml/` | Model lifecycle · experiment tracking · data versioning | Done |
 | 32 | `agent/` | CLAUDE.md · AGENTS.md · context engineering · density rules | Done |
+| 33 | `expectation/` | Peak comparator model · quality dimensions · failure taxonomy · benchmarks | Done |
 
 ## Cross-Reference Map
 
@@ -127,7 +128,8 @@ Standards/
 ├── cli/STANDARDS.md
 ├── web/STANDARDS.md
 ├── ml/STANDARDS.md
-└── agent/STANDARDS.md         ← done
+├── agent/STANDARDS.md         ← done
+└── expectation/STANDARDS.md   ← done
 ```
 
 ## Git
