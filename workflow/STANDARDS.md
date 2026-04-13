@@ -409,3 +409,237 @@ Every debt item tracked with:
 - New features ✗ if they increase debt in already-indebted areas.
 - Every PR/commit that incurs debt must document it in tracking system.
 - Debt repayment tasks follow same Definition of Done as feature tasks (§8).
+
+---
+
+## 10. AI-Assisted Development
+
+Rules for using coding agents (LLM-based tools, copilots, code generators)
+effectively within the workflow.
+
+### Core Principle
+
+AI generates — human verifies. AI output is a draft until validated
+against standards. ✗ shipping unreviewed AI-generated code.
+
+### Effective Usage
+
+| Practice | Rule |
+|---|---|
+| Context management | Provide relevant files, standards, constraints upfront. More context → better output |
+| Task scoping | One clear task per interaction. ✗ multi-goal prompts |
+| Incremental generation | Request code in pieces, verify each. ✗ generating entire systems at once |
+| Standards enforcement | Include relevant STANDARDS.md in context. AI follows rules it can see |
+| Review rigor | AI-generated code gets same review as human code — no exceptions |
+
+### Verification Requirements
+
+Every AI-generated artifact must pass:
+
+| Check | Method |
+|---|---|
+| Correctness | Tests pass, manual verification of logic |
+| Standards compliance | Architecture, code writing, error handling standards met |
+| Security | No hardcoded secrets, input validation present, no injection vectors |
+| Dependencies | No unnecessary imports, no phantom packages |
+| Completeness | All edge cases handled, error paths covered |
+| Readability | Code comprehensible without AI context — future maintainer can follow |
+
+### What AI Excels At / Struggles With
+
+| AI Strengths — Leverage | AI Weaknesses — Verify Carefully |
+|---|---|
+| Boilerplate and repetitive patterns | Novel architecture decisions |
+| Test generation from specifications | Security-critical logic |
+| Refactoring well-defined transformations | Cross-module integration |
+| Documentation drafts | Performance-sensitive paths |
+| Code review and bug detection | Business rule correctness |
+| Standards-compliant formatting | State management across boundaries |
+
+### Rules
+
+- AI-generated code must pass all CI checks before merge — no "AI wrote it" exemption.
+- ✗ using AI to circumvent standards — AI is a tool, standards are rules.
+- Document when AI generated significant portions (decision record, commit message).
+- When AI output conflicts with standards → standards win. Fix or reject.
+- AI hallucinations (non-existent APIs, phantom dependencies) → verify every import, every function call.
+- Context window limits → provide focused context, not entire codebase.
+
+---
+
+## 11. Standards Application by Phase
+
+Which standards apply at each development phase. "Full" = all rules apply.
+"Partial" = core rules apply, advanced rules deferred. "—" = not applicable.
+
+| Standard | Idea | PoC | MVP | Production | Maintenance |
+|---|---|---|---|---|---|
+| `architecture/` | Scale classification | — | Full tier model | Full | Full |
+| `design/` | — | — | Core patterns | Full | Full |
+| `directory/` | — | — | Project layout | Full | Full |
+| `code_writing/` | — | — | Full | Full | Full |
+| `testing/` | — | — | Core paths | Full pyramid | Full pyramid |
+| `error_handling/` | — | — | Errors as data | Full taxonomy | Full |
+| `observability/` | — | — | Basic logging | Full (logs · metrics · health) | Full |
+| `security/` | Threat assessment | — | Input validation · secrets | Full | Full |
+| `api/` | — | — | Contract-first | Full | Full |
+| `database/` | — | — | Schema design · migrations | Full | Full |
+| `configuration/` | — | — | Defaults + file | Full cascade | Full |
+| `dependencies/` | — | — | Lock files · pinning | Full wrapping | Full |
+| `git/` | — | Branch per PoC | Branching model | Full workflow | Full |
+| `cicd/` | — | — | Build + test | Full pipeline | Full |
+| `documentation/` | Problem statement | PoC conclusion | README + setup | Full (API · runbooks · ADRs) | Kept current |
+| `performance/` | — | — | — | Budgets · profiling | Monitored |
+| `devops/` | — | — | — | Full (containers · deploy · monitor) | Full |
+| `code_review/` | — | — | Self-review minimum | Full review flow | Full |
+| `workflow/` | Full | Full | Full | Full | Full |
+
+### Rules
+
+- PoC intentionally skips most standards — speed over structure.
+- MVP is where architecture standards become mandatory.
+- ✗ deferring security past MVP — vulnerabilities compound.
+- Production requires *every* standard applied. Gaps = tech debt (§9).
+- Maintenance inherits all Production standards + keeps them current.
+
+---
+
+## 12. Decision Records
+
+Lightweight decision records for significant technical choices.
+Full ADR format in `documentation/STANDARDS.md`. This section defines
+*when* and *what* to record.
+
+### When to Record
+
+| Trigger | Example |
+|---|---|
+| Technology choice | Language, framework, database, cloud provider |
+| Architecture choice | Tier structure, communication pattern, data flow |
+| Trade-off accepted | Performance vs readability, scope vs deadline |
+| Rejected alternative | Why option B was rejected in favor of option A |
+| Standard deviation | Any intentional deviation from these standards |
+| Dependency adoption | Adding significant external dependency |
+
+### Record Format (Lightweight)
+
+```
+Title: [Short descriptive title]
+Date: [YYYY-MM-DD]
+Phase: [Idea | PoC | MVP | Production | Maintenance]
+Status: [Proposed | Accepted | Deprecated | Superseded by DR-XXX]
+
+Context: [1-2 sentences — what situation prompted decision]
+Decision: [1-2 sentences — what was decided]
+Alternatives: [Bullet list — what was considered and rejected]
+Consequences: [Bullet list — known trade-offs and impacts]
+```
+
+### Rules
+
+- Decisions are immutable once accepted. New decisions supersede old ones.
+- Store decision records in project repository (e.g., `docs/decisions/`).
+- Number sequentially: `DR-001`, `DR-002`, etc.
+- ✗ retroactive decision records for unjustified choices — record at decision time.
+- Review decision records during phase transitions — still valid?
+- PoC decisions are informal (commit message sufficient). MVP+ decisions are formal records.
+
+---
+
+## 13. Scale Matrix
+
+Maps workflow rigor to project scale. Aligns with `architecture/STANDARDS.md` §12.
+
+| Workflow Aspect | PoC / Script | Small Project | Production System |
+|---|---|---|---|
+| Idea phase | Mental model, quick notes | Written problem statement | Full artifacts (§2) |
+| PoC phase | Optional — concept may be obvious | Single hypothesis | Multiple hypotheses if needed |
+| MVP phase | Skip — PoC is the deliverable | Core features + tests | Full acceptance criteria |
+| Task tracking | Personal notes | Issue tracker or TODO file | Full task board + priority |
+| Definition of done | "It works" | Code + tests + docs | Full DoD (§8) |
+| Technical debt | Accept freely | Track, repay when painful | 15–20% cycle allocation |
+| Decision records | Commit messages | Lightweight per above | Full ADR format |
+| Code review | Self-review | Self-review + occasional peer | Mandatory peer review |
+| AI verification | Quick sanity check | Standards compliance check | Full verification matrix (§10) |
+| Phase transitions | Implicit | Explicit but lightweight | Formal criteria (§7) |
+| Maintenance | Fix if broken | Periodic dependency updates | Full maintenance cadence (§6) |
+
+### Scale Transition
+
+When project graduates from one scale to next (per `architecture/STANDARDS.md` §12):
+
+1. Identify current gaps against target scale requirements.
+2. Create tasks for each gap (tracked per §8).
+3. Apply incrementally using Strangler Fig pattern — ✗ big-bang rewrites.
+4. Declare transition complete when all target criteria met.
+
+---
+
+## 14. Checklists
+
+### Idea Phase Checklist
+
+- [ ] Problem statement written (who, what, impact)
+- [ ] Feasibility check completed (all dimensions evaluated)
+- [ ] Scope boundary defined (in-scope and out-of-scope explicit)
+- [ ] Acceptance criteria defined (measurable, specific)
+- [ ] Scale classified (PoC / Small / Production)
+- [ ] Decision: proceed to PoC, proceed to MVP, or reject
+
+### PoC Phase Checklist
+
+- [ ] Hypothesis documented (single sentence)
+- [ ] Success criteria defined (binary pass/fail)
+- [ ] Time-box set and agreed
+- [ ] PoC code in separate branch/directory
+- [ ] Conclusion written (confirmed / rejected / inconclusive + evidence)
+- [ ] Decision: proceed to MVP, re-scope, or kill
+
+### MVP Phase Checklist
+
+- [ ] Architecture standards applied per scale
+- [ ] All acceptance criteria implemented
+- [ ] Core path tests written and passing
+- [ ] Error handling implemented (errors as data)
+- [ ] Input validation and secrets handling in place
+- [ ] Configuration defaults work (zero-config runs)
+- [ ] README with setup, usage, known limitations
+- [ ] Technical debt documented
+- [ ] Code reviewed
+- [ ] Decision: proceed to Production or iterate
+
+### Production Phase Checklist
+
+- [ ] Full test pyramid (unit · integration · contract)
+- [ ] Observability (structured logging · health checks · metrics)
+- [ ] Security standards applied (validation · access control · secrets)
+- [ ] CI/CD pipeline operational (build · test · lint · deploy)
+- [ ] Performance budgets defined and baselined
+- [ ] Full documentation (API docs · runbooks · decision records)
+- [ ] Deployment automated and repeatable
+- [ ] Rollback procedure tested
+- [ ] Monitoring and alerting configured
+- [ ] Operational readiness review completed
+
+### Maintenance Phase Checklist (Recurring)
+
+- [ ] Bug triage current (no unclassified reports)
+- [ ] Dependencies checked this cycle
+- [ ] Security advisories reviewed
+- [ ] Tech debt repayment tasks scheduled (15–20% allocation)
+- [ ] Documentation matches current code
+- [ ] Performance within budgets
+- [ ] Monitoring and alerts functional
+- [ ] Stale tasks reviewed and closed/reprioritized
+- [ ] Decision records reviewed — still valid?
+
+### AI-Assisted Development Checklist
+
+- [ ] Relevant standards provided in AI context
+- [ ] Task scoped to single clear objective
+- [ ] Generated code reviewed for correctness
+- [ ] Standards compliance verified
+- [ ] Security checked (no secrets, input validation present)
+- [ ] Dependencies verified (no phantom packages)
+- [ ] Tests pass (existing + new)
+- [ ] Code readable without AI context
