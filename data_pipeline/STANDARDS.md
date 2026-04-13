@@ -497,3 +497,247 @@ A poison pill is a record that crashes the processing stage (not just fails vali
 | Alert | Poison pill detection → immediate alert to pipeline owner |
 
 ✗ Let a single bad record halt an entire pipeline permanently. ✗ Silently skip poison records without logging.
+
+---
+
+## 11. Orchestration
+
+### DAG Execution Rules
+
+| Rule | Detail |
+|---|---|
+| Declare all dependencies explicitly | ✗ implicit ordering based on definition order |
+| Parallelize independent stages | Stages with no dependency relationship run concurrently |
+| Fail-fast on critical path | If a stage on the critical path fails, halt dependent stages immediately |
+| Allow partial DAG success | Independent branches continue even if sibling branch fails |
+| Execution is deterministic | Same DAG + same input + same config → same execution plan |
+
+### Dependency Resolution
+
+| Dependency Type | Behavior |
+|---|---|
+| Data dependency | Stage B reads output of stage A → B waits for A |
+| Resource dependency | Stage B needs same resource as A (exclusive lock) → serialize |
+| Time dependency | Stage B runs after wall-clock time → schedule, ✗ poll |
+| External dependency | Stage depends on external system availability → health check before start |
+
+Circular dependencies are a build-time error. Orchestrator rejects DAG registration if cycle detected.
+
+### Scheduling
+
+| Pattern | Use when |
+|---|---|
+| Cron/interval | Fixed schedule (daily, hourly); source updates predictably |
+| Event-triggered | Source emits event on new data; low-latency requirement |
+| Dependency-triggered | Upstream pipeline completes → downstream starts |
+| Manual/ad-hoc | Backfill, debugging, one-off analysis |
+
+Every scheduled pipeline has a defined execution window. If previous run hasn't completed by next scheduled start → skip or queue (configurable), ✗ overlap.
+
+### Backfill
+
+| Rule | Detail |
+|---|---|
+| Backfill = re-run pipeline over historical range | Uses same pipeline code as production |
+| Parameterize by time range | Pipeline accepts start/end bounds; processes only that window |
+| Backfill isolation | Backfill writes to staging; promote to production after validation |
+| Rate limiting | Backfill runs at lower priority than production; ✗ starve live pipeline |
+| Idempotent backfill | Re-running backfill for same range produces identical output |
+
+---
+
+## 12. Output & Export
+
+### Format Selection
+
+| Output Target | Preferred Format | Rationale |
+|---|---|---|
+| Data warehouse | Parquet/native load format | Columnar; schema embedded; compressed |
+| Data lake | Parquet with partitioning | Schema-on-read; splittable; efficient |
+| API consumers | JSON/JSONL | Human-readable; widely supported |
+| Spreadsheet users | CSV with explicit encoding/header | Universal compatibility |
+| Downstream pipeline | Parquet or native format | Schema preserved; no parsing overhead |
+| Archive/compliance | Parquet + schema file | Self-describing; compact; immutable |
+
+### Partitioning
+
+| Rule | Detail |
+|---|---|
+| Partition by time (default) | Year/month/day hierarchy for time-series data |
+| Partition by key | When queries filter by a high-cardinality dimension |
+| Partition size target | 128MB–1GB per partition file (compressed) |
+| ✗ over-partition | Too many small files degrade read performance |
+| Partition scheme in contract | Consumer depends on partition layout; changing it is a breaking change |
+
+### Atomic Writes
+
+| Rule | Detail |
+|---|---|
+| Write to temp location first | ✗ write directly to final destination |
+| Rename/move atomically | After write completes, atomic rename to final path |
+| Database: use transactions | Wrap sink writes in transaction; commit on success, rollback on failure |
+| Verify after write | Read back sample/checksum of written data; compare to expected |
+| No partial output visible | Consumers see either complete output or previous version — ✗ partial |
+
+See architecture/STANDARDS.md §1 — principle #17 (copy-on-write, write new then switch).
+
+### Output Validation
+
+| Check | Rule |
+|---|---|
+| Row count | Output row count matches expected (from transform accounting) |
+| Schema | Output matches declared output schema exactly |
+| Checksum | Compute checksum of output; store alongside for consumer verification |
+| Sample inspection | Automated spot-check of N random rows against constraints |
+| Empty output guard | Output with 0 rows → fail unless pipeline explicitly allows empty output |
+
+---
+
+## 13. Monitoring
+
+### Pipeline Health Metrics
+
+| Metric | Purpose |
+|---|---|
+| Run status (success/failure/partial) | Basic health indicator |
+| Duration (total + per-stage) | Performance tracking; SLA compliance |
+| Rows processed (in/out/rejected per stage) | Data accounting |
+| Error count by type | Failure pattern detection |
+| Resource usage (memory peak, CPU, I/O) | Capacity planning |
+| Checkpoint lag | How far behind is the pipeline from source |
+
+### Data Freshness
+
+| Rule | Detail |
+|---|---|
+| Define freshness SLA per pipeline | e.g., "output reflects source data no older than 4 hours" |
+| Measure freshness = now - max(source_timestamp in output) | Not pipeline run time; actual data age |
+| Alert on freshness violation | Before SLA breach if possible (warn at 80% of SLA window) |
+| Dashboard freshness per output table/file | Consumers check freshness before using data |
+
+### SLA Tracking
+
+| SLA Type | Metric |
+|---|---|
+| Freshness | Data age in output ≤ threshold |
+| Completeness | Row count ≥ expected minimum |
+| Quality | Quality dimension scores ≥ thresholds (§5) |
+| Availability | Pipeline success rate over rolling window ≥ target |
+| Latency | Pipeline duration ≤ threshold |
+
+SLA violations → alert immediately. Repeated violations → escalate. Track SLA compliance percentage over 7/30/90-day windows.
+
+### Alerting Rules
+
+| Rule | Detail |
+|---|---|
+| Alert on failure | Every pipeline failure → alert |
+| Alert on SLA breach | Freshness, quality, latency thresholds exceeded |
+| Alert on anomaly | Data profiling anomalies (§5) |
+| ✗ Alert fatigue | Tune thresholds; group related alerts; suppress duplicates within window |
+| Actionable alerts only | Every alert includes: what failed, which pipeline/stage, run ID, link to logs |
+| Escalation path | Alert → owner → team → on-call; defined per pipeline |
+
+See observability/STANDARDS.md — structured logging, metrics, health checks.
+
+---
+
+## 14. Scale Matrix
+
+| Dimension | Small | Medium | Large | Enterprise |
+|---|---|---|---|---|
+| **Data volume** | <1GB/run | 1–100GB/run | 100GB–10TB/run | >10TB/run |
+| **Pipeline count** | 1–5 | 5–50 | 50–500 | >500 |
+| **Stages per pipeline** | 3–5 | 5–15 | 15–30 | 30+ |
+| **Scheduling** | Cron/manual | Orchestrator (basic) | Orchestrator (full DAG) | Multi-orchestrator federation |
+| **Schema registry** | File-based (JSON/YAML) | Central registry (single instance) | Registry with versioning + CI | Federated registry with governance |
+| **Validation** | Schema + basic constraints | Full 3-layer validation | Data contracts with SLAs | Automated contract testing in CI |
+| **Quality monitoring** | Row counts + null checks | Profiling + anomaly alerts | Quality dashboards + trend tracking | Quality gates blocking deployment |
+| **Error recovery** | Manual rerun | Checkpoint/restart | Dead letter + auto-retry | Self-healing with backfill |
+| **Idempotency** | Overwrite output | Upsert on key | Transactional checkpoint | Exactly-once with dedup across systems |
+| **Monitoring** | Log inspection | Metrics + basic alerting | SLA tracking + dashboards | Cross-pipeline lineage + impact analysis |
+| **Team** | 1 engineer | 2–5 engineers | Team with data platform | Multiple teams with platform team |
+
+Grow incrementally. Start at the column matching current scale. Move right only when current column constraints are met.
+
+---
+
+## 15. Checklist
+
+### Pipeline Setup
+
+- [ ] Pipeline modeled as DAG with explicit stage dependencies
+- [ ] ETL vs ELT decision documented with rationale
+- [ ] Each stage has single responsibility
+- [ ] Data contracts defined between every stage pair
+
+### Ingestion
+
+- [ ] Source validation (existence, permissions, size, freshness) before read
+- [ ] Encoding declared explicitly; UTF-8 default
+- [ ] Incremental extraction uses persisted high-water marks
+- [ ] File format validation matches contract
+
+### Validation
+
+- [ ] Three-layer validation: schema → constraint → semantic
+- [ ] Rejected rows route to dead letter with rejection reason
+- [ ] Rejection threshold configured and enforced
+- [ ] Row accounting verified: rows_in = rows_out + rows_rejected
+
+### Transformation
+
+- [ ] All transforms are pure functions (no side effects)
+- [ ] Intermediate data is immutable
+- [ ] Cardinality expectation declared and verified per transform
+- [ ] Transform ordering follows clean → validate → enrich → reshape → filter
+
+### Data Quality
+
+- [ ] Quality dimensions defined per field (completeness, uniqueness, accuracy)
+- [ ] Baseline profiles established and versioned
+- [ ] Anomaly detection thresholds configured
+- [ ] Data contracts include freshness SLA and quality thresholds
+
+### Schema Management
+
+- [ ] All schemas registered in registry
+- [ ] Schema evolution follows compatibility rules
+- [ ] Producer/consumer version ranges declared and validated
+- [ ] Breaking changes follow documented migration process
+
+### Processing
+
+- [ ] Chunk size configured; full dataset never loaded into memory at once
+- [ ] Memory budget declared per stage
+- [ ] Progress reporting emits structured events per chunk
+- [ ] Partial failure accumulates to dead letter; threshold enforced
+
+### Idempotency & Recovery
+
+- [ ] Pipeline produces identical output on re-run with same input
+- [ ] Deduplication uses deterministic business key (not random ID)
+- [ ] Checkpoints persisted at stage and chunk boundaries
+- [ ] Dead letter includes original data + error context + run ID
+- [ ] Retry strategy defined per failure type
+
+### Orchestration
+
+- [ ] Dependencies declared explicitly; no implicit ordering
+- [ ] Schedule defined with overlap policy
+- [ ] Backfill parameterized by time range; writes to staging first
+- [ ] Circular dependencies rejected at registration
+
+### Output
+
+- [ ] Output format matches consumer contract
+- [ ] Writes are atomic (temp → rename pattern)
+- [ ] Output validated (row count, schema, checksum)
+- [ ] Empty output explicitly handled (fail or allow)
+
+### Monitoring
+
+- [ ] Pipeline health metrics collected (status, duration, rows, errors)
+- [ ] Freshness SLA defined and monitored
+- [ ] Alerts configured for failure, SLA breach, anomaly
+- [ ] Alerts are actionable with pipeline/stage/run-ID context

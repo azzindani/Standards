@@ -503,3 +503,133 @@ Start with RBAC. Move to permission-based when roles become insufficient. ABAC/R
 ### CORS Middleware Placement
 
 Position 4 in middleware stack (see §3). CORS rejection occurs before authentication — saves processing cost for disallowed origins.
+
+---
+
+## 13. Performance
+
+### Server Response Time Budgets
+
+| Endpoint Type | Budget (p95) | Action on Breach |
+|---|---|---|
+| Health check | <10ms | Investigate immediately |
+| Simple read (by ID) | <50ms | Add caching or index |
+| List/search | <200ms | Paginate · optimize query · add cache |
+| Write (create/update) | <200ms | Async processing if >200ms |
+| Complex aggregation | <500ms | Pre-compute or background job |
+| File upload | <2s (excluding transfer) | Stream processing · async |
+
+### Frontend Performance Budgets
+
+| Metric | Budget | Measurement |
+|---|---|---|
+| Initial JS bundle (compressed) | <100KB per route | Build-time bundle analysis |
+| Total JS (all routes, compressed) | <300KB | Build-time |
+| First Contentful Paint (FCP) | <1.5s | Lighthouse / field data |
+| Largest Contentful Paint (LCP) | <2.5s | Core Web Vitals |
+| Cumulative Layout Shift (CLS) | <0.1 | Core Web Vitals |
+| Interaction to Next Paint (INP) | <200ms | Core Web Vitals |
+| Time to Interactive (TTI) | <3.5s | Lighthouse |
+
+### Optimization Rules
+
+| Technique | When | Rule |
+|---|---|---|
+| Lazy loading | Below-fold images · non-critical routes | Load on scroll/navigate — ✗ load everything upfront |
+| Preloading | Critical resources (fonts · above-fold images) | `<link rel="preload">` for render-critical assets |
+| SSR/SSG | SEO pages · landing pages | Server-render critical path — hydrate interactivity |
+| Database query optimization | Every query | Index lookup ✗ table scan. Explain plan in review |
+| Connection pooling | All database connections | Pool size = (cores × 2) + spindle_count as starting point |
+| Response compression | All text responses >1KB | Brotli preferred → gzip fallback |
+| HTTP/2+ | All production deployments | Multiplexed connections · header compression · server push |
+| Request collapsing | Duplicate concurrent requests | Deduplicate identical in-flight requests |
+
+### Caching Strategy
+
+| Layer | Cache | TTL | Invalidation |
+|---|---|---|---|
+| Browser | HTTP cache headers | Per-resource (see §5 · §10) | Content-hashed URLs |
+| CDN edge | Static assets · public pages | Long (immutable for hashed assets) | Deploy new hashed filenames |
+| Application | Computed results · API responses | Short (seconds to minutes) | Event-driven or TTL expiry |
+| Database | Query results | Short | Write-through or cache-aside pattern |
+
+See performance/STANDARDS.md for profiling methodology · budget enforcement.
+
+---
+
+## 14. Scale Matrix
+
+| Aspect | Solo/Prototype | Small Team (2–5) | Production | Large Scale |
+|---|---|---|---|---|
+| **Rendering** | CSR (SPA) | SSR or CSR based on need | Hybrid SSR + CSR | SSR + CDN edge rendering |
+| **API** | REST, single version | REST with versioning | REST or GraphQL + versioning | API gateway + multiple backends |
+| **State** | In-memory | Database sessions | Distributed cache (Redis) | Distributed cache + partitioned state |
+| **Auth** | Session cookie | JWT or session + CSRF | OAuth 2.0 + OIDC | Federated identity + SSO |
+| **Authorization** | Simple role check | RBAC | Permission-based | ABAC or ReBAC |
+| **Static assets** | Serve from app server | CDN for production | CDN + content hashing | Multi-region CDN + edge caching |
+| **WebSocket** | Direct connection | Direct + heartbeat | Load-balanced + pub/sub | Dedicated WS cluster + message broker |
+| **Middleware** | Minimal (logging + errors) | Standard stack (§3 full list) | Full stack + APM | Full stack + distributed tracing |
+| **CORS** | Wildcard for dev | Explicit origin list | Strict origin whitelist | Per-service CORS policy |
+| **Monitoring** | Console logging | Structured logging | APM + error tracking + alerts | Distributed tracing + real-time dashboards |
+| **Performance** | No budgets | Bundle size budget | Full budget enforcement in CI | Per-region performance monitoring |
+| **Deployment** | Manual | CI/CD single region | Blue-green or canary | Multi-region + traffic shifting |
+
+---
+
+## 15. Checklist
+
+### Backend
+
+- [ ] Route handlers are thin — delegate to service layer (Tier 2)
+- [ ] ✗ business logic in handlers or middleware
+- [ ] All input validated at boundary (Tier 3) before reaching domain logic
+- [ ] Consistent response envelope across all endpoints
+- [ ] Correct HTTP status codes per §5 table
+- [ ] Request ID generated + propagated + returned in response
+- [ ] Error handling middleware catches all unhandled errors
+- [ ] ✗ stack traces exposed to client in production
+- [ ] Content-Type enforcement on all routes accepting body
+- [ ] Body size limits set per route
+- [ ] Cache-Control headers set explicitly on every response
+
+### Authentication + Authorization
+
+- [ ] Auth cookies: `HttpOnly` · `Secure` · `SameSite`
+- [ ] CSRF protection on all state-mutating endpoints
+- [ ] ✗ state mutation via GET
+- [ ] Session ID rotated on privilege change
+- [ ] Access tokens short-lived (5–15 min)
+- [ ] Authorization enforced server-side on every request
+- [ ] Default deny — unauthenticated → 401, unauthorized → 403
+- [ ] Resource-level permission checks (not just endpoint-level)
+
+### Frontend
+
+- [ ] Single source of truth per state type (§9)
+- [ ] Code splitting per route
+- [ ] Bundle size within budget (§13)
+- [ ] Core Web Vitals within budget (§13)
+- [ ] Tree shaking enabled · ✗ unused imports
+- [ ] ✗ auth tokens in localStorage
+- [ ] URL state supports bookmarking + back button
+- [ ] Permission-aware UI gating (UX only — ✗ sole enforcement)
+
+### Infrastructure
+
+- [ ] CORS explicit origin whitelist (✗ wildcard for authenticated APIs)
+- [ ] Preflight caching enabled (max-age ≥ 2h)
+- [ ] Static assets: content-hashed filenames + immutable cache headers
+- [ ] HTML entry point: `no-cache`
+- [ ] Compression: Brotli preferred + gzip fallback
+- [ ] CDN serves static assets in production
+- [ ] HTTP/2+ enabled
+- [ ] Server response time budgets monitored (§13)
+
+### WebSocket (if applicable)
+
+- [ ] Authenticated during handshake
+- [ ] Heartbeat ping/pong every 30s
+- [ ] Client reconnect with exponential backoff
+- [ ] Messages structured with `type` field
+- [ ] Message size <64KB
+- [ ] Critical state persisted to database (✗ WS-only state)

@@ -335,7 +335,7 @@ class CacheKey:
     key: str
 ```
 
-### Pydantic Examples
+### Pydantic
 
 ```python
 from pydantic import BaseModel, Field, field_validator
@@ -353,7 +353,7 @@ class CreateUserRequest(BaseModel):
         return v.lower()
 ```
 
-### NamedTuple Example
+### NamedTuple
 
 ```python
 from typing import NamedTuple
@@ -361,10 +361,7 @@ from typing import NamedTuple
 class Coordinate(NamedTuple):
     lat: float
     lon: float
-    alt: float = 0.0
-
-# Unpacking works
-lat, lon, alt = Coordinate(59.33, 18.07)
+    alt: float = 0.0  # unpacking works: lat, lon, alt = Coordinate(59.33, 18.07)
 ```
 
 ### ✗ Avoid
@@ -681,15 +678,7 @@ funcs = [lambda i=i: i for i in range(5)]
 
 ### Global State
 
-```python
-# ✗ WRONG — module-level mutable state
-_cache = {}  # any import side-effects, any module can mutate
-
-# ✓ CORRECT — encapsulate in class or function scope
-class Cache:
-    def __init__(self) -> None:
-        self._data: dict[str, Any] = {}
-```
+✗ Module-level mutable state (`_cache = {}`). Encapsulate in class or function scope.
 
 ### Other Anti-Patterns
 
@@ -741,16 +730,7 @@ for x in range(1000):
 ### `__slots__`
 
 ```python
-# ✓ Slots — 40-50% less memory per instance
-class Point:
-    __slots__ = ("x", "y", "z")
-
-    def __init__(self, x: float, y: float, z: float) -> None:
-        self.x = x
-        self.y = y
-        self.z = z
-
-# Or use dataclass with slots=True (3.10+)
+# ✓ 40-50% less memory — use dataclass(slots=True) on 3.10+
 @dataclass(slots=True)
 class Point:
     x: float
@@ -763,43 +743,20 @@ class Point:
 ```python
 from functools import lru_cache, cache
 
-# ✓ Bounded cache — evicts LRU entries
-@lru_cache(maxsize=256)
-def expensive_lookup(key: str) -> Result:
-    return db.query(key)
+@lru_cache(maxsize=256)          # ✓ bounded — evicts LRU
+def expensive_lookup(key: str) -> Result: ...
 
-# ✓ Unbounded cache (3.9+) — use only for small key spaces
-@cache
-def parse_config(path: str) -> Config:
-    return load_and_parse(path)
+@cache                            # ✓ unbounded — small key spaces only
+def parse_config(path: str) -> Config: ...
 ```
 
 ### String Building
 
-```python
-# ✓ join() for many strings
-result = "".join(parts)
-
-# ✓ io.StringIO for complex string assembly
-import io
-buffer = io.StringIO()
-for chunk in data:
-    buffer.write(chunk)
-result = buffer.getvalue()
-
-# ✗ repeated concatenation — O(n²) for large n
-result = ""
-for chunk in data:
-    result += chunk
-```
+`"".join(parts)` for many strings. `io.StringIO` for complex assembly. ✗ repeated `+=` — O(n^2).
 
 ### Profiling
 
 Use `cProfile` / `py-spy` before optimizing. ✗ premature optimization.
-
-```bash
-uv run python -m cProfile -s cumtime src/myapp/main.py
-```
 
 ---
 

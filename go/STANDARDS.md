@@ -111,20 +111,17 @@ func NewPostgresStore(db *sql.DB) UserStore {
 
 ## 3. Error Handling
 
-Go errors are values — handle them explicitly. Implements `architecture/STANDARDS.md §7` (error architecture) + `error_handling/STANDARDS.md` in Go idiom.
+Go errors are values — handle explicitly. Implements `architecture/STANDARDS.md §7` + `error_handling/STANDARDS.md` in Go idiom.
 
-### Fundamental Rules
+### Rules
 
 | Rule | Detail |
 |---|---|
 | Always check returned errors | ✗ `_ = f()` when `f` returns error |
 | Return `error` as last return value | Convention: `(result, error)` |
 | ✗ `panic` for expected failures | `panic` = programmer bug only (index OOB, nil deref, impossible state) |
-| Wrap errors with context at each boundary | `fmt.Errorf("fetch user %s: %w", id, err)` |
-| ✗ wrap with redundant context | Don't repeat what caller already knows |
+| Wrap with context at each boundary | `fmt.Errorf("fetch user %s: %w", id, err)` |
 | Handle error OR return it — ✗ both | Log-and-return = duplicate noise |
-
-### Wrapping Pattern
 
 ```go
 // ✓ Add context, preserve chain
@@ -133,16 +130,8 @@ if err != nil {
     return fmt.Errorf("resolve billing for user %s: %w", id, err)
 }
 
-// ✗ Bare return — no context for debugging
-if err != nil {
-    return err
-}
-
-// ✗ Log AND return — caller will also log
-if err != nil {
-    log.Error("failed", "err", err)
-    return err
-}
+// ✗ Bare return — no context          // ✗ Log AND return — duplicate
+if err != nil { return err }            if err != nil { log.Error(err); return err }
 ```
 
 ### Error Decision Matrix
@@ -155,49 +144,26 @@ if err != nil {
 | Goroutine boundary | Recover at top, convert to error, send via channel/errgroup |
 | HTTP/gRPC boundary | Map to status code, log once at boundary |
 
----
-
-## 4. Error Types
-
-### Sentinel Errors
+### Sentinel Errors + Custom Types
 
 ```go
-// Package-level, exported, ErrX naming
+// Sentinel: package-level, exported, ErrX naming
 var (
     ErrNotFound     = errors.New("not found")
     ErrUnauthorized = errors.New("unauthorized")
-    ErrConflict     = errors.New("conflict")
 )
-```
 
-### Custom Error Types
-
-```go
-// Implement error interface — carry structured context
+// Custom type: carry structured context
 type ValidationError struct {
     Field   string
     Message string
 }
-
 func (e *ValidationError) Error() string {
     return fmt.Sprintf("validation: %s — %s", e.Field, e.Message)
 }
 ```
 
 ### Checking Errors
-
-```go
-// errors.Is — check sentinel (value equality through chain)
-if errors.Is(err, ErrNotFound) {
-    return http.StatusNotFound
-}
-
-// errors.As — check type (extracts typed error through chain)
-var ve *ValidationError
-if errors.As(err, &ve) {
-    return http.StatusBadRequest
-}
-```
 
 | Function | Use Case | Checks Through Wrapping |
 |---|---|---|
@@ -206,9 +172,16 @@ if errors.As(err, &ve) {
 | `err == ErrX` | ✗ Breaks on wrapping | No |
 | `_, ok := err.(*T)` | ✗ Breaks on wrapping | No |
 
+```go
+if errors.Is(err, ErrNotFound) { return http.StatusNotFound }
+
+var ve *ValidationError
+if errors.As(err, &ve) { return http.StatusBadRequest }
+```
+
 ---
 
-## 5. Naming
+## 4. Naming
 
 Go naming is intentionally terse. Exported = `PascalCase`. Unexported = `camelCase`. See `code_writing/STANDARDS.md` for general naming principles.
 
@@ -249,7 +222,7 @@ type IReader interface{}  // wrong
 
 ---
 
-## 6. Struct Design
+## 5. Struct Design
 
 ### Field Ordering
 
@@ -326,7 +299,7 @@ func WithLogger(l *slog.Logger) Option {
 
 ---
 
-## 7. Concurrency
+## 6. Concurrency
 
 Go concurrency = goroutines + channels + sync primitives. See `architecture/STANDARDS.md §9` for concurrency architecture principles.
 
@@ -416,7 +389,7 @@ func (c *Cache) GetFromDB(ctx context.Context, key string) (Item, error) {
 
 ---
 
-## 8. Context
+## 7. Context
 
 `context.Context` = cancellation + deadline + request-scoped values. First parameter of every function that does I/O or takes time.
 
@@ -460,7 +433,7 @@ ctx = context.WithValue(ctx, "db", database)  // wrong
 
 ---
 
-## 9. Module Structure
+## 8. Module Structure
 
 ### go.mod Rules
 
@@ -490,7 +463,7 @@ ctx = context.WithValue(ctx, "db", database)  // wrong
 
 ---
 
-## 10. Code Organization
+## 9. Code Organization
 
 Maps to `architecture/STANDARDS.md §2` tier model. See `directory/STANDARDS.md` for general layout rules.
 
@@ -547,7 +520,7 @@ project/
 
 ---
 
-## 11. Testing
+## 10. Testing
 
 ### Core Rules
 
@@ -642,7 +615,7 @@ func BenchmarkParse(b *testing.B) {
 
 ---
 
-## 12. Tooling
+## 11. Tooling
 
 ### Required Tools
 
@@ -698,7 +671,7 @@ tidy:
 
 ---
 
-## 13. Performance
+## 12. Performance
 
 See `performance/STANDARDS.md` for general profiling strategy. Go-specific optimizations below.
 
@@ -768,7 +741,7 @@ go func() { http.ListenAndServe("localhost:6060", nil) }()
 
 ---
 
-## 14. Go-Specific Anti-Patterns
+## 13. Go-Specific Anti-Patterns
 
 | Anti-Pattern | Problem | Fix |
 |---|---|---|
@@ -803,7 +776,7 @@ defer func() {
 
 ---
 
-## 15. Checklist
+## 14. Checklist
 
 ### Package & Module
 

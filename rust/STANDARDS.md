@@ -304,33 +304,24 @@ fn handlers() -> Vec<Box<dyn Handler>> { /* ... */ }
 | Bound only on traits actually used — ✗ `T: Clone + Debug + Send + Sync` if only `Clone` is called |
 | Supertraits (`trait A: B`) only when every implementor of A must also implement B |
 
-### Blanket Implementations
+### Blanket and Extension Traits
 
 ```rust
-// ✓ blanket impl when behavior is universally derivable
+// ✓ blanket impl — universally derivable behavior
 impl<T: Display> Loggable for T {
     fn log(&self) { println!("{}", self); }
+}
+
+// ✓ extension trait — add methods to foreign types (suffix Ext)
+trait StrExt {
+    fn is_blank(&self) -> bool;
+}
+impl StrExt for str {
+    fn is_blank(&self) -> bool { self.trim().is_empty() }
 }
 ```
 
 ✗ blanket impls that conflict with user-defined impls. Test with concrete types before publishing.
-
-### Extension Traits
-
-```rust
-// Add methods to foreign types without newtypes
-trait StrExt {
-    fn is_blank(&self) -> bool;
-}
-
-impl StrExt for str {
-    fn is_blank(&self) -> bool {
-        self.trim().is_empty()
-    }
-}
-```
-
-Convention: suffix `Ext` for extension traits on foreign types.
 
 ---
 
@@ -409,56 +400,24 @@ match value {
 ### Unsafe Block Rules
 
 ```rust
-// ✓ minimal unsafe scope — only the operation that requires it
+// ✓ minimal scope, mandatory SAFETY comment
 let value = unsafe {
-    // SAFETY: pointer is non-null and aligned, validated by caller contract.
-    // Lifetime tied to parent struct which holds the allocation.
+    // SAFETY: pointer non-null and aligned, validated by caller contract.
     ptr.read()
 };
-
-// ✗ large unsafe block covering safe operations
-unsafe {
-    let x = compute(); // safe — should be outside
-    ptr.write(x);      // actually unsafe
-    log(x);            // safe — should be outside
-}
 ```
 
 | Rule |
 |---|
-| Every `unsafe` block requires a `// SAFETY:` comment explaining why invariants hold |
-| Minimize unsafe scope — one operation per block when possible |
+| Every `unsafe` block requires `// SAFETY:` comment explaining why invariants hold |
+| Minimize unsafe scope — one operation per block; ✗ safe code inside unsafe blocks |
 | Encapsulate unsafe behind safe public API — callers never write `unsafe` |
 | ✗ `unsafe impl` without formal reasoning about invariants |
 | Unsafe code requires dedicated review — tag in PR description |
 | Run Miri (`cargo +nightly miri test`) on all unsafe code in CI |
 | Fuzz unsafe boundary functions with `cargo-fuzz` or `proptest` |
 
-### Encapsulation Pattern
-
-```rust
-pub struct AlignedBuffer {
-    ptr: *mut u8,
-    len: usize,
-}
-
-impl AlignedBuffer {
-    /// Creates a new buffer with guaranteed 64-byte alignment.
-    pub fn new(size: usize) -> Self {
-        let layout = Layout::from_size_align(size, 64).unwrap();
-        // SAFETY: layout is non-zero (checked above), alloc returns aligned ptr
-        let ptr = unsafe { alloc::alloc(layout) };
-        Self { ptr, len: size }
-    }
-
-    pub fn as_slice(&self) -> &[u8] {
-        // SAFETY: ptr valid for len bytes, lifetime tied to &self
-        unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
-    }
-}
-```
-
-**Rule:** safe public API + unsafe private internals = safe abstraction. Callers get safety guarantees without `unsafe` in their code.
+**Rule:** safe public API + unsafe private internals = safe abstraction.
 
 ---
 
@@ -491,18 +450,6 @@ See architecture/STANDARDS.md §9 — concurrency architecture.
 
 ### Async Rust (Tokio)
 
-```rust
-// ✓ tokio for I/O-bound concurrent work
-#[tokio::main]
-async fn main() -> Result<()> {
-    let listener = TcpListener::bind("0.0.0.0:8080").await?;
-    loop {
-        let (stream, _) = listener.accept().await?;
-        tokio::spawn(handle_connection(stream));
-    }
-}
-```
-
 | Rule |
 |---|
 | Tokio for I/O-bound work (network, file, DB) |
@@ -512,7 +459,7 @@ async fn main() -> Result<()> {
 | ✗ `async` on functions that don't `.await` — just make them sync |
 | Prefer structured concurrency: `tokio::select!`, `JoinSet` over unbounded `spawn` |
 | ✗ `tokio::sync::Mutex` when `std::sync::Mutex` suffices (no await while locked) |
-| Cancel safety: every `.await` point is a potential cancellation — hold no invariants across awaits |
+| Cancel safety: every `.await` = potential cancellation — hold no invariants across awaits |
 
 ---
 
@@ -536,16 +483,7 @@ async fn main() -> Result<()> {
 | `Arc<T>` | Shared, ref-counted | Yes | Cross-thread shared data |
 | `Cow<'a, T>` | Borrowed or owned | Depends on T | Avoid cloning when original might suffice |
 
-```rust
-// ✓ Cow — clone only when mutation needed
-fn normalize(input: &str) -> Cow<'_, str> {
-    if input.contains('\t') {
-        Cow::Owned(input.replace('\t', "    "))
-    } else {
-        Cow::Borrowed(input)
-    }
-}
-```
+Use `Cow<'a, T>` when data is usually borrowed but occasionally needs mutation/ownership.
 
 ### Allocation Anti-Patterns
 
@@ -556,16 +494,6 @@ fn normalize(input: &str) -> Cow<'_, str> {
 | `to_string()` on string literals at every call site | Accept `&str`, let caller own if needed |
 | `collect::<Vec<_>>()` then immediate iteration | Chain iterators — skip intermediate allocation |
 | `Box<dyn Trait>` when enum with 2–3 variants suffices | Use enum dispatch — stack-allocated, no vtable |
-
-```rust
-// ✓ reuse allocation across iterations
-let mut buf = String::with_capacity(256);
-for item in items {
-    buf.clear();
-    write!(&mut buf, "{}: {}", item.key, item.value)?;
-    output.push_str(&buf);
-}
-```
 
 ---
 
@@ -579,14 +507,6 @@ name = "my-crate"
 version = "0.1.0"
 edition = "2021"        # always latest stable edition
 rust-version = "1.75"   # MSRV — minimum supported Rust version
-
-[dependencies]
-serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-
-[dev-dependencies]
-proptest = "1"
-criterion = { version = "0.5", features = ["html_reports"] }
 
 [lints.rust]
 unsafe_code = "forbid"  # unless crate requires unsafe
