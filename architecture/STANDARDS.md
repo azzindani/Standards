@@ -6,7 +6,9 @@ written, tested, or deployed. Those belong in their respective standards.
 
 Derived from: Layered N-Tier, Clean Architecture, Unix Philosophy,
 Functional Core/Imperative Shell, Actor Model, Erlang/OTP, ECS,
-Microkernel, Linux Kernel, DDD, and Contract-First Design.
+Microkernel, Linux Kernel, DDD, Contract-First Design, Rust ownership
+model, ACID transactions, Copy-on-Write filesystems, TCP/IP protocol
+design, MapReduce, and Circuit Breaker pattern.
 
 Composable with: Design Standards, Testing Standards, CI/CD Standards,
 Directory Standards, Code Writing Standards, and language-specific standards.
@@ -33,7 +35,7 @@ Directory Standards, Code Writing Standards, and language-specific standards.
 
 ## 1. Core Principles
 
-Thirteen rules. Each derived from a proven architecture.
+Each rule derived from a proven architecture or system.
 
 | # | Rule | Origin | Purpose |
 |---|---|---|---|
@@ -50,6 +52,22 @@ Thirteen rules. Each derived from a proven architecture.
 | 11 | One universal data format between stages | Unix | Interoperability |
 | 12 | Features are self-contained slices | Vertical Slice | Modularity |
 | 13 | Register capabilities, don't hardcode imports | Linux Kernel | Extensibility |
+| 14 | Every resource has exactly one owner | Rust Ownership | Safety |
+| 15 | Represent absence explicitly, never null | Rust/Haskell | Correctness |
+| 16 | Same operation twice produces same result | HTTP/REST | Idempotency |
+| 17 | Never modify in place, write new then switch | ZFS Copy-on-Write | Crash safety |
+| 18 | Log intent before executing the action | WAL/Database | Recoverability |
+| 19 | When downstream is slow, upstream slows down | TCP/IP | Backpressure |
+| 20 | Stop calling a failing dependency after N failures | Circuit Breaker | Cascade prevention |
+| 21 | Prefer plain data structures over complex objects | Clojure | Transparency |
+| 22 | Split large work, process independently, combine | MapReduce | Parallelism |
+| 23 | Describe desired state, let the system reconcile | Kubernetes | Self-healing |
+| 24 | Separate what to do from how to do it | Linux Kernel | Adaptability |
+| 25 | Data flows one direction through the system | Flux/Elm | Predictability |
+| 26 | System reduces capability rather than crashing | Graceful Degradation | Resilience |
+| 27 | Design the types and schema first, code follows | Haskell/SQL | Type-driven design |
+| 28 | A function changes state or returns data, never both | CQS | Clarity |
+| 29 | Every resource has explicit budget limits | OS Resource Mgmt | Bounded resource use |
 
 Every architectural decision must trace back to at least one principle.
 If a decision violates a principle, document why.
@@ -146,6 +164,38 @@ Every function is one of two types. Never both.
 If a function performs I/O AND transforms data, split it into two
 functions — one shell, one logic.
 
+### Command-Query Separation
+
+A function either changes state or returns data. Never both. Functions
+that modify state return only a status or receipt. Functions that return
+data produce no side effects. This makes every function's role
+unambiguous to the caller.
+
+### Explicit Absence
+
+Never use null, nil, or None to represent "no value." Use the
+language's explicit absence type (Option, Maybe, Optional, Result)
+to force callers to handle the missing case. Unhandled absence is
+a class of bug eliminated by architecture, not by discipline.
+
+### Idempotency
+
+Functions that perform operations must be safe to call multiple times
+with the same input. The second call produces the same result as the
+first. This enables safe retries, crash recovery, and replay.
+
+### Type-Driven Design
+
+Define the data types and structures before writing functions. The
+types represent the domain. Functions are transformations between
+types. If the types are right, the functions follow naturally.
+
+### Data Over Objects
+
+Prefer plain data structures (structs, records, maps, tuples) over
+complex objects with hidden internal state. Data is transparent,
+serializable, printable, and comparable. Objects hide — data reveals.
+
 ### Return Contract
 
 Complex results use structured types (structs, records, data classes),
@@ -188,6 +238,11 @@ The caller's data remains unchanged after any function call.
 
 ### Ownership
 
+Every resource (data, connection, file handle) has exactly one owner
+at any point. Ownership transfer is explicit. When a function receives
+ownership, the sender no longer accesses that resource. Shared read
+access is allowed widely; write access is exclusive — never concurrent.
+
 Each module owns its state exclusively. No global mutable state shared
 between modules. If two modules need the same data, pass it explicitly.
 
@@ -198,16 +253,36 @@ between modules. If two modules need the same data, pass it explicitly.
 | Module-local cache | Performance optimization within one module only |
 | Persistent store | Cross-session state, Tier 3 only |
 
+### Unidirectional Data Flow
+
+Data flows one direction through the system — from input to output,
+through the tier stack. Data never cycles back to a previous stage.
+If a later stage needs to inform an earlier one, it does so through
+a new invocation, not by reaching back.
+
 ### Single Source of Truth
 
 Every piece of data has exactly one authoritative location. If data
 is derived, compute it — don't store a second copy that can drift.
 
-### Snapshot Before Mutation
+### Copy-on-Write
 
-Any Tier 3 operation that modifies persistent state must capture a
-snapshot or delta before the write. This enables undo, audit, and
-crash recovery.
+Never modify persistent data in place. Write the new version to a
+new location, then atomically switch the reference. If the process
+crashes mid-write, the original is untouched. This makes mutation
+crash-safe by design.
+
+### Write-Ahead Log
+
+Before executing a state-changing operation, log the intent. If the
+process crashes during execution, the log enables recovery by replay.
+The log is the source of truth; the current state is derived from it.
+
+### Content-Addressable Identity
+
+Where applicable, identify data by its content hash rather than by
+name or location. Same content always produces the same identity.
+This gives automatic deduplication and integrity verification.
 
 ---
 
@@ -243,6 +318,21 @@ any errors, allowing the caller to decide how to handle them.
 Batch operations never stop on the first error. Process everything
 possible, accumulate all failures, return a complete report of
 successes and failures together.
+
+### Circuit Breaker
+
+When an external dependency or operation fails repeatedly, stop
+calling it. After N consecutive failures, the circuit opens — further
+calls return immediately with a failure result instead of waiting and
+timing out. After a cooldown period, allow one probe call. If it
+succeeds, close the circuit and resume normal operation.
+
+### Graceful Degradation
+
+When a component or dependency is unavailable, the system reduces
+capability rather than crashing entirely. Non-critical features
+become unavailable; critical path continues operating. The system
+reports what is degraded so the caller can adapt.
 
 ---
 
@@ -287,11 +377,35 @@ measured performance requires it.
 | Mixed batch (many independent items) | Thread pool |
 | Real-time streaming | Async with queues |
 
+### Split-Process-Combine
+
+For large workloads, decompose into independent chunks, process each
+chunk independently (potentially in parallel), and combine results
+at the orchestration level. Each chunk is self-contained — it carries
+everything it needs and returns a complete partial result.
+
+### Backpressure
+
+When a downstream stage is slower than upstream, upstream must slow
+down rather than buffering unboundedly. Every queue and buffer has
+an explicit maximum size. When the limit is reached, the producer
+blocks or drops with a signal — never silently accumulates.
+
+### Resource Budgets
+
+Every concurrent operation has explicit limits:
+- Maximum time (timeout)
+- Maximum memory consumption
+- Maximum queue/buffer depth
+- Maximum worker pool size (bounded by hardware)
+
+Resources are allocated explicitly and released deterministically.
+Unbounded resource consumption is an architectural violation.
+
 ### Rules
 
 - Never share mutable state between concurrent workers.
 - Each worker receives its own copy or an immutable reference.
-- Worker pool sizes are bounded by hardware constraints.
 - Every concurrent operation has an explicit timeout.
 - Results from workers are collected into a single accumulator at
   Tier 2 (orchestration level), never assembled inside workers.
@@ -318,6 +432,28 @@ does, the architecture has a coupling problem.
 Build capabilities as independent, attachable units. Combine them
 through composition. Avoid inheritance hierarchies — they create rigid
 coupling and make feature combinations combinatorially explosive.
+
+### Separation of Policy and Mechanism
+
+The mechanism (how to do it) is separate from the policy (what to do).
+The engine provides mechanisms — the caller provides policy through
+configuration or arguments. The engine never decides business rules;
+it executes them. This allows the same engine to serve different
+policies without modification.
+
+### Reconciliation Loop
+
+For systems that manage state, continuously compare actual state
+against desired state. When they differ, take corrective action
+automatically. This makes the system self-correcting — transient
+failures are repaired without manual intervention.
+
+### Declarative Intent
+
+Where possible, describe the desired outcome rather than the steps
+to achieve it. The system determines how to reach the desired state.
+This decouples the "what" from the "how" and allows the system to
+optimize or change its approach without affecting the caller.
 
 ---
 
@@ -359,12 +495,12 @@ Apply rules proportionally to project complexity.
 | Tier model (§2) | Flat — no tiers | 2 tiers (logic + I/O) | Full 4 tiers |
 | Function contract (§4) | Informal | Single-in/single-out | Full typed contracts |
 | Module boundaries (§5) | Single file | Explicit exports | Registration pattern |
-| Immutability (§6) | Optional | Required in core | Required everywhere |
-| Error handling (§7) | Fail fast only | Error as data in core | Full accumulation |
+| State management (§6) | Mutable ok | Immutable in core | Copy-on-write + WAL |
+| Error handling (§7) | Fail fast only | Error as data | Full accumulation + circuit breaker |
 | Configuration (§8) | Hardcoded defaults | File + defaults | Full cascade |
-| Concurrency (§9) | Sequential only | Pool if needed | Measured and tuned |
+| Concurrency (§9) | Sequential only | Pool if needed | Backpressure + resource budgets |
 | Dependencies (§3) | Direct use ok | Wrap critical deps | Wrap all externals |
-| Extension (§10) | Not needed | Composition | Full registration |
+| Extension (§10) | Not needed | Composition | Registration + reconciliation |
 
 ### Scale Transition
 
@@ -381,19 +517,25 @@ rewrite — evolve in place.
 - [ ] Determine project scale (PoC / Small / Production)
 - [ ] Define tier structure appropriate to scale
 - [ ] Identify Tier 0 kernel contents
+- [ ] Define types and data structures before writing logic
 - [ ] Establish universal data format for inter-function communication
 - [ ] Define module boundaries and public APIs
 - [ ] Confirm all I/O is in Tier 3
-- [ ] Set configuration defaults
+- [ ] Confirm data flows one direction (no cycles)
+- [ ] Set configuration defaults (zero-config must work)
 - [ ] Verify dependency graph is a DAG — inward only
+- [ ] Define resource budgets for production scale
 
 ### New Module
 
 - [ ] Public API declared explicitly
 - [ ] Every function classified as I/O or logic
+- [ ] Every function classified as command or query (not both)
 - [ ] Pipeline contract: single input, single output
 - [ ] No lateral or outward tier imports
 - [ ] Module owns its state — no shared mutables
+- [ ] Absence represented explicitly — no null returns
+- [ ] Operations are idempotent where applicable
 
 ### New Feature
 
@@ -401,3 +543,4 @@ rewrite — evolve in place.
 - [ ] Uses registration if system is extensible
 - [ ] No I/O introduced below Tier 3
 - [ ] Conforms to existing tier structure
+- [ ] Graceful degradation path defined for failure scenarios
