@@ -58,7 +58,7 @@ Central standards library for all projects. Each standard = one directory + one 
 
 | # | Directory | Standard | Status |
 |---|---|---|---|
-| 20 | `python/` | Style · typing · packaging · virtual envs · tooling | Planned |
+| 20 | `python/` | Style · typing · packaging · virtual envs · tooling | Done |
 | 21 | `rust/` | Ownership idioms · crate structure · error handling · unsafe | Planned |
 | 22 | `go/` | Package layout · interfaces · error returns · concurrency | Planned |
 | 23 | `typescript/` | Types · modules · async patterns · build config | Planned |
