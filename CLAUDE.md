@@ -47,7 +47,7 @@ Central standards library for all projects. Each standard = one directory + one 
 | 11 | `configuration/` | Cascade · environment · secrets · feature flags | Planned |
 | 12 | `dependencies/` | Versioning · isolation · wrappers · lock files | Done |
 | 13 | `git/` | Branching · commits · tags · workflows · history | Done |
-| 14 | `cicd/` | Build · test · lint · deploy · release stages | Planned |
+| 14 | `cicd/` | Build · test · lint · deploy · release stages | Done |
 | 15 | `documentation/` | Code docs · API docs · decision records · runbooks | Planned |
 | 16 | `performance/` | Profiling · budgets · optimization · caching | Planned |
 | 17 | `devops/` | Infrastructure · containers · deployment · monitoring | Planned |
