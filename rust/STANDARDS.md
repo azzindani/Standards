@@ -259,25 +259,12 @@ See architecture/STANDARDS.md §6 — state architecture (states as types, trans
 
 ### Trait Bound Rules
 
-```rust
-// ✓ impl Trait for simple single-use bounds
-fn serialize(item: &impl Serialize) -> Vec<u8> { /* ... */ }
-
-// ✓ where clause for complex bounds
-fn merge<T>(a: T, b: T) -> T
-where
-    T: Clone + Ord + Debug,
-{ /* ... */ }
-
-// ✓ trait objects for heterogeneous collections
-fn handlers() -> Vec<Box<dyn Handler>> { /* ... */ }
-```
-
 | Rule |
 |---|
 | `impl Trait` in arg position → monomorphized, zero-cost dispatch |
 | `dyn Trait` → dynamic dispatch, heap allocation — use when types vary at runtime |
 | ✗ `dyn Trait` in hot paths without measuring — vtable call overhead |
+| `where` clause for complex bounds — `fn merge<T>(a: T, b: T) -> T where T: Clone + Ord` |
 | Bound only on traits actually used — ✗ `T: Clone + Debug + Send + Sync` if only `Clone` is called |
 | Supertraits (`trait A: B`) only when every implementor of A must also implement B |
 
@@ -304,61 +291,23 @@ impl StrExt for str {
 
 ## 6. Pattern Matching
 
-### Exhaustive Matching
-
-```rust
-// ✓ handle every variant — compiler enforces
-match event {
-    Event::Start { id } => begin(id),
-    Event::Data { payload } => process(payload),
-    Event::End => finish(),
-}
-
-// ✗ wildcard catch-all hiding new variants
-match event {
-    Event::Start { id } => begin(id),
-    _ => (), // new Event::Error variant silently ignored
-}
-```
+### Rules
 
 | Rule |
 |---|
 | ✗ `_ =>` on enums you control — add explicit arms for each variant |
-| `_ =>` acceptable for foreign enums marked `#[non_exhaustive]` |
-| `_ =>` acceptable for large integer/string ranges |
+| `_ =>` acceptable for `#[non_exhaustive]` foreign enums and integer/string ranges |
 | Compiler error on missed variant = free correctness — don't silence it |
-
-### Destructuring
+| `if let` for single-variant interest; `let-else` for early exit |
+| Destructure in match arms — access fields directly: `Ok(Config { port, .. })` |
+| ✗ complex logic in guards — extract to named function if guard exceeds one condition |
 
 ```rust
-// ✓ destructure in match arms — access fields directly
-match result {
-    Ok(Config { port, host, .. }) => connect(host, port),
-    Err(e) => handle_error(e),
-}
-
-// ✓ if-let for single-variant interest
-if let Some(user) = find_user(id) {
-    greet(user);
-}
-
 // ✓ let-else for early exit (Rust 1.65+)
 let Some(config) = load_config() else {
     return Err(AppError::NoConfig);
 };
 ```
-
-### Match Guards
-
-```rust
-match value {
-    n @ 1..=100 if n % 2 == 0 => even(n),
-    n @ 1..=100 => odd(n),
-    _ => out_of_range(),
-}
-```
-
-✗ complex logic in guards — extract to named function if guard exceeds one condition.
 
 ---
 
