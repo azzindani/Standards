@@ -108,7 +108,7 @@ Standards/
 ├── configuration/STANDARDS.md
 ├── dependencies/STANDARDS.md
 ├── git/STANDARDS.md
-├── cicd/STANDARDS.md
+├── cicd/STANDARDS.md            ← done
 ├── documentation/STANDARDS.md
 ├── performance/STANDARDS.md
 ├── devops/STANDARDS.md
