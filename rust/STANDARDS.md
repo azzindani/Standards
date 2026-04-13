@@ -45,20 +45,6 @@ See architecture/STANDARDS.md §1 — principle #14 (every resource has exactly 
 
 **Rule:** prefer `&T` → `&mut T` → `T` (move) → `.clone()`. Clone is last resort, never default.
 
-### When to Clone
-
-```rust
-// ✓ clone when storing data that outlives the borrow
-fn register_name(registry: &mut Vec<String>, name: &str) {
-    registry.push(name.to_owned());
-}
-
-// ✗ clone to avoid fighting the borrow checker
-fn bad(data: &Vec<String>) -> Vec<String> {
-    data.clone() // restructure logic instead
-}
-```
-
 ### Lifetime Annotations
 
 | Rule | Example |
@@ -68,19 +54,6 @@ fn bad(data: &Vec<String>) -> Vec<String> {
 | ✗ `'static` unless data truly lives for entire program | String literals, leaked boxes only |
 | Struct holding references → explicit lifetime | `struct Cursor<'a> { data: &'a [u8] }` |
 | ✗ lifetime annotations on owned types | `struct Config { name: String }` — no lifetime needed |
-
-### Ownership Transfer Patterns
-
-```rust
-// Builder takes ownership — caller can't reuse partial state
-let config = ConfigBuilder::new()
-    .port(8080)
-    .host("localhost".into())
-    .build();
-
-// Accept Into<T> for ergonomic ownership transfer
-fn connect(addr: impl Into<SocketAddr>) -> Connection { /* ... */ }
-```
 
 ### Common Anti-Patterns
 
@@ -111,22 +84,15 @@ See architecture/STANDARDS.md §1 — principle #15 (represent absence explicitl
 ### The `?` Operator
 
 ```rust
-// ✓ propagate errors with ? — clean, composable
+// ✓ propagate with ? — clean, composable
 fn load_config(path: &Path) -> Result<Config, AppError> {
     let contents = fs::read_to_string(path)?;
     let config: Config = toml::from_str(&contents)?;
     Ok(config)
 }
-
-// ✗ manual match chains for simple propagation
-fn load_config_bad(path: &Path) -> Result<Config, AppError> {
-    let contents = match fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(e) => return Err(e.into()),
-    };
-    // ... tedious
-}
 ```
+
+✗ manual match chains for simple propagation — `?` does the same with `From` conversion.
 
 ### Error Type Selection
 

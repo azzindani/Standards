@@ -409,37 +409,27 @@ class ValidationError(AppError):
     """Input data failed validation."""
 ```
 
-### Correct Patterns
+### Patterns
 
 ```python
 # ✓ Specific catch + chain
 try:
     data = json.loads(raw)
 except json.JSONDecodeError as e:
-    raise ValidationError(f"invalid JSON in config: {e}") from e
+    raise ValidationError(f"invalid JSON: {e}") from e
 
-# ✓ Boundary-level broad catch (top of call stack)
+# ✓ Boundary-level broad catch (top of call stack only)
 async def handle_request(request: Request) -> Response:
     try:
-        result = await process(request)
-        return Response(data=result)
+        return Response(data=await process(request))
     except AppError as e:
         return Response(error=str(e), status=400)
     except Exception:
         logger.exception("unhandled error")
         return Response(error="internal error", status=500)
-
-# ✓ Context managers for cleanup
-from contextlib import contextmanager
-
-@contextmanager
-def managed_connection(url: str):
-    conn = connect(url)
-    try:
-        yield conn
-    finally:
-        conn.close()
 ```
+
+Use `contextlib.contextmanager` / `asynccontextmanager` for resource cleanup.
 
 ---
 
@@ -642,26 +632,11 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 ```
 
-### Pre-commit Configuration
+### Pre-commit Hooks
 
-```yaml
-# .pre-commit-config.yaml
-repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.5.0
-    hooks:
-      - id: ruff
-        args: [--fix]
-      - id: ruff-format
+Use `ruff-pre-commit` for ruff check + format, `mirrors-mypy` for type checking.
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.10.0
-    hooks:
-      - id: mypy
-        additional_dependencies: [pydantic]
-```
-
-### CI Pipeline Commands
+### CI Pipeline — All Must Pass Before Merge
 
 ```bash
 uv run ruff check .              # lint
@@ -670,7 +645,7 @@ uv run mypy src/                 # type check
 uv run pytest --cov=src          # test + coverage
 ```
 
-All four must pass before merge. ✗ disabling checks for convenience.
+✗ disabling checks for convenience.
 
 ---
 

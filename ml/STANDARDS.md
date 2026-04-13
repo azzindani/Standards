@@ -264,3 +264,137 @@ Every training run = one experiment record. No untracked runs.
 - Local explanations stored for every prediction on high-risk models.
 - Explanations validated: perturb top features → prediction must change proportionally.
 - ✗ Use explainability as post-hoc justification for a decision already made. Generate before decision.
+
+---
+
+## 8. Model Registry
+
+Central catalog of all trained models. Single source of truth for what exists, what's deployed, what's retired.
+
+### Registry Record Per Model
+
+| Field | Required | Description |
+|---|---|---|
+| `model_id` | Yes | Unique identifier |
+| `model_version` | Yes | Semantic version or auto-increment |
+| `experiment_id` | Yes | Link to experiment that produced it |
+| `dataset_version` | Yes | Training data version |
+| `framework` | Yes | Framework + version (e.g., scikit-learn 1.4) |
+| `artifact_path` | Yes | Location of serialized model |
+| `artifact_hash` | Yes | SHA-256 of model file |
+| `metrics` | Yes | Primary + secondary metrics on holdout |
+| `stage` | Yes | `development` → `staging` → `production` → `retired` |
+| `created_at` | Yes | Timestamp |
+| `created_by` | Yes | Author or pipeline ID |
+| `model_card` | Production only | See Privacy & Ethics §12 |
+| `serving_config` | Staging+ | Input schema · output schema · latency SLA |
+
+### Promotion Lifecycle
+
+```
+development → staging → production → retired
+     ↑            |          |
+     └── rejected ←── rolled back
+```
+
+| Transition | Gate |
+|---|---|
+| development → staging | Evaluation gate passed (§6) · explainability generated (§7) |
+| staging → production | Integration tests pass · latency SLA met · A/B test results (if required) · bias audit passed |
+| production → retired | Replacement model promoted · traffic fully drained · archival complete |
+| Any → rejected | Gate failure at any stage; reason logged |
+| production → rolled back | Performance degradation detected → revert to previous production version |
+
+### Registry Rules
+
+- ✗ Deploy model not in registry. Every serving model has registry entry.
+- ✗ Delete registry entries. Retired models archived, not removed.
+- One model version per (model_id, stage) pair. Promoting new version auto-retires previous.
+- Registry queryable by: model_id · stage · metric thresholds · date range · dataset version.
+
+---
+
+## 9. Model Deployment
+
+### Serialization Formats
+
+| Format | Use Case | Interop |
+|---|---|---|
+| ONNX | Cross-framework serving, edge deployment | High — framework-agnostic |
+| Framework-native (joblib, pickle, SavedModel, .pt) | Same-framework serving | Low — framework-locked |
+| PMML | Legacy enterprise integration | Medium — limited model types |
+| Custom export (coefficients, rules) | Simple models, embedded systems | High — no runtime dependency |
+
+### Serialization Rules
+
+- Model file + inference code versioned together. ✗ Serialize model without pinning inference code version.
+- Deserialization validated before deployment: load artifact → run sample prediction → compare expected output.
+- Input/output schema embedded in or alongside serialized artifact.
+- ✗ Use pickle for untrusted models — security risk. Prefer ONNX or framework-safe formats for external models.
+
+### Serving Patterns
+
+| Pattern | Description | When to Use |
+|---|---|---|
+| Batch prediction | Scheduled pipeline writes predictions to storage | High volume · latency-tolerant · predictions cacheable |
+| Real-time API | Model behind HTTP/gRPC endpoint | Low latency required · per-request prediction |
+| Embedded model | Model loaded in application process | Edge/mobile · ultra-low latency · no network dependency |
+| Streaming | Model consumes event stream, emits predictions | Continuous data · near-real-time required |
+
+### Deployment Rules
+
+- Every deployment has rollback plan: previous model version identified, switch mechanism tested.
+- Canary/shadow deployment for production models: route small traffic % to new model first.
+- Input validation at serving boundary: schema check → type check → range check → reject invalid.
+- Prediction latency budget defined: p50 · p95 · p99 — measured, not estimated.
+- Model warm-up: load model and run dummy prediction before accepting live traffic.
+- See `architecture/STANDARDS.md` §1 (principle 26): graceful degradation — if model fails, fallback to previous model or rule-based default.
+
+### A/B Testing
+
+- Control = current production model. Treatment = candidate model.
+- Minimum sample size calculated before launch (power analysis).
+- Primary metric and success criterion defined before launch. ✗ Change success criterion mid-test.
+- Test duration: minimum 1 week or 1 full business cycle (whichever longer).
+- Statistical significance required (p < 0.05 or equivalent Bayesian threshold) before declaring winner.
+
+---
+
+## 10. Monitoring
+
+Post-deployment surveillance. Detect problems before users report them.
+
+### What to Monitor
+
+| Category | Metrics | Alert Threshold |
+|---|---|---|
+| Data drift | Feature distribution shift (PSI, KS-test, Jensen-Shannon) | PSI > 0.2 per feature or >0.1 on ≥3 features simultaneously |
+| Concept drift | Prediction distribution shift · actual-vs-predicted divergence | Prediction mean shifts >2σ from training baseline |
+| Model performance | Primary metric on labeled feedback | Degrades >5% from deployment baseline |
+| Serving health | Latency (p50/p95/p99) · error rate · throughput | p99 > 2× SLA · error rate > 1% |
+| Input quality | Null rate · out-of-range rate · schema violations | Any metric >2× training-time baseline |
+| Output quality | Prediction confidence distribution · extreme value rate | >10% predictions below confidence threshold |
+
+### Monitoring Rules
+
+- Drift detection runs on every prediction batch (batch serving) or every N minutes (real-time serving; N ≤ 60).
+- Reference distribution = training data distribution, recalculated on each retraining.
+- See `observability/STANDARDS.md` for structured logging and alerting patterns.
+- Every alert has documented response runbook: who investigates · diagnostic steps · escalation path.
+
+### Retraining Triggers
+
+| Trigger | Action |
+|---|---|
+| Data drift exceeds threshold for >24 hours | Initiate retraining pipeline with fresh data |
+| Performance metric degrades >5% on labeled data | Initiate retraining; if >15%, rollback to previous model immediately |
+| Scheduled (calendar) | Retrain at defined cadence (weekly/monthly) regardless of drift |
+| Data volume milestone | Retrain when new labeled data exceeds 20% of training set size |
+| Feature store update | Evaluate impact; retrain if affected features are in top-K importance |
+
+### Retraining Rules
+
+- Retraining follows full lifecycle (§1) — ✗ skip evaluation or registry steps.
+- Retrained model must pass same gates as original before promotion.
+- Automated retraining pipelines require human approval gate before production promotion.
+- Retraining frequency bounded: minimum interval between retrains to prevent thrashing.
