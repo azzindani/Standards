@@ -497,3 +497,130 @@ Rules:
 - Alerts at 80% utilization (warning) and 95% utilization (critical)
 - Budget trending: track utilization over time to predict exhaustion
 - Capacity planning uses budget metrics as input data
+
+---
+
+## 11. Benchmarking
+
+### Reproducibility Requirements
+
+- Benchmarks run on dedicated, isolated environment — ✗ shared CI runner with variable load
+- Environment spec recorded: hardware, OS, runtime version, configuration
+- Warm-up iterations excluded from measurement — steady-state only
+- Minimum 30 iterations per benchmark — report mean, median, P99, std deviation
+- Results stored in version control alongside code — enables historical comparison
+
+### Baseline Measurement
+
+- Establish baseline benchmarks before any optimization work
+- Baseline recorded for each critical path identified in profiling (§3)
+- Baseline includes: operation, P50 latency, P99 latency, throughput, memory peak
+- Update baseline after each shipped optimization — new floor for regression detection
+
+### Regression Detection
+
+| Method | Frequency | Threshold |
+|---|---|---|
+| CI benchmark suite | Every merge to main | > 10% regression = warning; > 20% = failure |
+| Nightly extended suite | Daily | > 5% sustained regression over 3 days = alert |
+| Load test | Before release | Throughput drop > 10% vs baseline = block release |
+
+### Benchmark Design Rules
+
+- Benchmark real operations, not micro-operations in isolation
+- Include setup/teardown in measurement only if it happens in production
+- ✗ benchmark with optimizations disabled (debug builds)
+- ✗ benchmark only best case — include worst case and average case
+- Data size in benchmarks matches production scale (or defined fraction)
+- Benchmark data is deterministic — same data on every run for comparability
+
+### Load Testing
+
+- Load test simulates realistic traffic patterns — ✗ uniform synthetic load only
+- Ramp-up gradually: 10% → 50% → 100% → 120% of expected peak
+- Measure: latency percentiles, error rate, resource utilization at each level
+- Soak test: sustained load for hours — detect memory leaks, connection leaks
+- Spike test: sudden burst to 3x baseline — verify graceful degradation
+
+---
+
+## 12. Scale Matrix
+
+Apply rules proportionally to project complexity.
+See architecture/STANDARDS.md §12 for general scale matrix.
+
+| Rule | PoC / Script | Small Project | Production System |
+|---|---|---|---|
+| Performance budgets (§2) | Informal — "fast enough" | Defined for critical paths | Full budgets, CI-enforced |
+| Profiling (§3) | On-demand when slow | Baseline for critical paths | Regular profiling cadence |
+| Caching (§4) | In-process only if needed | L1 + L2 where measured need | Multi-layer, monitored hit rates |
+| Lazy loading (§5) | Optional | For expensive resources | Systematic for all non-critical init |
+| Memory management (§6) | Language defaults | Pool connections | Full pooling + buffer reuse + leak monitoring |
+| I/O optimization (§7) | Direct I/O acceptable | Batch writes, connection reuse | Full batching + streaming + async |
+| Query performance (§8) | Ad-hoc queries ok | Indexes on frequent queries | Full index strategy + query plan review |
+| Algorithm selection (§9) | Simplest correct option | Appropriate complexity | Profiled + justified choices |
+| Resource budgets (§10) | Timeouts on external calls | Timeouts + connection limits | Full budget matrix + monitoring |
+| Benchmarking (§11) | Manual timing acceptable | CI benchmarks for critical paths | Full benchmark suite + load testing |
+
+### Scale Transition Triggers
+
+| Signal | Action |
+|---|---|
+| Single operation exceeds budget | Profile + optimize that operation |
+| Multiple operations near budget | Establish systematic profiling cadence |
+| User-visible latency complaints | Introduce end-to-end latency tracking |
+| Memory growth over time | Add memory profiling + leak detection |
+| Traffic exceeds 100 req/s | Add load testing + caching layers |
+| Multi-service architecture | Add distributed tracing + cascading timeout strategy |
+
+---
+
+## 13. Performance Checklist
+
+### New Project
+
+- [ ] Define performance budgets for response time, memory, startup (§2)
+- [ ] Identify critical paths — operations where performance matters most
+- [ ] Choose data structures appropriate to access patterns (§9)
+- [ ] Set timeouts on all outbound calls (§10)
+- [ ] Establish baseline benchmarks for critical paths (§11)
+
+### New Feature
+
+- [ ] Feature's critical path identified + budget assigned (§2)
+- [ ] Profiled under realistic load before shipping (§3)
+- [ ] Cache strategy decided: cache or explicitly not-cached with reason (§4)
+- [ ] Lazy vs eager loading decision documented for expensive resources (§5)
+- [ ] No N+1 query patterns — verified via query plan or review (§8)
+- [ ] All list queries paginated with LIMIT (§8)
+- [ ] All outbound I/O has explicit timeout (§10)
+- [ ] Benchmarks added for performance-critical operations (§11)
+
+### Performance Investigation
+
+- [ ] Budget defined for the operation under investigation (§2)
+- [ ] Current performance measured against budget (§3)
+- [ ] USE method applied — utilization, saturation, errors checked (§3)
+- [ ] Bottleneck isolated to single component via profiling (§3)
+- [ ] One optimization applied per cycle (§1)
+- [ ] Improvement measured — before/after comparison recorded (§11)
+- [ ] Regression check — no other operations degraded by the change
+
+### Code Review — Performance Concerns
+
+- [ ] Hot-path allocations minimized (§6)
+- [ ] Buffers/pools used where appropriate (§6)
+- [ ] I/O operations batched where possible (§7)
+- [ ] No unbounded collections or caches (§4 · §6)
+- [ ] Algorithm complexity appropriate for data size (§9)
+- [ ] Timeouts present on all external calls (§10)
+- [ ] No premature optimization — optimization justified by measurement (§1)
+
+### Production Monitoring
+
+- [ ] P50 and P99 latency tracked for critical paths — see observability/STANDARDS.md
+- [ ] Memory utilization trended over time (§6)
+- [ ] Cache hit rates monitored per cache layer (§4)
+- [ ] Resource budget utilization exposed as metrics (§10)
+- [ ] Alerts configured for budget threshold breaches (§10)
+- [ ] Benchmark regression detection in CI pipeline (§11)

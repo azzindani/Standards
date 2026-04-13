@@ -425,3 +425,125 @@ match value {
 ```
 
 ✗ complex logic in guards — extract to named function if guard exceeds one condition.
+
+---
+
+## 7. Unsafe Rules
+
+### When Unsafe is Justified
+
+| Justified | Not Justified |
+|---|---|
+| FFI calls to C libraries | Bypassing borrow checker "because it's hard" |
+| SIMD intrinsics | Performance optimization without benchmarks proving need |
+| Implementing `Send`/`Sync` for types with manual invariants | Convenience — "safe version is verbose" |
+| Lock-free data structures with proven algorithms | "I know this pointer is valid" without proof |
+| Platform-specific syscalls | ✗ ever in application code if safe alternative exists |
+
+### Unsafe Block Rules
+
+```rust
+// ✓ minimal unsafe scope — only the operation that requires it
+let value = unsafe {
+    // SAFETY: pointer is non-null and aligned, validated by caller contract.
+    // Lifetime tied to parent struct which holds the allocation.
+    ptr.read()
+};
+
+// ✗ large unsafe block covering safe operations
+unsafe {
+    let x = compute(); // safe — should be outside
+    ptr.write(x);      // actually unsafe
+    log(x);            // safe — should be outside
+}
+```
+
+| Rule |
+|---|
+| Every `unsafe` block requires a `// SAFETY:` comment explaining why invariants hold |
+| Minimize unsafe scope — one operation per block when possible |
+| Encapsulate unsafe behind safe public API — callers never write `unsafe` |
+| ✗ `unsafe impl` without formal reasoning about invariants |
+| Unsafe code requires dedicated review — tag in PR description |
+| Run Miri (`cargo +nightly miri test`) on all unsafe code in CI |
+| Fuzz unsafe boundary functions with `cargo-fuzz` or `proptest` |
+
+### Encapsulation Pattern
+
+```rust
+pub struct AlignedBuffer {
+    ptr: *mut u8,
+    len: usize,
+}
+
+impl AlignedBuffer {
+    /// Creates a new buffer with guaranteed 64-byte alignment.
+    pub fn new(size: usize) -> Self {
+        let layout = Layout::from_size_align(size, 64).unwrap();
+        // SAFETY: layout is non-zero (checked above), alloc returns aligned ptr
+        let ptr = unsafe { alloc::alloc(layout) };
+        Self { ptr, len: size }
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        // SAFETY: ptr valid for len bytes, lifetime tied to &self
+        unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
+    }
+}
+```
+
+**Rule:** safe public API + unsafe private internals = safe abstraction. Callers get safety guarantees without `unsafe` in their code.
+
+---
+
+## 8. Concurrency
+
+See architecture/STANDARDS.md §9 — concurrency architecture.
+
+### Send and Sync
+
+| Trait | Meaning | Auto-derived when |
+|---|---|---|
+| `Send` | Safe to transfer to another thread | All fields are `Send` |
+| `Sync` | Safe to share `&T` across threads | All fields are `Sync` |
+| `!Send` | ✗ move between threads | Contains `Rc`, raw pointers, etc. |
+| `!Sync` | ✗ shared references across threads | Contains `Cell`, `RefCell`, etc. |
+
+**Rule:** ✗ implement `Send`/`Sync` manually unless building a sync primitive. Compiler auto-derives correctly for safe types.
+
+### Concurrency Primitive Selection
+
+| Need | Primitive | When |
+|---|---|---|
+| Shared read-only data | `Arc<T>` | Immutable data across tasks/threads |
+| Shared mutable data (low contention) | `Arc<Mutex<T>>` | Short critical sections, infrequent writes |
+| Shared mutable data (read-heavy) | `Arc<RwLock<T>>` | Many readers, few writers |
+| One-shot value passing | `oneshot` channel | Single result from spawned task |
+| Stream of values | `mpsc` channel | Producer-consumer pipelines |
+| Many producers, many consumers | `crossbeam::channel` | Fan-in or work distribution |
+| Lock-free counters | `AtomicU64`, `AtomicBool` | Metrics, flags, reference counts |
+
+### Async Rust (Tokio)
+
+```rust
+// ✓ tokio for I/O-bound concurrent work
+#[tokio::main]
+async fn main() -> Result<()> {
+    let listener = TcpListener::bind("0.0.0.0:8080").await?;
+    loop {
+        let (stream, _) = listener.accept().await?;
+        tokio::spawn(handle_connection(stream));
+    }
+}
+```
+
+| Rule |
+|---|
+| Tokio for I/O-bound work (network, file, DB) |
+| `std::thread` for CPU-bound work — ✗ block tokio runtime with CPU tasks |
+| `tokio::task::spawn_blocking` to bridge CPU work into async context |
+| ✗ hold `Mutex` guard across `.await` — use `tokio::sync::Mutex` if unavoidable |
+| ✗ `async` on functions that don't `.await` — just make them sync |
+| Prefer structured concurrency: `tokio::select!`, `JoinSet` over unbounded `spawn` |
+| ✗ `tokio::sync::Mutex` when `std::sync::Mutex` suffices (no await while locked) |
+| Cancel safety: every `.await` point is a potential cancellation — hold no invariants across awaits |

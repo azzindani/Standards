@@ -421,3 +421,177 @@ See `architecture/STANDARDS.md §2` — Tier 3 (Interface) handles external inpu
 | `DEPENDENCY` | Field invalid due to value of another field |
 
 ---
+
+## 11. Logging Errors
+
+What to log and how. Detailed logging format → `observability/STANDARDS.md`.
+
+### What to Log
+
+| Log | Don't log |
+|---|---|
+| All environment errors | Expected data validation failures (unless aggregated) |
+| Circuit breaker state transitions | Successful operations (unless audit trail required) |
+| Recovery actions taken (fallback activated, retry attempted) | Programmer errors in production (crash + stack trace suffices) |
+| Partial failure summaries (N succeeded, M failed) | Raw input data containing PII/secrets |
+| Error escalations (worker → supervisor) | Duplicate entries for same error at multiple layers |
+
+### Structured Error Log Fields
+
+Every error log entry includes:
+
+| Field | Required | Example |
+|---|---|---|
+| `level` | Yes | `error` · `warn` |
+| `error_code` | Yes | `PAYMENT.ENV.TIMEOUT` |
+| `message` | Yes | `"Payment gateway timeout after 5000ms"` |
+| `operation` | Yes | `"process_payment"` |
+| `request_id` | Yes (if available) | `"req-abc-123"` |
+| `duration_ms` | Yes (if timed) | `5023` |
+| `retry_attempt` | If retrying | `2` |
+| `category` | Yes | `"environment"` |
+| `context` | Yes | Key-value pairs relevant to operation |
+
+### Log Level Mapping
+
+| Error category | Log level |
+|---|---|
+| Programmer error | `error` (captured by crash handler) |
+| Data error (single) | `warn` (or `debug` if high volume) |
+| Data error (batch summary) | `warn` |
+| Environment error | `error` |
+| Environment error (recovered via retry) | `warn` |
+| Circuit breaker opened | `error` |
+| Circuit breaker closed (recovered) | `info` |
+| Graceful degradation activated | `warn` |
+
+### Rules
+
+- Log once per error, at the boundary where it is handled — ✗ log same error at multiple tiers.
+- Include full error chain (cause chain) in structured log — ✗ log only the outermost message.
+- ✗ log and rethrow without marking that error was already logged — prevents duplicate logging.
+- Aggregate repeated identical errors — log count per window, not every occurrence.
+
+---
+
+## 12. Fatal vs Recoverable
+
+Every error is classified as fatal or recoverable. This determines crash vs continue.
+
+### Classification Rules
+
+| Condition | Classification | Action |
+|---|---|---|
+| Invariant violated (impossible state reached) | Fatal | Crash immediately |
+| Required configuration missing at startup | Fatal | Crash before serving requests |
+| Database schema incompatible with code | Fatal | Crash at startup |
+| Out of memory | Fatal | Crash — OS handles |
+| Stack overflow | Fatal | Crash — cannot recover |
+| Corrupted internal data structure | Fatal | Crash — continuing risks data corruption |
+| Network timeout | Recoverable | Retry with backoff |
+| External service returns error | Recoverable | Retry or degrade |
+| Invalid user input | Recoverable | Return validation errors |
+| File not found (expected to exist) | Recoverable | Return error · caller decides |
+| Rate limit hit | Recoverable | Back off · queue · retry later |
+| Disk full on write | Recoverable | Clean up · alert · retry |
+
+### Decision Process
+
+1. Can the process continue without data corruption? No → fatal.
+2. Is the error caused by a code bug (not data or environment)? Yes → fatal.
+3. Does the error indicate a missing precondition for the entire process? Yes → fatal.
+4. Is recovery possible within a bounded time? No → fatal.
+5. All other errors → recoverable.
+
+### Fatal Error Rules
+
+- Fatal errors crash the process with non-zero exit code.
+- Fatal errors log full state before crash: stack trace, relevant variables, configuration snapshot.
+- ✗ catch fatal errors in application code — only crash handlers and supervisors catch them.
+- Crash handler runs cleanup (resource release) before exit — but ✗ attempt recovery.
+
+### Recoverable Error Rules
+
+- Recoverable errors propagate via result types or controlled exceptions.
+- Recovery has a bounded attempt count and time budget.
+- Recovered errors are logged at `warn` level (not `error`) — error occurred but was handled.
+- If recovery fails after all attempts → escalate to supervisor or convert to user-facing error.
+
+---
+
+## 13. Scale Matrix
+
+Error handling depth scales with project complexity.
+See `architecture/STANDARDS.md §12` — Project Scale Matrix.
+
+| Capability | PoC / Script | Small Project | Production System |
+|---|---|---|---|
+| Error classification | Crash on all errors (fail fast) | Distinguish data vs environment | Full 4-category classification |
+| Error representation | Language default (exceptions/panics) | Result types in core logic | Structured errors with codes + context |
+| Error propagation | Unhandled → crash | Catch at entry point | Tier-boundary translation at every level |
+| Result types | Not needed | Success/failure in domain functions | Full result types + batch results |
+| Error messages | Print to stderr | Developer-facing messages | Dual audience (developer + user) |
+| Retry strategy | No retries | Single retry on I/O | Exponential backoff + jitter + circuit breaker |
+| Partial failure | Stop on first error | Continue + collect errors | Full accumulation + per-item reporting |
+| Recovery | Crash and restart | Basic fallback for critical paths | Graceful degradation + supervisor pattern |
+| Error boundaries | None (crash through) | Catch at module boundary | Every tier + module + system boundary |
+| Validation | Basic null/type checks | Schema validation at entry | Full field-level validation + cross-field + referential |
+| Error logging | Print to stderr | Structured log on error | Full structured logging + aggregation + alerting |
+| Fatal vs recoverable | Everything is fatal | Distinguish crash vs return-error | Full classification + recovery budgets + supervisor |
+
+### Scale Transition
+
+When graduating between scales:
+- PoC → Small: add result types to domain functions · catch errors at entry point · add basic retry for I/O.
+- Small → Production: add error codes · implement circuit breaker · add validation layer · define fallback for every external dependency · implement supervisor for long-running processes.
+
+---
+
+## 14. Checklist
+
+### New Project
+
+- [ ] Error categories defined (programmer · data · environment · partial)
+- [ ] Error representation chosen (result types for domain · exceptions for environment)
+- [ ] Error code format defined (`DOMAIN.CATEGORY.SPECIFIC`)
+- [ ] Error boundaries identified at tier and module boundaries
+- [ ] Validation strategy defined (where, what level)
+- [ ] Retry parameters configured (max retries · backoff · timeout budget)
+- [ ] Fatal vs recoverable classification documented
+- [ ] Error logging structure agreed (cross-ref `observability/STANDARDS.md`)
+
+### New Module
+
+- [ ] All public functions return result types for expected failures
+- [ ] No catch blocks in Tier 0–1 logic
+- [ ] Errors carry code + message + category + context
+- [ ] Module boundary translates internal errors — ✗ leak implementation details
+- [ ] Validation collects all field errors — ✗ stop at first
+
+### New External Dependency
+
+- [ ] Fallback behavior defined for unavailability
+- [ ] Circuit breaker configured (threshold · cooldown)
+- [ ] Retry parameters set (idempotent operations only)
+- [ ] Timeout budget defined
+- [ ] Error from dependency translated to internal error format at Tier 3 boundary
+
+### New Batch Operation
+
+- [ ] Accumulation pattern: success list + error list
+- [ ] Per-item errors linked to source item
+- [ ] Partial success is valid result — ✗ treated as full failure
+- [ ] Caller can identify and retry only failed items
+- [ ] Threshold abort configured if applicable (stop at N% failure)
+
+### Pre-Production Review
+
+- [ ] No swallowed errors (catch without propagate or log)
+- [ ] No catch-all without re-raise (except outermost boundary)
+- [ ] No raw exceptions crossing tier boundaries
+- [ ] All environment errors have retry or fallback path
+- [ ] All fatal conditions crash cleanly with diagnostic output
+- [ ] Error log entries include: code · message · operation · request_id · context
+- [ ] User-facing messages contain no internal details
+- [ ] Circuit breakers configured for every external dependency
+- [ ] Cleanup runs on both success and failure paths

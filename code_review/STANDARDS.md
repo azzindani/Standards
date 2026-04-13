@@ -359,3 +359,65 @@ AI review tools augment human review. ✗ replace human judgment.
 `CI passes → AI review runs → AI findings added as comments → Human reviewer reviews diff + AI findings → Human approves/requests changes`
 
 AI review happens between CI and human review. Human is final authority.
+
+---
+
+## 13. Scale Matrix
+
+How review practices adapt to project size and team composition.
+
+| Dimension | Solo / Hobby | Small Team (2–5) | Mid Team (6–15) | Large Team (16+) |
+|---|---|---|---|---|
+| Required approvals | 0 (self-review) | 1 | 2 | 2 + CODEOWNERS |
+| Review turnaround | Self-paced | ≤ 4h | ≤ 4h | ≤ 4h (assigned reviewer) |
+| PR size limit | 800 lines | 400 lines | 400 lines | 300 lines |
+| CI gates before review | Lint + tests | Full CI | Full CI + security scan | Full CI + security + AI review |
+| Comment type prefixes | Optional | Recommended | Required | Required + enforced |
+| CODEOWNERS file | Not needed | Optional | Recommended | Required |
+| Review assignment | Self | Manual or round-robin | Automated round-robin | Automated with load balancing |
+| Disagreement escalation | N/A | Direct discussion | Third-party tiebreak | Tech lead authority |
+| AI-assisted review | Optional | Optional | Recommended | Required as first pass |
+| Post-merge review (hotfix) | Optional | Within 24h | Within 24h | Within 8h |
+| Review metrics tracked | None | Optional | Recommended | Required (turnaround, rounds, PR size) |
+| Self-review wait time | ≥ 1h | N/A | N/A | N/A |
+
+---
+
+## 14. Checklist
+
+Quick-reference for every review. Reviewer walks through before approving.
+
+### Author Checklist (before requesting review)
+
+- [ ] PR description explains what changed and why
+- [ ] PR size within limits (≤ 400 lines target, ≤ 800 hard cap)
+- [ ] All CI checks pass (build, lint, test, security)
+- [ ] Self-reviewed diff at least once
+- [ ] Tests added/updated for new/changed behavior
+- [ ] No secrets, credentials, or tokens in diff
+- [ ] No commented-out code or debug statements
+- [ ] Breaking changes documented in PR description
+- [ ] Related issues/tickets linked
+
+### Reviewer Checklist (during review)
+
+- [ ] Read PR description first — understand intent before reading code
+- [ ] Verify CI is green before starting review
+- [ ] Check correctness: does code match stated intent? (§3 P0)
+- [ ] Check security: no injection, auth bypass, secret exposure? (§3 P0)
+- [ ] Check architecture: tier boundaries, dependency direction respected? (§3 P1)
+- [ ] Check error handling: no silent swallowing, proper propagation? (§3 P1)
+- [ ] Check test coverage: new paths tested, edge cases covered? (§3 P1)
+- [ ] Check readability: clear names, small functions, obvious flow? (§3 P2)
+- [ ] Check performance: no N+1, unbounded allocations, hot-path issues? (§3 P2)
+- [ ] All comments prefixed with type: `[blocking]` `[nit]` `[question]` `[praise]` (§6)
+- [ ] Blocking comments reference a standard or principle (§6)
+- [ ] Reviewed only the diff scope (unless architecture change) (§10)
+
+### Approval Checklist (before approving)
+
+- [ ] All blocking comments resolved
+- [ ] All questions answered (or confirmed non-blocking)
+- [ ] CI still green after author's latest push
+- [ ] Required approval count will be met with this approval (§7)
+- [ ] Confident this code is production-ready
