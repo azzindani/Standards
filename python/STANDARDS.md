@@ -706,19 +706,10 @@ funcs = [lambda i=i: i for i in range(5)]
 ### Comprehensions vs Loops
 
 ```python
-# ✓ Comprehension — faster, clearer
-squares = [x * x for x in range(1000)]
-
-# ✓ Generator — lazy evaluation for large data
-total = sum(x * x for x in range(1_000_000))
-
-# ✓ Dict comprehension
-index = {item.id: item for item in items}
-
-# ✗ Loop+append — slower, verbose
-squares = []
-for x in range(1000):
-    squares.append(x * x)
+squares = [x * x for x in range(1000)]              # ✓ comprehension
+total = sum(x * x for x in range(1_000_000))         # ✓ generator for large data
+index = {item.id: item for item in items}             # ✓ dict comprehension
+# ✗ loop+append is slower and more verbose
 ```
 
 ### `__slots__`

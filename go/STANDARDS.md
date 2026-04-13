@@ -365,27 +365,9 @@ for {
 
 ### Mutex Discipline
 
-```go
-type Cache struct {
-    mu    sync.RWMutex
-    items map[string]Item
-}
-
-// ✓ Lock scope = minimal
-func (c *Cache) Get(key string) (Item, bool) {
-    c.mu.RLock()
-    defer c.mu.RUnlock()
-    item, ok := c.items[key]
-    return item, ok
-}
-
-// ✗ Lock held across I/O or long operation
-func (c *Cache) GetFromDB(ctx context.Context, key string) (Item, error) {
-    c.mu.Lock()
-    defer c.mu.Unlock()
-    return c.db.Query(ctx, key)  // holding lock during I/O!
-}
-```
+- `defer mu.Unlock()` immediately after `mu.Lock()` — ✗ lock held across I/O
+- Lock scope = minimal. Read lock + write lock = `sync.RWMutex`
+- ✗ hold lock while calling external function (deadlock risk)
 
 ---
 
@@ -627,47 +609,19 @@ func BenchmarkParse(b *testing.B) {
 | `staticcheck` | Advanced static analysis | Included in golangci-lint |
 | `govulncheck` | Vulnerability scanning | CI gate, weekly |
 
-### golangci-lint Configuration
+### golangci-lint — Minimum Enabled Linters
 
-```yaml
-# .golangci.yml — minimal enforced set
-linters:
-  enable:
-    - errcheck       # unchecked errors
-    - govet          # suspicious constructs
-    - staticcheck    # advanced checks
-    - unused         # unused code
-    - gosimple       # simplifications
-    - ineffassign    # ineffectual assignments
-    - typecheck      # type errors
-    - gocritic       # opinionated style
-    - revive         # replacement for golint
-    - errname        # error naming convention
-    - errorlint      # error wrapping checks
-    - prealloc       # slice preallocation
-```
+`errcheck` · `govet` · `staticcheck` · `unused` · `gosimple` · `ineffassign` · `typecheck` · `gocritic` · `revive` · `errname` · `errorlint` · `prealloc`
 
-### Makefile Targets
+### Standard Makefile Targets
 
-```makefile
-.PHONY: lint test build
-
-lint:
-	golangci-lint run ./...
-
-test:
-	go test -race -count=1 ./...
-
-build:
-	go build -o bin/ ./cmd/...
-
-vet:
-	go vet ./...
-
-tidy:
-	go mod tidy
-	go mod verify
-```
+| Target | Command |
+|---|---|
+| `make lint` | `golangci-lint run ./...` |
+| `make test` | `go test -race -count=1 ./...` |
+| `make build` | `go build -o bin/ ./cmd/...` |
+| `make vet` | `go vet ./...` |
+| `make tidy` | `go mod tidy && go mod verify` |
 
 ---
 
@@ -689,37 +643,22 @@ See `performance/STANDARDS.md` for general profiling strategy. Go-specific optim
 ### sync.Pool
 
 ```go
-var bufPool = sync.Pool{
-    New: func() any {
-        return new(bytes.Buffer)
-    },
-}
+var bufPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
 func process(data []byte) string {
     buf := bufPool.Get().(*bytes.Buffer)
-    defer func() {
-        buf.Reset()
-        bufPool.Put(buf)
-    }()
+    defer func() { buf.Reset(); bufPool.Put(buf) }()
     // use buf...
     return buf.String()
 }
 ```
 
-### Profiling
+### Profiling (pprof)
 
-```go
-// CPU profile
-import _ "net/http/pprof"
-go func() { http.ListenAndServe("localhost:6060", nil) }()
-// Then: go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30
-
-// Memory profile
-// go tool pprof http://localhost:6060/debug/pprof/heap
-
-// Trace
-// go tool trace http://localhost:6060/debug/pprof/trace?seconds=5
-```
+- Import `_ "net/http/pprof"` + start debug server on `localhost:6060`
+- CPU: `go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30`
+- Heap: `go tool pprof http://localhost:6060/debug/pprof/heap`
+- Trace: `go tool trace http://localhost:6060/debug/pprof/trace?seconds=5`
 
 ### Benchmark-Driven Optimization
 

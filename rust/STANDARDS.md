@@ -682,39 +682,13 @@ use_try_shorthand = true
 ### Iterator Chains over Loops
 
 ```rust
-// ✓ iterator chain — compiler optimizes to single pass
-let total: u64 = records
-    .iter()
-    .filter(|r| r.is_active())
-    .map(|r| r.amount)
-    .sum();
-
-// ✗ manual loop with intermediate collection
-let mut active = Vec::new();
-for r in &records {
-    if r.is_active() {
-        active.push(r);
-    }
-}
-let total: u64 = active.iter().map(|r| r.amount).sum();
+// ✓ iterator chain — compiler optimizes to single pass, no intermediate alloc
+let total: u64 = records.iter().filter(|r| r.is_active()).map(|r| r.amount).sum();
 ```
 
-### Benchmarking with Criterion
+✗ `collect::<Vec<_>>()` into intermediate collection then re-iterate — chain iterators instead.
 
-```rust
-// benches/engine_bench.rs
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-
-fn bench_parse(c: &mut Criterion) {
-    let input = include_str!("../fixtures/large.json");
-    c.bench_function("parse_large_json", |b| {
-        b.iter(|| parse(black_box(input)))
-    });
-}
-
-criterion_group!(benches, bench_parse);
-criterion_main!(benches);
-```
+### Benchmarking
 
 | Rule |
 |---|
