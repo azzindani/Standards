@@ -72,7 +72,7 @@ Central standards library for all projects. Each standard = one directory + one 
 | 26 | `local_mcp/` | MCP server development · tool design · engine/server split | Done |
 | 27 | `html_generation/` | Charts · dashboards · theming · offline-first output | Done |
 | 28 | `data_pipeline/` | ETL · data validation · schema enforcement · batch | Planned |
-| 29 | `cli/` | Argument parsing · output format · exit codes · help | Planned |
+| 29 | `cli/` | Argument parsing · output format · exit codes · help | Done |
 | 30 | `web/` | Routing · middleware · state · auth · frontend/backend | Planned |
 | 31 | `ml/` | Model lifecycle · experiment tracking · data versioning | Planned |
 

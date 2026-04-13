@@ -541,3 +541,124 @@ platform: linux/amd64
 | `--` separator | Arguments after `--` are literal, not flags: `tool -- --weirdfilename` |
 | Mixed stdin + files | `tool file1.txt - file2.txt` — `-` reads stdin at that position |
 | Recursive directory | `--recursive` / `-r` flag. ✗ recurse by default without flag |
+
+---
+
+## 15. Scale Matrix
+
+What to implement based on tool complexity and user base.
+
+| Capability | Script (< 200 LOC) | Small Tool | Production Tool | Platform CLI |
+|---|---|---|---|---|
+| `--help` | ✓ | ✓ | ✓ | ✓ |
+| `--version` | — | ✓ | ✓ | ✓ |
+| `--json` output | — | ✓ | ✓ | ✓ |
+| `--quiet` / `--verbose` | — | ✓ | ✓ | ✓ |
+| Exit code discipline | ✓ (0/1) | ✓ (0/1/2) | ✓ (full table) | ✓ (full table) |
+| stdin pipe support | ✓ | ✓ | ✓ | ✓ |
+| `NO_COLOR` support | — | ✓ | ✓ | ✓ |
+| Signal handling (SIGINT) | — | Basic | Full | Full |
+| Config file cascade | — | — | ✓ | ✓ |
+| Subcommands | — | — | If needed | ✓ |
+| Man pages | — | — | ✓ | ✓ |
+| Shell completions | — | — | ✓ | ✓ |
+| `--timeout` flag | — | — | If network/IO | ✓ |
+| `config` subcommand | — | — | — | ✓ |
+| Plugin/extension system | — | — | — | ✓ |
+| Progress bars | — | — | If long ops | ✓ |
+| Deprecation warnings | — | — | ✓ | ✓ |
+| Telemetry (opt-in only) | — | — | — | Optional |
+
+### Scale Definitions
+
+| Scale | Characteristics |
+|---|---|
+| Script | Single file, personal use, no distribution |
+| Small Tool | Single binary, shared with team, < 10 flags |
+| Production Tool | Distributed package, external users, config file, > 10 flags |
+| Platform CLI | Multi-subcommand, API client, broad user base, plugin support |
+
+---
+
+## 16. Checklist
+
+### Argument & Input
+
+- [ ] `--help` / `-h` prints structured usage to stdout, exits 0
+- [ ] `--version` / `-V` prints `name version` to stdout, exits 0
+- [ ] All flags use `--kebab-case` long form
+- [ ] Positional args limited to 2 max
+- [ ] stdin detected automatically when piped
+- [ ] `-` accepted as explicit stdin indicator
+- [ ] `--` separator supported for literal arguments
+- [ ] Unknown flags → exit 2 with suggestion for closest match
+
+### Output
+
+- [ ] Data → stdout, messages → stderr. No mixing
+- [ ] `--json` flag produces valid JSON Lines or JSON array
+- [ ] `--quiet` suppresses all non-error output
+- [ ] `--output` flag writes to file instead of stdout
+- [ ] Output is newline-terminated (including last line)
+- [ ] No trailing summary/decoration on stdout
+
+### Exit Codes
+
+- [ ] Exit 0 on success only
+- [ ] Exit 2 on usage/argument errors
+- [ ] All exit codes documented in `--help`
+- [ ] Non-zero exit on any failure — no silent swallowing
+
+### Color & Terminal
+
+- [ ] Color auto-disabled when stdout is not TTY
+- [ ] `NO_COLOR` env var respected
+- [ ] `--no-color` flag overrides all detection
+- [ ] Color never used as sole signal — always paired with text
+- [ ] ANSI codes properly reset after each colored span
+
+### Error Messages
+
+- [ ] Every error: what failed + why + fix suggestion (when known)
+- [ ] Errors prefixed with `error:` on stderr
+- [ ] No stack traces at default verbosity
+- [ ] Aggregated validation: all errors shown, not just first
+
+### Interactivity
+
+- [ ] TTY detection gates all interactive behavior
+- [ ] `--yes` / `--no-input` flags bypass prompts
+- [ ] `CI=true` env var triggers non-interactive mode
+- [ ] Destructive operations require confirmation (default: no)
+- [ ] No blocking reads when stdin is not TTY
+
+### Signals & Cleanup
+
+- [ ] SIGINT (Ctrl+C) triggers graceful shutdown
+- [ ] SIGPIPE exits silently (no error message)
+- [ ] Temp files cleaned up on all exit paths
+- [ ] Double SIGINT forces immediate exit
+- [ ] Partial output files removed on error
+
+### Configuration
+
+- [ ] Env vars prefixed with tool name, uppercase
+- [ ] Config file at XDG-compliant path
+- [ ] CLI flags override env vars override config file
+- [ ] Unknown config keys produce warnings
+- [ ] `--config-dump` shows resolved configuration with sources
+
+### Piping & Composition
+
+- [ ] Line-buffered stdout when piped
+- [ ] No terminal-width truncation when piped
+- [ ] Multiple input files supported as positional args
+- [ ] Works correctly in: `tool | head`, `tool | grep`, `tool | wc -l`
+
+### Versioning & Compatibility
+
+- [ ] SemVer followed for all releases
+- [ ] Flag names stable across MINOR versions
+- [ ] `--json` output schema stable across MINOR versions
+- [ ] Exit code meanings stable across MINOR versions
+- [ ] Deprecated flags warn for 2 minor versions before removal
