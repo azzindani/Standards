@@ -43,7 +43,7 @@ Central standards library for all projects. Each standard = one directory + one 
 | 7 | `observability/` | Structured logging · receipts · metrics · health | Done |
 | 8 | `security/` | Validation boundary · secrets · access control · input | Done |
 | 9 | `api/` | API design · protocols · contracts · versioning · serialization | Done |
-| 10 | `database/` | Schema design · migrations · queries · transactions | Planned |
+| 10 | `database/` | Schema design · migrations · queries · transactions | Done |
 | 11 | `configuration/` | Cascade · environment · secrets · feature flags | Planned |
 | 12 | `dependencies/` | Versioning · isolation · wrappers · lock files | Done |
 | 13 | `git/` | Branching · commits · tags · workflows · history | Done |
