@@ -41,12 +41,12 @@ Central standards library for all projects. Each standard = one directory + one 
 | 5 | `testing/` | Test pyramid · contract tests · coverage strategy | Done |
 | 6 | `error_handling/` | Error types · boundaries · recovery · reporting | Planned |
 | 7 | `observability/` | Structured logging · receipts · metrics · health | Planned |
-| 8 | `security/` | Validation boundary · secrets · access control · input | Planned |
+| 8 | `security/` | Validation boundary · secrets · access control · input | Done |
 | 9 | `api/` | API design · protocols · contracts · versioning · serialization | Planned |
 | 10 | `database/` | Schema design · migrations · queries · transactions | Planned |
 | 11 | `configuration/` | Cascade · environment · secrets · feature flags | Planned |
 | 12 | `dependencies/` | Versioning · isolation · wrappers · lock files | Planned |
-| 13 | `git/` | Branching · commits · tags · workflows · history | Planned |
+| 13 | `git/` | Branching · commits · tags · workflows · history | Done |
 | 14 | `cicd/` | Build · test · lint · deploy · release stages | Planned |
 | 15 | `documentation/` | Code docs · API docs · decision records · runbooks | Planned |
 | 16 | `performance/` | Profiling · budgets · optimization · caching | Planned |
