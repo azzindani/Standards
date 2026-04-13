@@ -26,7 +26,7 @@ Central standards library for all projects. Each standard = one directory + one 
 - Cross-reference other standards by relative path: `See architecture/STANDARDS.md §4`
 - Every standard has: TOC · numbered sections · checklist at end · scale matrix if applicable
 - Brainstorm with user before writing. Explore prior art, extract principles from proven systems, identify what belongs vs what belongs in other standards.
-- Write incrementally — section by section, not full file in one shot.
+- Write incrementally — section by section, not full file in one shot. ✗ write long content in single tool call — breaks on timeout. Write header + first sections → edit/append remaining sections in subsequent calls.
 
 ## Standards Catalog
 
