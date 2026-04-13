@@ -75,6 +75,7 @@ Central standards library for all projects. Each standard = one directory + one 
 | 29 | `cli/` | Argument parsing · output format · exit codes · help | Done |
 | 30 | `web/` | Routing · middleware · state · auth · frontend/backend | Planned |
 | 31 | `ml/` | Model lifecycle · experiment tracking · data versioning | Done |
+| 32 | `agent/` | CLAUDE.md · AGENTS.md · context engineering · density rules | Done |
 
 ## Cross-Reference Map
 
@@ -125,7 +126,8 @@ Standards/
 ├── data_pipeline/STANDARDS.md
 ├── cli/STANDARDS.md
 ├── web/STANDARDS.md
-└── ml/STANDARDS.md
+├── ml/STANDARDS.md
+└── agent/STANDARDS.md         ← done
 ```
 
 ## Git
