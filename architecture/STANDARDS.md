@@ -1,35 +1,39 @@
-# Architecture & Design Standards
+# Architecture Standards
 
-Standards for system architecture and code design across all projects.
+Core architectural principles for all projects, all languages.
+This standard defines how systems are structured — not how code is
+written, tested, or deployed. Those belong in their respective standards.
+
 Derived from: Layered N-Tier, Clean Architecture, Unix Philosophy,
 Functional Core/Imperative Shell, Actor Model, Erlang/OTP, ECS,
 Microkernel, Linux Kernel, DDD, and Contract-First Design.
+
+Composable with: Design Standards, Testing Standards, CI/CD Standards,
+Directory Standards, Code Writing Standards, and language-specific standards.
 
 ---
 
 ## Table of Contents
 
 1. [Core Principles](#1-core-principles)
-2. [Structure & Layering](#2-structure--layering)
-3. [Function Contract](#3-function-contract)
-4. [Module Boundaries](#4-module-boundaries)
-5. [Data & State](#5-data--state)
-6. [Error Philosophy](#6-error-philosophy)
-7. [Configuration](#7-configuration)
-8. [Concurrency](#8-concurrency)
-9. [Dependencies](#9-dependencies)
-10. [Testing](#10-testing)
-11. [Observability](#11-observability)
-12. [Security](#12-security)
-13. [Evolution & Migration](#13-evolution--migration)
-14. [Project Scale Matrix](#14-project-scale-matrix)
-15. [Checklist](#15-checklist)
+2. [Tier Model](#2-tier-model)
+3. [Dependency Rules](#3-dependency-rules)
+4. [Function Architecture](#4-function-architecture)
+5. [Module Boundaries](#5-module-boundaries)
+6. [State Architecture](#6-state-architecture)
+7. [Error Architecture](#7-error-architecture)
+8. [Configuration Architecture](#8-configuration-architecture)
+9. [Concurrency Architecture](#9-concurrency-architecture)
+10. [Extension Architecture](#10-extension-architecture)
+11. [Evolution Architecture](#11-evolution-architecture)
+12. [Project Scale Matrix](#12-project-scale-matrix)
+13. [Architecture Checklist](#13-architecture-checklist)
 
 ---
 
 ## 1. Core Principles
 
-Thirteen rules. Each stolen from a proven architecture.
+Thirteen rules. Each derived from a proven architecture.
 
 | # | Rule | Origin | Purpose |
 |---|---|---|---|
@@ -47,574 +51,353 @@ Thirteen rules. Each stolen from a proven architecture.
 | 12 | Features are self-contained slices | Vertical Slice | Modularity |
 | 13 | Register capabilities, don't hardcode imports | Linux Kernel | Extensibility |
 
-Every architectural and design decision must trace back to at least one of
-these principles. If a decision violates a principle, document why.
+Every architectural decision must trace back to at least one principle.
+If a decision violates a principle, document why.
 
 ---
 
-## 2. Structure & Layering
+## 2. Tier Model
 
-### Tier Model
+All projects use inward-dependency layered tiers.
 
-All projects use inward-dependency layered tiers. Higher tiers import from
-lower tiers. Lower tiers never import from higher tiers. Lateral imports
-within the same tier are prohibited unless explicitly declared as peers.
-
-```
-Tier 0 (Kernel)   → primitives, types, constants, pure utilities
-Tier 1 (Engine)   → core domain logic, transforms, validators
-Tier 2 (Service)  → orchestration, use cases, workflow composition
-Tier 3 (Interface)→ I/O adapters: CLI, MCP, API, file readers/writers
-```
-
-### Dependency Direction
-
-```
-Tier 3 → Tier 2 → Tier 1 → Tier 0    (allowed)
-Tier 0 → Tier 1                        (violation)
-Tier 1 → Tier 1                        (violation — lateral)
-Tier 2 → Tier 3                        (violation — outward)
-```
-
-### I/O Placement
-
-I/O operations (file read/write, network, database, stdin/stdout) live
-exclusively in Tier 3. Tiers 0-2 are pure logic — they receive data and
-return data. They never open files, never make network calls.
-
-```python
-# Violation: logic tier performs I/O
-def analyze(path: str) -> dict:
-    df = polars.read_csv(path)    # I/O inside logic
-    return compute(df)
-
-# Correct: I/O at Tier 3, logic at Tier 1
-def analyze(df: DataFrame) -> dict:        # Tier 1 — pure logic
-    return compute(df)
-
-def handle_analyze(path: str) -> dict:     # Tier 3 — I/O adapter
-    df = polars.read_csv(path)
-    return analyze(df)
-```
+| Tier | Name | Contains | I/O Allowed |
+|---|---|---|---|
+| 0 | Kernel | Types, constants, enums, pure utilities | No |
+| 1 | Engine | Domain logic, transforms, validators | No |
+| 2 | Service | Orchestration, use cases, workflow composition | No |
+| 3 | Interface | Adapters: CLI, API, MCP, file/network/database I/O | Yes |
 
 ### Kernel Scope Rule
 
-Tier 0 contains only what every module in the project needs. If only some
-modules need it, it belongs in Tier 1 or higher. A fat kernel is a fragile
-kernel. Typical Tier 0 contents:
+Tier 0 contains only what every module in the project needs. If only
+some modules need it, it belongs in Tier 1 or higher. A fat kernel is
+a fragile kernel.
 
-- Type definitions and data classes
-- Constants and enums
-- Pure utility functions (string manipulation, math, formatting)
-- Shared configuration schema (not the config values — the shape)
+Tier 0 candidates: type definitions, data structures, constants, enums,
+pure utility functions (math, string, formatting), configuration schema
+(the shape, not the values).
 
----
+### I/O Boundary Rule
 
-## 3. Function Contract
+All I/O operations live exclusively in Tier 3. Tiers 0–2 receive data
+as arguments and return data as results. They never read files, open
+connections, write to disk, or print to output.
 
-### Signature Rules
-
-Every function follows the pipeline contract:
-
-| Rule | Requirement |
-|---|---|
-| Custom arguments | Maximum 1 required positional argument |
-| Other arguments | Must have defaults |
-| Return type | Single output (one type, one value) |
-| Side effects | None in Tiers 0-1. Permitted in Tier 3 only |
-| Naming | Verb-first: `compute_stats`, `validate_schema`, `parse_rows` |
-
-```python
-# Correct — pipeline-compatible
-def compute_stats(df: DataFrame, precision: int = 2) -> dict:
-    return {"mean": round(df.mean(), precision)}
-
-# Violation — multiple required args break pipeline composability
-def compute_stats(df: DataFrame, column: str, precision: int) -> tuple:
-    ...
-```
-
-### I/O vs Logic Split
-
-Every function is classified as one of two types. Never both.
-
-| Type | Tier | Does I/O | Testable with | Example |
-|---|---|---|---|---|
-| **Logic** | 0, 1, 2 | No | Plain unit test, no mocks | `transform(df) -> df` |
-| **Shell** | 3 | Yes | Integration test | `load_csv(path) -> df` |
-
-If a function reads a file AND transforms data, split it into two functions.
-
-### Return Value Contract
-
-Functions return structured data, never raw primitives for complex results.
-
-```python
-# Violation — caller must guess what dict contains
-def analyze(df: DataFrame) -> dict: ...
-
-# Correct — explicit contract
-@dataclass
-class AnalysisResult:
-    summary: dict
-    anomalies: list[dict]
-    row_count: int
-
-def analyze(df: DataFrame) -> AnalysisResult: ...
-```
-
-For simple operations, primitive returns are acceptable:
-`def count_nulls(df: DataFrame) -> int`
+If a function in Tier 0–2 needs data from an external source, Tier 3
+reads it first and passes it in as an argument.
 
 ---
 
-## 4. Module Boundaries
+## 3. Dependency Rules
 
-### Export Control
+### Direction
 
-Every module explicitly declares its public API. Everything not exported is
-internal and must not be imported by other modules.
+Higher tiers depend on lower tiers. Never reverse.
 
-```python
-# module/stats.py
-__all__ = ["compute_stats", "detect_anomalies"]   # public contract
-
-def compute_stats(df): ...          # public
-def detect_anomalies(df): ...       # public
-def _normalize_column(col): ...     # private — not in __all__
-```
-
-### Module Isolation
-
-Modules do not access each other's internal state. Communication happens
-through function calls using the public API only.
-
-| Allowed | Violation |
+| Direction | Status |
 |---|---|
-| `from stats import compute_stats` | `from stats import _normalize_column` |
-| `result = stats.compute_stats(df)` | `stats._internal_cache.clear()` |
-| Passing data as arguments | Accessing module-level variables directly |
+| Tier 3 → Tier 2 → Tier 1 → Tier 0 | Allowed |
+| Any tier → same tier (lateral) | Prohibited unless declared as peers |
+| Any tier → higher tier (outward) | Prohibited — always |
 
-### Registration Pattern
+### Acyclic Graph
 
-For extensible systems, modules register their capabilities with a central
-registry instead of being hardcoded as imports. Adding a capability requires
-zero changes to existing code.
+The full dependency graph across all modules must be a directed acyclic
+graph (DAG). If module A depends on module B, module B must never depend
+on module A — directly or transitively.
 
-```python
-# registry.py (Tier 0)
-_handlers = {}
-def register(name: str, func: callable): _handlers[name] = func
-def resolve(name: str) -> callable: return _handlers[name]
+### Third-Party Isolation
 
-# csv_handler.py (Tier 1) — self-registers on import
-register("csv", read_csv)
+External libraries and frameworks are wrapped at tier boundaries. Core
+logic (Tier 0–1) never calls third-party code directly. A thin adapter
+at the boundary allows the library to be swapped without touching core
+logic. Exception: language standard library is used directly.
 
-# parquet_handler.py (Tier 1) — self-registers on import
-register("parquet", read_parquet)
+### Version Discipline
 
-# orchestrator.py (Tier 2) — resolves at runtime
-handler = resolve(detect_format(path))
-result = handler(path)
-```
+Pin exact versions in lock files. Use ranges in project metadata.
+Update dependencies deliberately, not automatically.
+
+---
+
+## 4. Function Architecture
+
+### Pipeline Contract
+
+Every function follows the pipeline pattern for composability:
+
+| Aspect | Rule |
+|---|---|
+| Required arguments | Maximum 1 positional argument |
+| Optional arguments | Must have sensible defaults |
+| Return | Single output — one type, one value |
+| Side effects | None in Tiers 0–2. Permitted in Tier 3 only |
+| Naming | Verb-first: `compute_x`, `validate_x`, `parse_x` |
+
+### Classification
+
+Every function is one of two types. Never both.
+
+| Type | Tier | I/O | Purpose |
+|---|---|---|---|
+| Logic function | 0, 1, 2 | No | Pure transform: data in, data out |
+| Shell function | 3 | Yes | Reads/writes external resources, calls logic functions |
+
+If a function performs I/O AND transforms data, split it into two
+functions — one shell, one logic.
+
+### Return Contract
+
+Complex results use structured types (structs, records, data classes),
+not raw collections. The caller must know the shape of the return value
+without reading the implementation. Simple operations may return
+primitives.
+
+---
+
+## 5. Module Boundaries
+
+### Public API
+
+Every module explicitly declares its public interface. Everything not
+declared is internal and must not be consumed by other modules.
+
+### Isolation Rules
+
+| Rule | Description |
+|---|---|
+| Public API only | Modules communicate exclusively through declared public functions |
+| No internal access | Never reach into another module's private functions or state |
+| Data via arguments | Pass data through function calls, not shared variables |
+| No global mutables | No module-level mutable state accessible from outside |
 
 ### Module Lifecycle
 
-Complex modules implement init/cleanup for resource management:
-
-```python
-def init() -> None:       # called when module loads
-    register_capabilities()
-    allocate_resources()
-
-def cleanup() -> None:    # called when module unloads
-    release_resources()
-    deregister()
-```
+Complex modules implement a standard lifecycle contract:
+- **Init**: register capabilities, allocate resources
+- **Cleanup**: release resources, deregister
 
 ---
 
-## 5. Data & State
+## 6. State Architecture
 
 ### Immutability Default
 
-Functions in Tiers 0-2 never mutate their input. Always return new data.
+Functions in Tiers 0–2 never mutate their input. Always return new data.
+The caller's data remains unchanged after any function call.
 
-```python
-# Violation — mutates input
-def clean(df: DataFrame) -> DataFrame:
-    df.drop_nulls(inplace=True)      # caller's data is changed
-    return df
-
-# Correct — returns new
-def clean(df: DataFrame) -> DataFrame:
-    return df.drop_nulls()           # original untouched
-```
-
-### State Ownership
+### Ownership
 
 Each module owns its state exclusively. No global mutable state shared
 between modules. If two modules need the same data, pass it explicitly.
 
-| Pattern | Use when |
+| Pattern | When to use |
 |---|---|
 | Pass as argument | Default — data flows through function calls |
 | Return and re-pass | State transforms across pipeline stages |
-| Module-local cache | Performance optimization within one module |
-| Shared database/file | Persistent state across sessions (Tier 3 only) |
+| Module-local cache | Performance optimization within one module only |
+| Persistent store | Cross-session state, Tier 3 only |
 
 ### Single Source of Truth
 
-Every piece of data has exactly one authoritative location. If data is
-derived, compute it — don't store a second copy that can drift.
+Every piece of data has exactly one authoritative location. If data
+is derived, compute it — don't store a second copy that can drift.
 
 ### Snapshot Before Mutation
 
-Any Tier 3 operation that modifies persistent data (files, databases) must
-capture a snapshot or delta before the write. This enables undo, audit,
-and crash recovery.
+Any Tier 3 operation that modifies persistent state must capture a
+snapshot or delta before the write. This enables undo, audit, and
+crash recovery.
 
 ---
 
-## 6. Error Philosophy
+## 7. Error Architecture
 
 ### Classification
 
-| Error type | Strategy | Example |
-|---|---|---|
-| **Programmer error** | Fail fast, crash, fix the code | `assert len(columns) > 0` |
-| **Data error** | Return error in result, don't throw | Missing column in CSV |
-| **Environment error** | Throw, let supervisor handle | Disk full, permission denied |
-| **Partial failure** | Accumulate errors, continue, report | 3 of 50 files failed to parse |
+| Error type | Strategy |
+|---|---|
+| Programmer error | Fail fast, crash immediately, fix the code |
+| Data error | Return error in result, don't throw |
+| Environment error | Throw/raise, let supervisor level handle |
+| Partial failure | Accumulate errors, continue processing, report all |
 
-### Error Boundaries
+### Boundaries
 
 Errors are caught and handled at tier boundaries, not inside core logic.
 
-```
-Tier 1 (logic)  → raises or returns error → does NOT catch
-Tier 2 (service)→ catches domain errors   → translates to result
-Tier 3 (I/O)    → catches env errors      → translates to user message
-```
+| Tier | Behavior |
+|---|---|
+| 0–1 (logic) | Returns or raises errors. Does NOT catch. |
+| 2 (service) | Catches domain errors. Translates to structured results. |
+| 3 (interface) | Catches environment errors. Translates to user-facing messages. |
 
-### Error as Data (preferred for domain logic)
+### Error as Data
 
-```python
-@dataclass
-class Result:
-    data: dict | None
-    errors: list[str]
-    ok: bool
+Domain logic prefers returning errors as part of the result structure
+rather than throwing exceptions. The result carries both the data and
+any errors, allowing the caller to decide how to handle them.
 
-def validate(df: DataFrame) -> Result:
-    errors = []
-    if "date" not in df.columns:
-        errors.append("Missing column: date")
-    return Result(data=df if not errors else None, errors=errors, ok=not errors)
-```
+### Partial Failure
 
-### Partial Failure Accumulation
-
-Batch operations never stop on the first error. Accumulate failures,
-process everything possible, return a complete report.
-
-```python
-results, failures = [], []
-for file in files:
-    try:
-        results.append(process(file))
-    except ProcessError as e:
-        failures.append({"file": file, "error": str(e)})
-return {"processed": results, "failed": failures}
-```
+Batch operations never stop on the first error. Process everything
+possible, accumulate all failures, return a complete report of
+successes and failures together.
 
 ---
 
-## 7. Configuration
+## 8. Configuration Architecture
 
-### Cascade Order
+### Cascade Order (highest priority wins)
 
-Configuration resolves in this priority (highest wins):
-
-```
-Runtime argument  →  overrides everything
-Environment var   →  overrides file + defaults
-Config file       →  overrides defaults
-Code defaults     →  baseline
-```
+| Priority | Source |
+|---|---|
+| 1 (highest) | Runtime arguments |
+| 2 | Environment variables |
+| 3 | Configuration file |
+| 4 (lowest) | Code defaults |
 
 ### Rules
 
-- Config schema lives in Tier 0 (the shape, not the values).
-- Config loading lives in Tier 3 (file I/O).
-- Config values flow inward as function arguments, never as global reads.
-- Secrets (API keys, credentials) never appear in config files committed
-  to version control. Use environment variables or `.env` files in `.gitignore`.
-- Every config value has a sensible default. A project must run with zero
-  configuration for its default use case.
+- Configuration schema (the shape) lives in Tier 0.
+- Configuration loading (file I/O) lives in Tier 3.
+- Configuration values flow inward as function arguments, never as
+  global reads from within core logic.
+- Every configuration value has a sensible default. A project must
+  run with zero configuration for its default use case.
+- Secrets never appear in committed files. They enter through
+  environment variables at Tier 3 and never flow inward past Tier 3 —
+  pass derived values (authenticated clients, connections) instead.
 
 ---
 
-## 8. Concurrency
+## 9. Concurrency Architecture
 
-### Default Model
+### Default
 
-Use single-threaded sequential execution by default. Add concurrency only
-when measured performance requires it.
+Sequential single-threaded execution. Add concurrency only when
+measured performance requires it.
 
 ### Model Selection
 
-| Workload | Model | Tool |
-|---|---|---|
-| I/O-bound (file, network) | Async | `asyncio`, `aiofiles` |
-| CPU-bound (compute, transform) | Process pool | `concurrent.futures.ProcessPoolExecutor` |
-| Mixed batch (many independent items) | Thread pool | `concurrent.futures.ThreadPoolExecutor` |
-| Real-time streaming | Async with queues | `asyncio.Queue` |
+| Workload type | Concurrency model |
+|---|---|
+| I/O-bound (file, network) | Async / non-blocking |
+| CPU-bound (compute, transform) | Process-level parallelism |
+| Mixed batch (many independent items) | Thread pool |
+| Real-time streaming | Async with queues |
 
 ### Rules
 
-- Never share mutable state between concurrent workers. Each worker
-  receives its own copy or an immutable reference.
-- Worker pools have a maximum size tied to hardware tier (see project-
-  specific resource constraints).
+- Never share mutable state between concurrent workers.
+- Each worker receives its own copy or an immutable reference.
+- Worker pool sizes are bounded by hardware constraints.
 - Every concurrent operation has an explicit timeout.
-- Results from concurrent workers are collected into a single accumulator
-  at the orchestration level (Tier 2), never assembled inside workers.
+- Results from workers are collected into a single accumulator at
+  Tier 2 (orchestration level), never assembled inside workers.
 
 ---
 
-## 9. Dependencies
+## 10. Extension Architecture
 
-### Wrapper Rule
+### Registration Pattern
 
-Core logic (Tiers 0-1) never calls third-party libraries directly.
-Wrap external libraries in a thin adapter at Tier 1 boundary so the
-library can be swapped without touching core logic.
+Extensible systems use a registry. Modules register their capabilities
+at startup. The orchestrator resolves capabilities at runtime. Adding
+a new capability means adding one new module that registers itself —
+zero changes to existing code.
 
-```python
-# Violation — core logic coupled to specific library
-def analyze(df):
-    import pandas as pd          # library locked into logic
-    return pd.DataFrame.describe(df)
+### Feature Self-Containment
 
-# Correct — wrapped at boundary
-# adapters/dataframe_ops.py (Tier 1 boundary)
-def describe(df) -> dict:
-    return polars_describe(df)   # swap library here only
-```
+Each feature is a self-contained unit. Adding feature X must not require
+modifying module Y (unless Y is the registry or entry point). If it
+does, the architecture has a coupling problem.
 
-Exception: standard library and language built-ins are used directly.
+### Composition Over Inheritance
 
-### Version Policy
-
-- Pin exact versions in lock files (`uv.lock`, `package-lock.json`).
-- Use ranges in project metadata (`pyproject.toml`, `package.json`).
-- Update dependencies deliberately, not automatically.
-
-### Direction Enforcement
-
-No circular dependencies between modules. If module A imports from
-module B, module B must never import from module A — directly or
-transitionally. Visualize the dependency graph; it must be a DAG.
+Build capabilities as independent, attachable units. Combine them
+through composition. Avoid inheritance hierarchies — they create rigid
+coupling and make feature combinations combinatorially explosive.
 
 ---
 
-## 10. Testing
-
-### Test Pyramid
-
-```
-         /  E2E  \           Few — full system, slow, Tier 3
-        /----------\
-       / Integration \       Some — module interactions, Tier 2
-      /----------------\
-     /    Unit Tests     \   Many — pure functions, fast, Tier 0-1
-    /______________________\
-```
-
-### What to Test Where
-
-| Tier | Test type | Mocking allowed | What to verify |
-|---|---|---|---|
-| 0 (Kernel) | Unit | None | Pure logic correctness |
-| 1 (Engine) | Unit | None | Transform accuracy, edge cases |
-| 2 (Service) | Integration | Tier 3 adapters only | Workflow orchestration |
-| 3 (Interface) | E2E | External services only | I/O correctness, format validity |
-
-### Contract Tests
-
-Test the boundary between modules — verify that a module's public API
-behaves as documented. Contract tests survive internal refactors.
-
-```python
-def test_compute_stats_contract():
-    result = compute_stats(sample_df)
-    assert "mean" in result           # contract: returns dict with "mean"
-    assert isinstance(result["mean"], float)
-```
-
-### Rules
-
-- Pure functions (Tier 0-1) require zero mocking. If a test needs mocks
-  for a Tier 0-1 function, the function has I/O mixed in — fix the function.
-- Every public function in `__all__` has at least one test.
-- Tests are independent — no shared state, no execution order dependency.
-
----
-
-## 11. Observability
-
-### Structured Logging
-
-Use structured key-value logging, not string interpolation.
-
-```python
-# Violation
-logger.info(f"Processed {count} files in {elapsed}s")
-
-# Correct
-logger.info("batch_complete", count=count, elapsed=elapsed, status="ok")
-```
-
-### Operation Receipts
-
-Every write operation returns a receipt: what changed, before/after
-values, timestamp, and status. Receipts enable audit trails, undo
-support, and debugging without reproducing the operation.
-
-```python
-@dataclass
-class Receipt:
-    operation: str
-    target: str
-    timestamp: str
-    before: Any
-    after: Any
-    status: str   # "ok" | "error" | "skipped"
-```
-
-### Health & Metrics
-
-Long-running systems expose:
-- `health()` → is the system functional right now
-- `metrics()` → counters, timing, resource usage since start
-
----
-
-## 12. Security
-
-### Validation Boundary
-
-Validate all external input at Tier 3 — the system boundary. Once data
-passes validation and enters Tier 2 and below, it is trusted.
-
-```
-External input → [Tier 3: validate, sanitize] → trusted data → Tier 2-0
-```
-
-Do not re-validate inside core logic. Defensive checks deep in the stack
-indicate a broken validation boundary — fix the boundary.
-
-### Least Privilege
-
-Each module accesses only the resources it needs:
-- File operations specify exact paths, never accept arbitrary user paths
-  without validation.
-- Path traversal: resolve and verify all paths against an allowed root
-  before any file operation.
-- Subprocess calls: never pass unsanitized input to shell commands.
-
-### Secrets
-
-- Never hardcode secrets in source code.
-- Never commit `.env` files, credentials, or key files.
-- Load secrets from environment variables at Tier 3 only.
-- Secrets never flow inward past Tier 3 — pass derived values
-  (authenticated clients, session tokens) instead.
-
----
-
-## 13. Evolution & Migration
+## 11. Evolution Architecture
 
 ### Versioned Interfaces
 
 When a module's public API changes, the old signature remains available
-for one release cycle. New code uses the new interface. Old interface
-forwards to new implementation internally.
+for one release cycle. Old interface forwards to new implementation.
+New consumers use the new interface.
 
 ### Breaking Change Protocol
 
-1. Document what breaks and why in the changelog.
-2. Provide a migration path (code example of old → new).
-3. Deprecation warning for one release before removal.
+1. Document what breaks and why.
+2. Provide a migration path (old → new).
+3. Deprecation warning for one cycle before removal.
 
 ### Strangler Fig Pattern
 
-When replacing a system or module, don't rewrite all at once:
-1. Build the new module alongside the old one.
+Replace systems incrementally, not all at once:
+1. Build the new module alongside the old.
 2. Route new features to the new module.
 3. Gradually migrate existing features.
 4. Remove the old module when nothing references it.
 
-### Feature Addition Rule
+### Open-Closed Principle
 
-Adding a feature must not require modifying existing working code. If
-adding feature X requires editing module Y (which is unrelated to X),
-the architecture has a coupling problem. Fix the architecture.
+Modules are open for extension, closed for modification. Adding
+behavior should not require changing existing working code.
 
 ---
 
-## 14. Project Scale Matrix
+## 12. Project Scale Matrix
 
-Not every project needs every rule. Apply rules based on project scale.
+Apply rules proportionally to project complexity.
 
 | Rule | PoC / Script | Small Project | Production System |
 |---|---|---|---|
 | Tier model (§2) | Flat — no tiers | 2 tiers (logic + I/O) | Full 4 tiers |
-| Function contract (§3) | Informal | Single-in/single-out | Full typed contracts |
-| Module boundaries (§4) | Single file | `__all__` exports | Registration pattern |
-| Immutability (§5) | Optional | Required in core | Required everywhere |
-| Error handling (§6) | Let it crash | Error as data in core | Full accumulation |
-| Configuration (§7) | Hardcoded defaults | Config file + defaults | Full cascade |
-| Concurrency (§8) | Sequential only | Thread pool if needed | Measured and tuned |
-| Dependency wrappers (§9) | Direct import ok | Wrap critical deps | Wrap all external deps |
-| Testing (§10) | Manual verification | Unit tests for core | Full pyramid |
-| Observability (§11) | Print statements | Structured logging | Logging + receipts + metrics |
-| Security (§12) | Basic path validation | Validation boundary | Full security model |
-| Evolution (§13) | Not applicable | Changelog | Full migration protocol |
+| Function contract (§4) | Informal | Single-in/single-out | Full typed contracts |
+| Module boundaries (§5) | Single file | Explicit exports | Registration pattern |
+| Immutability (§6) | Optional | Required in core | Required everywhere |
+| Error handling (§7) | Fail fast only | Error as data in core | Full accumulation |
+| Configuration (§8) | Hardcoded defaults | File + defaults | Full cascade |
+| Concurrency (§9) | Sequential only | Pool if needed | Measured and tuned |
+| Dependencies (§3) | Direct use ok | Wrap critical deps | Wrap all externals |
+| Extension (§10) | Not needed | Composition | Full registration |
 
 ### Scale Transition
 
 When a project graduates from one scale to the next, apply the new
-rules incrementally — don't rewrite. Use the Strangler Fig pattern
-(§13) to evolve the architecture in place.
+rules incrementally using the Strangler Fig pattern (§11). Never
+rewrite — evolve in place.
 
 ---
 
-## 15. Checklist
+## 13. Architecture Checklist
 
 ### New Project
 
 - [ ] Determine project scale (PoC / Small / Production)
 - [ ] Define tier structure appropriate to scale
-- [ ] Identify Tier 0 kernel contents — types, constants, pure utilities
-- [ ] Establish the universal data format for inter-function communication
+- [ ] Identify Tier 0 kernel contents
+- [ ] Establish universal data format for inter-function communication
 - [ ] Define module boundaries and public APIs
-- [ ] Place all I/O in Tier 3
-- [ ] Set up configuration with sensible defaults
-- [ ] Verify dependency graph is a DAG with inward-only direction
+- [ ] Confirm all I/O is in Tier 3
+- [ ] Set configuration defaults
+- [ ] Verify dependency graph is a DAG — inward only
 
 ### New Module
 
-- [ ] Declare `__all__` — only public API exported
-- [ ] Classify every function as I/O or logic
-- [ ] Verify single-input/single-output contract
-- [ ] Add unit tests for every public function
-- [ ] Confirm no lateral or outward imports
+- [ ] Public API declared explicitly
+- [ ] Every function classified as I/O or logic
+- [ ] Pipeline contract: single input, single output
+- [ ] No lateral or outward tier imports
+- [ ] Module owns its state — no shared mutables
 
 ### New Feature
 
-- [ ] Feature is self-contained — no edits to unrelated modules
-- [ ] If extensible, uses registration pattern
-- [ ] Tests cover the new public API contract
-- [ ] No new I/O introduced below Tier 3
+- [ ] Self-contained — no edits to unrelated modules
+- [ ] Uses registration if system is extensible
+- [ ] No I/O introduced below Tier 3
+- [ ] Conforms to existing tier structure
