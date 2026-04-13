@@ -74,7 +74,7 @@ Central standards library for all projects. Each standard = one directory + one 
 | 28 | `data_pipeline/` | ETL · data validation · schema enforcement · batch | Done |
 | 29 | `cli/` | Argument parsing · output format · exit codes · help | Done |
 | 30 | `web/` | Routing · middleware · state · auth · frontend/backend | Planned |
-| 31 | `ml/` | Model lifecycle · experiment tracking · data versioning | Planned |
+| 31 | `ml/` | Model lifecycle · experiment tracking · data versioning | Done |
 
 ## Cross-Reference Map
 
