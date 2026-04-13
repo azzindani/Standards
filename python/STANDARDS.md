@@ -454,26 +454,11 @@ def managed_connection(url: str):
 | `%` formatting | ✗ Forbidden in new code |
 | `+` concatenation | ✗ Forbidden for >2 parts — use f-string or `join()` |
 
-### Examples
-
 ```python
-# ✓ f-string
-msg = f"processed {count} records in {elapsed:.2f}s"
-
-# ✓ logging with lazy formatting (no f-string — avoids formatting if level disabled)
-logger.info("processed %d records in %.2fs", count, elapsed)
-
-# ✓ multi-line f-string
-query = (
-    f"SELECT {columns} "
-    f"FROM {table} "
-    f"WHERE id = {record_id}"
-)
-
-# ✗ old-style
-msg = "processed %d records" % count           # forbidden
-msg = "processed {} records".format(count)     # forbidden in new code
-msg = "hello " + name + " welcome " + place    # forbidden
+msg = f"processed {count} records in {elapsed:.2f}s"       # ✓ f-string
+logger.info("processed %d records in %.2fs", count, elapsed)  # ✓ lazy log format
+msg = "processed %d records" % count                        # ✗ forbidden
+msg = "processed {} records".format(count)                  # ✗ forbidden
 ```
 
 ---
@@ -504,47 +489,23 @@ msg = "hello " + name + " welcome " + place    # forbidden
 ### Patterns
 
 ```python
-import asyncio
-
 # ✓ TaskGroup (Python 3.11+) — structured concurrency
 async def fetch_all(urls: list[str]) -> list[Response]:
     async with asyncio.TaskGroup() as tg:
         tasks = [tg.create_task(fetch(url)) for url in urls]
     return [t.result() for t in tasks]
 
-# ✓ Offload blocking work
+# ✓ Offload blocking work to thread
 async def process_file(path: Path) -> Data:
     content = await asyncio.to_thread(path.read_bytes)
     return parse(content)
-
-# ✓ Async context manager
-from contextlib import asynccontextmanager
-
-@asynccontextmanager
-async def managed_session():
-    session = await create_session()
-    try:
-        yield session
-    finally:
-        await session.close()
 
 # ✗ Wrong — blocking in async
 async def bad_fetch(url: str) -> str:
     return requests.get(url).text  # blocks event loop!
 ```
 
-### Async Entry Point
-
-```python
-# ✓ Single entry point
-async def main() -> None:
-    async with managed_session() as session:
-        result = await session.execute(query)
-        print(result)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
+Entry point: `asyncio.run(main())` in `if __name__ == "__main__":` block.
 
 ---
 
@@ -584,44 +545,28 @@ markers = [
 asyncio_mode = "auto"
 ```
 
-### Test Structure
+### Test Patterns
 
 ```python
-# tests/test_processor.py
 import pytest
 from myapp.processor import Processor
 
 class TestProcessor:
-    """Group related tests in classes — no __init__ needed."""
+    def test_valid_input(self) -> None:
+        assert Processor().run("valid data").status == "ok"
 
-    def test_process_valid_input(self) -> None:
-        proc = Processor()
-        result = proc.run("valid data")
-        assert result.status == "ok"
+    def test_empty_input_raises(self) -> None:
+        with pytest.raises(ValidationError, match="must not be empty"):
+            Processor().run("")
 
-    def test_process_empty_input_raises(self) -> None:
-        proc = Processor()
-        with pytest.raises(ValidationError, match="input must not be empty"):
-            proc.run("")
-
-    @pytest.mark.parametrize(
-        ("input_val", "expected"),
-        [
-            ("a", 1),
-            ("bb", 2),
-            ("ccc", 3),
-        ],
-    )
-    def test_process_lengths(self, input_val: str, expected: int) -> None:
-        assert Processor().length(input_val) == expected
+    @pytest.mark.parametrize(("val", "expected"), [("a", 1), ("bb", 2), ("ccc", 3)])
+    def test_lengths(self, val: str, expected: int) -> None:
+        assert Processor().length(val) == expected
 ```
 
-### Fixtures
+### Fixtures in `tests/conftest.py`
 
 ```python
-# tests/conftest.py
-import pytest
-
 @pytest.fixture
 def sample_config() -> dict[str, str]:
     return {"host": "localhost", "port": "8080"}
@@ -634,16 +579,14 @@ async def db_session():
     await session.close()
 ```
 
-### Property-Based Testing with Hypothesis
+### Property-Based Testing
 
 ```python
 from hypothesis import given, strategies as st
 
 @given(st.text(min_size=1, max_size=1000))
-def test_roundtrip_encode_decode(text: str) -> None:
-    encoded = encode(text)
-    decoded = decode(encoded)
-    assert decoded == text
+def test_roundtrip(text: str) -> None:
+    assert decode(encode(text)) == text
 ```
 
 ### Coverage

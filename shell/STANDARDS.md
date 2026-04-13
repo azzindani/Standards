@@ -1011,3 +1011,136 @@ parse_env_file() {
   done < "${file}"
 }
 ```
+
+---
+
+## 13. Anti-Patterns
+
+### Parsing `ls` Output
+
+```bash
+# ✗ WRONG — breaks on spaces, newlines, special chars
+for file in $(ls *.txt); do
+  process "$file"
+done
+
+# Correct — glob directly
+for file in *.txt; do
+  [[ -e "${file}" ]] || continue  # handle empty glob
+  process "${file}"
+done
+```
+
+### Useless `cat`
+
+```bash
+# ✗ WRONG — useless use of cat
+cat file.txt | grep "pattern"
+cat file.txt | wc -l
+
+# Correct — direct input
+grep "pattern" file.txt
+wc -l < file.txt
+```
+
+### Unquoted Globs in Tests
+
+```bash
+# ✗ WRONG — glob expands if files match
+if [ $var = *.txt ]; then
+
+# Correct — double brackets, quoted
+if [[ "${var}" == *.txt ]]; then
+```
+
+### String Comparison with `=` in `[ ]`
+
+```bash
+# ✗ WRONG — single = works but double bracket is safer
+[ "$a" == "$b" ]    # == is not POSIX in [ ]
+
+# Correct
+[ "$a" = "$b" ]     # POSIX single bracket
+[[ "$a" == "$b" ]]  # Bash double bracket
+```
+
+### Backtick Command Substitution
+
+```bash
+# ✗ WRONG — hard to nest, hard to read
+result=`command \`nested\``
+
+# Correct — $(  ) nests cleanly
+result=$(command $(nested))
+```
+
+### Full Anti-Pattern Table
+
+| Anti-Pattern | Risk | Correct Alternative |
+|---|---|---|
+| `for f in $(ls ...)` | Word splitting on spaces | `for f in glob*` or `find -print0` |
+| `cat file \| cmd` | Useless process | `cmd < file` or `cmd file` |
+| Unquoted `$var` | Word splitting + glob | `"${var}"` |
+| `[ -z $var ]` | Fails if var has spaces | `[[ -z "${var}" ]]` |
+| `echo $var` | Eats backslashes, expands | `printf '%s\n' "${var}"` |
+| `` `cmd` `` | Can't nest, escaping | `$(cmd)` |
+| `cd dir; cmd; cd ..` | Breaks on failure | `(cd dir && cmd)` or pushd/popd |
+| `kill -9` first | No graceful shutdown | `kill` → wait → `kill -9` |
+| `rm -rf "$DIR/"*` | Deletes `/` if DIR empty | `[[ -n "${DIR}" ]] && rm -rf "${DIR:?}/"*` |
+| `[ "$?" -eq 0 ]` | Captured by `[` itself | `if command; then` |
+| `export VAR=$(cmd)` | Masks exit code | `VAR=$(cmd); export VAR` |
+| `echo "$(cat file)"` | Useless wrappers | `cat file` |
+| `test -f file && source file` | No error on source fail | `[[ -f file ]] && source file \|\| die` |
+| `PATH=$PATH:/new` in scripts | Accumulates duplicates | Conditional add or `declare` once |
+
+---
+
+## 14. Checklist
+
+### New Script
+
+- [ ] Shebang is `#!/usr/bin/env bash` (or `sh` for POSIX)
+- [ ] `set -euo pipefail` on line 2
+- [ ] Script description block (purpose, usage, deps, env vars)
+- [ ] `usage()` function present
+- [ ] Argument count validated
+- [ ] Arguments parsed (getopts or manual while/case)
+- [ ] Dependencies checked with `command -v`
+- [ ] Exit codes defined as `readonly` constants
+- [ ] `die()` and `warn()` helper functions present
+- [ ] `trap cleanup EXIT` registered before temp file creation
+- [ ] All temp files created with `mktemp`
+- [ ] All variables quoted: `"${var}"`
+- [ ] All function variables declared `local`
+- [ ] `main()` function pattern used
+- [ ] `main "$@"` at script bottom
+- [ ] stdout = data only, stderr = messages only
+- [ ] Colors gated on `[[ -t 2 ]]` check
+- [ ] ShellCheck passes with zero warnings
+- [ ] BATS tests written for success + failure paths
+- [ ] File executable: `chmod +x script.sh`
+
+### Library Script
+
+- [ ] Include guard (`_LIB_*_LOADED`)
+- [ ] Direct execution guard
+- [ ] ✗ `set -euo pipefail` (caller controls)
+- [ ] ✗ `exit` calls (return codes only)
+- [ ] ✗ `main` function
+- [ ] All functions documented with purpose comment
+- [ ] ShellCheck passes
+
+### Code Review
+
+- [ ] No `eval` anywhere
+- [ ] No unquoted variable expansions
+- [ ] No `cat file | cmd` (useless cat)
+- [ ] No `for f in $(ls ...)` patterns
+- [ ] No backtick command substitution
+- [ ] No hardcoded `/tmp/` paths
+- [ ] No secrets in command-line arguments
+- [ ] No `set +e` / `set -e` blocks
+- [ ] No `function` keyword
+- [ ] `rm -rf` guarded against empty variables
+- [ ] Temp files cleaned up via trap
+- [ ] Exit codes documented and consistent

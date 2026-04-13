@@ -407,3 +407,99 @@ Start with RBAC. Move to permission-based when roles become insufficient. ABAC/R
 | Source maps | Generate for production but ✗ serve publicly. Upload to error tracking service |
 | Minification | HTML · CSS · JS all minified in production builds |
 | Environment variables | Inject at build time. ✗ runtime environment checks in client bundle |
+
+---
+
+## 10. Static Assets
+
+### Caching Strategy
+
+| Asset Type | Cache-Control | Filename Strategy |
+|---|---|---|
+| JS · CSS bundles | `public, max-age=31536000, immutable` | Content hash in filename (`app.a3f9c2.js`) |
+| Images · fonts | `public, max-age=31536000, immutable` | Content hash or versioned path |
+| HTML entry point | `no-cache` (revalidate every request) | No hash — always latest |
+| API responses | `no-store` or short `max-age` | N/A |
+| Service worker | `no-cache` | Fixed filename, browser handles updates |
+
+### CDN Rules
+
+| Rule | Detail |
+|---|---|
+| Static assets served via CDN | ✗ serve static files from application server in production |
+| Origin shield | CDN caches pull from single origin — reduces origin load |
+| Cache invalidation | Use content-hashed filenames → ✗ manual cache purge needed |
+| Geographic distribution | CDN edge nodes close to users. Measure TTFB per region |
+| ✗ CDN for authenticated content | Authenticated responses bypass CDN or use signed URLs |
+| Fallback | Application server serves assets if CDN fails (graceful degradation) |
+
+### Compression
+
+| Rule | Detail |
+|---|---|
+| Brotli preferred | Brotli (br) for text assets — 15-25% smaller than gzip |
+| Gzip fallback | Serve gzip when client doesn't support Brotli |
+| Pre-compressed | Build step generates `.br` + `.gz` files. ✗ on-the-fly compression for static assets |
+| Minimum size | ✗ compress files <1KB — overhead exceeds savings |
+| Binary assets | ✗ compress already-compressed formats (JPEG · PNG · WOFF2) |
+
+---
+
+## 11. WebSocket
+
+### When to Use
+
+| Use WebSocket | Use HTTP Polling | Use Server-Sent Events (SSE) |
+|---|---|---|
+| Bidirectional real-time (chat · collaborative editing) | Infrequent updates (<1/min) | Server → client only (notifications · feeds) |
+| Low-latency required (<100ms) | Simple infrastructure required | One-way push sufficient |
+| High-frequency messages | WebSocket infra unavailable | Auto-reconnect built in |
+
+### Connection Lifecycle
+
+| Phase | Rule |
+|---|---|
+| Connect | Authenticate during handshake (token in query param or first message). ✗ unauthenticated WebSocket connections |
+| Heartbeat | Client + server send ping/pong every 30s. Detect dead connections within 60s |
+| Reconnect | Client implements exponential backoff: 1s → 2s → 4s → 8s → max 30s |
+| Message format | Structured messages with `type` field for routing. ✗ untyped string messages |
+| Close | Clean close with status code. Server broadcasts disconnect to relevant parties |
+| ✗ large payloads | Keep messages <64KB. Large data → HTTP endpoint + notify via WebSocket |
+
+### WebSocket State Rules
+
+| Rule | Detail |
+|---|---|
+| Server authoritative | Server state = source of truth. Client state = optimistic projection |
+| Idempotent messages | Client may resend on reconnect — server handles duplicates |
+| Sequence tracking | Messages carry sequence numbers for ordering + gap detection |
+| Connection limit | Budget max concurrent connections per server instance |
+| ✗ session state in WS only | Persist critical state to database. WebSocket connection is ephemeral |
+
+---
+
+## 12. CORS
+
+### Policy Rules
+
+| Rule | Detail |
+|---|---|
+| Explicit allowed origins | Whitelist specific origins. ✗ `Access-Control-Allow-Origin: *` for authenticated APIs |
+| Wildcard acceptable for | Public read-only APIs with no authentication |
+| Credentials mode | `Access-Control-Allow-Credentials: true` requires specific origin (✗ wildcard) |
+| Allowed methods | List only methods the API uses. ✗ allow all methods |
+| Allowed headers | List only headers the API expects. ✗ allow all headers |
+| Expose headers | Explicitly expose custom response headers client needs (e.g., `X-Request-Id`) |
+
+### Preflight Handling
+
+| Rule | Detail |
+|---|---|
+| Cache preflight | `Access-Control-Max-Age: 7200` (2h) minimum — reduces OPTIONS requests |
+| OPTIONS response | Return 204 with CORS headers. ✗ process body on preflight |
+| ✗ auth on preflight | OPTIONS requests carry no credentials — ✗ require auth |
+| Rate limiting | Exempt preflight OPTIONS from rate limiting |
+
+### CORS Middleware Placement
+
+Position 4 in middleware stack (see §3). CORS rejection occurs before authentication — saves processing cost for disallowed origins.

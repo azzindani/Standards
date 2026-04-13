@@ -35,27 +35,19 @@ Composable with: `database/STANDARDS.md` (schema design · migrations · transac
 
 All SQL keywords uppercase. All identifiers (tables, columns, aliases) lowercase snake_case.
 
-```sql
--- Correct
-SELECT
-    user_id,
-    created_at
-FROM account
-WHERE status = 'active';
-
--- Wrong
-select User_Id, Created_At from Account where Status = 'active';
-```
-
 ### 1.2 Clause Indentation
 
-Each major clause starts at column 0. Columns, conditions, and expressions indented 4 spaces.
+Major clauses at column 0. Columns, conditions, expressions indented 4 spaces. One column per SELECT line, one condition per WHERE/ON line. Exception: `SELECT COUNT(*)` or single-column queries.
+
+### 1.3 Comma + Semicolons
+
+Leading commas. Every statement ends with `;`.
 
 ```sql
 SELECT
-    o.order_id,
-    o.total_amount,
-    c.email
+    o.order_id
+    , o.total_amount
+    , c.email
 FROM order_line o
 INNER JOIN customer c
     ON c.customer_id = o.customer_id
@@ -66,41 +58,6 @@ ORDER BY
     o.created_at DESC
 LIMIT 100;
 ```
-
-### 1.3 One Column Per Line
-
-Every column in SELECT, every condition in WHERE/ON gets its own line.
-Exception: `SELECT COUNT(*)` or single-column queries.
-
-```sql
--- Correct
-SELECT
-    product_id,
-    product_name,
-    unit_price,
-    quantity_in_stock
-FROM product;
-
--- Wrong
-SELECT product_id, product_name, unit_price, quantity_in_stock FROM product;
-```
-
-### 1.4 Comma Placement
-
-Leading commas (comma at start of line). Easier to comment out columns, cleaner diffs.
-
-```sql
-SELECT
-    user_id
-    , first_name
-    , last_name
-    , email
-FROM account;
-```
-
-### 1.5 Trailing Semicolons
-
-Every statement ends with `;`. No exceptions.
 
 ---
 
@@ -530,3 +487,344 @@ cursor.executemany(
 ```
 
 See `security/STANDARDS.md` for comprehensive injection prevention rules.
+
+---
+
+## 10. Common Table Expressions
+
+### 10.1 CTE Style
+
+```sql
+WITH active_customer AS (
+    SELECT
+        id
+        , email
+        , created_at
+    FROM customer
+    WHERE deleted_at IS NULL
+),
+recent_order AS (
+    SELECT
+        customer_id
+        , MAX(created_at) AS last_order_at
+        , COUNT(*) AS order_count
+    FROM purchase_order
+    WHERE created_at >= CURRENT_DATE - INTERVAL '90 days'
+    GROUP BY customer_id
+)
+SELECT
+    ac.email
+    , ro.last_order_at
+    , ro.order_count
+FROM active_customer ac
+INNER JOIN recent_order ro
+    ON ro.customer_id = ac.id
+ORDER BY ro.order_count DESC;
+```
+
+### 10.2 CTE Naming
+
+- Descriptive snake_case — name describes the dataset, not the operation.
+- `active_customer` ✓ · `filtered_data` ✗ · `temp1` ✗
+- Prefix with adjective describing filter: `active_`, `recent_`, `unpaid_`
+
+### 10.3 CTE vs Subquery vs Temp Table
+
+| Technique | When |
+|---|---|
+| CTE | Referenced once or twice · improves readability · recursive queries |
+| Subquery | Simple one-off filter · EXISTS checks · scalar subqueries |
+| Temp table | Result reused 3+ times · needs index · large intermediate dataset |
+| Materialized CTE (Postgres) | CTE referenced multiple times with expensive computation |
+
+- ✗ deeply nested subqueries (>2 levels) — refactor to CTE.
+- ✗ CTE for trivial single-table filter that reads clearer as subquery.
+- Recursive CTEs must have explicit termination condition + `LIMIT` safeguard.
+
+```sql
+-- Recursive CTE with safety limit
+WITH RECURSIVE org_tree AS (
+    SELECT id, name, manager_id, 0 AS depth
+    FROM employee
+    WHERE manager_id IS NULL
+
+    UNION ALL
+
+    SELECT e.id, e.name, e.manager_id, ot.depth + 1
+    FROM employee e
+    INNER JOIN org_tree ot ON ot.id = e.manager_id
+    WHERE ot.depth < 20  -- ! prevent infinite recursion
+)
+SELECT * FROM org_tree;
+```
+
+---
+
+## 11. Stored Procedures
+
+### 11.1 When to Use
+
+| Use Stored Procedures For | ✗ Stored Procedures For |
+|---|---|
+| Complex multi-statement atomic operations | Business logic / domain rules |
+| Database-internal maintenance (vacuum, reindex) | Data validation (belongs in application) |
+| Triggers for audit logging | Workflow orchestration |
+| Performance-critical batch operations | Anything requiring unit testing at application layer |
+| Enforcing constraints beyond CHECK | API response formatting |
+
+### 11.2 Naming
+
+- Functions: `fn_<verb>_<noun>` → `fn_calculate_balance`, `fn_get_customer_tier`
+- Procedures: `sp_<verb>_<noun>` → `sp_archive_old_orders`, `sp_refresh_materialized`
+- Triggers: `tr_<table>_<timing>_<event>` → `tr_customer_before_update`
+
+### 11.3 Rules
+
+- ✗ business logic in database. Business rules change faster than schema — keep in application code.
+- Every procedure/function: comment block stating purpose, parameters, return.
+- Trigger cascade depth max 2. ✗ triggers firing triggers firing triggers.
+- Log procedure executions for operations that modify data.
+
+---
+
+## 12. Performance
+
+### 12.1 EXPLAIN Before Ship
+
+Every query touching >10K rows or joining 3+ tables: run `EXPLAIN ANALYZE` before merging.
+
+```sql
+-- Postgres
+EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+SELECT ...;
+
+-- DuckDB
+EXPLAIN ANALYZE
+SELECT ...;
+
+-- SQLite
+EXPLAIN QUERY PLAN
+SELECT ...;
+```
+
+Verify: no sequential scans on large tables without justification, no nested loops on large joins.
+
+### 12.2 N+1 Awareness
+
+✗ query in a loop. Batch.
+
+```python
+# WRONG — N+1
+for customer_id in customer_ids:
+    orders = db.execute(
+        "SELECT * FROM purchase_order WHERE customer_id = ?",
+        (customer_id,)
+    )
+
+# CORRECT — single query
+orders = db.execute(
+    "SELECT * FROM purchase_order WHERE customer_id IN ({})".format(
+        ",".join("?" * len(customer_ids))
+    ),
+    customer_ids
+)
+```
+
+Better: use `ANY()` with array parameter (Postgres) or CTE with VALUES.
+
+### 12.3 Pagination
+
+| Pattern | When | Trade-off |
+|---|---|---|
+| Keyset (cursor) | Default choice | Fast · stable · ✗ jump to page N |
+| OFFSET/LIMIT | Admin UIs with page numbers | Slow on large offset · unstable with concurrent writes |
+
+✗ OFFSET on >100K rows — O(offset) scan cost.
+
+```sql
+-- Keyset pagination (preferred)
+SELECT id, email, created_at
+FROM customer
+WHERE created_at < :last_seen_created_at
+ORDER BY created_at DESC
+LIMIT 50;
+
+-- OFFSET pagination (small datasets only)
+SELECT id, email, created_at
+FROM customer
+ORDER BY created_at DESC
+LIMIT 50 OFFSET :page_offset;
+```
+
+### 12.4 Batch Operations
+
+- Bulk INSERT: multi-row VALUES or `COPY` (Postgres) / `.import` (SQLite).
+- Bulk UPDATE: `UPDATE ... FROM` or CTE with joined update.
+- Bulk DELETE: `WHERE id IN (...)` limited to 1000 IDs per batch.
+- ✗ single-row INSERT in loop for bulk data.
+
+### 12.5 Query Performance Rules
+
+- ✗ functions on indexed columns in WHERE (`WHERE UPPER(email) = ...` bypasses index).
+  Use functional/expression index or store normalized form.
+- ✗ `SELECT DISTINCT` as fix for bad joins — fix the join.
+- ✗ `ORDER BY` without `LIMIT` on large tables.
+- ✗ correlated subqueries on large datasets — rewrite as JOIN.
+- Use `COUNT(*)` not `COUNT(column)` unless checking non-NULL specifically.
+
+See `performance/STANDARDS.md` for system-wide performance budgets.
+
+---
+
+## 13. DuckDB / SQLite Patterns
+
+### 13.1 DuckDB — Local Analytics
+
+DuckDB: in-process OLAP for analytics, EDA, data pipeline stages.
+
+```sql
+-- Read CSV directly (no import step)
+SELECT
+    product_category
+    , SUM(revenue) AS total_revenue
+    , COUNT(*) AS transaction_count
+FROM read_csv_auto('sales_2025.csv')
+GROUP BY product_category
+ORDER BY total_revenue DESC;
+
+-- Read Parquet (preferred for large data)
+CREATE TABLE sales AS
+SELECT * FROM read_parquet('data/sales_*.parquet');
+
+-- Export query results
+COPY (
+    SELECT * FROM sales WHERE region = 'EMEA'
+) TO 'emea_sales.parquet' (FORMAT PARQUET);
+```
+
+DuckDB rules:
+- Prefer Parquet over CSV for datasets >100MB.
+- Use `read_csv_auto` / `read_parquet` for one-off analysis — ✗ import to table first.
+- In-memory mode (`:memory:`) for ephemeral analytics. Persistent file for reusable data.
+- Leverage auto-vectorization — write standard SQL, avoid row-by-row patterns.
+
+### 13.2 SQLite — Local-First Application Data
+
+SQLite: embedded application database, local-first apps, config storage.
+
+```sql
+-- Enable WAL mode (always, for concurrent reads)
+PRAGMA journal_mode = WAL;
+
+-- Enable foreign key enforcement (off by default!)
+PRAGMA foreign_keys = ON;
+
+-- Recommended pragmas for production
+PRAGMA busy_timeout = 5000;
+PRAGMA synchronous = NORMAL;  -- WAL mode safe
+PRAGMA cache_size = -64000;   -- 64MB cache
+PRAGMA temp_store = MEMORY;
+```
+
+SQLite rules:
+- `PRAGMA foreign_keys = ON` at every connection open. ✗ assume it is enabled.
+- `PRAGMA journal_mode = WAL` for any multi-reader scenario.
+- Type affinity is not type enforcement — use `CHECK` constraints for strict typing.
+- ✗ concurrent writers. SQLite is single-writer. Queue writes or use WAL mode.
+- Use `INTEGER PRIMARY KEY` for rowid alias (auto-increment, fastest access).
+- Date storage: ISO-8601 text (`'2025-01-15T10:30:00Z'`) or Unix epoch integer.
+
+### 13.3 Virtual Tables / Extensions
+
+```sql
+-- SQLite FTS5 (full-text search)
+CREATE VIRTUAL TABLE doc_search USING fts5(
+    title, body, content=document, content_rowid=id
+);
+
+-- DuckDB spatial extension
+INSTALL spatial;
+LOAD spatial;
+SELECT ST_Area(geom) FROM parcel WHERE ST_Intersects(geom, :boundary);
+```
+
+- Document all extensions in project setup/README.
+- Pin extension versions in CI.
+
+---
+
+## 14. Anti-Patterns
+
+| Anti-Pattern | Problem | Fix |
+|---|---|---|
+| `SELECT *` in application code | Schema change breaks consumers silently | Explicit column list |
+| Implicit joins (comma FROM) | Missing join condition → cartesian product | ANSI `JOIN ... ON` |
+| Nullable FK without documented reason | Orphan relationship semantics unclear | `NOT NULL` FK or document why nullable |
+| `VARCHAR(255)` everywhere | No meaningful constraint · wastes optimizer hints | Right-sized `VARCHAR(n)` or `TEXT` |
+| Entity-Attribute-Value (EAV) | Unindexable · unqueryable · type-unsafe | Proper columns or JSONB |
+| Polymorphic associations | No referential integrity possible | Separate FK per target or bridge table |
+| Comma-separated values in column | Violates 1NF · impossible to index/join | Junction table |
+| `FLOAT`/`DOUBLE` for money | Rounding errors | `NUMERIC(19,4)` |
+| `LIKE '%search%'` on large table | Full scan, ignores indexes | Full-text search index |
+| Magic numbers in queries | `WHERE status = 3` — unreadable | Named constants or enum check |
+| `TRUNCATE` without safeguard | Irreversible data loss | Soft delete or backup-first |
+| `ORDER BY RAND()` | O(n) sort for random row | `OFFSET random_int LIMIT 1` on indexed column |
+
+---
+
+## 15. Checklist
+
+### New Table
+
+- [ ] Table name: singular snake_case
+- [ ] Primary key defined (named `pk_<table>`)
+- [ ] `created_at` and `updated_at` columns present, `NOT NULL`, with defaults
+- [ ] All constraints explicitly named (`fk_`, `uq_`, `ck_`, `pk_`)
+- [ ] Foreign keys indexed
+- [ ] Columns `NOT NULL` unless documented reason for nullable
+- [ ] No reserved words as identifiers
+- [ ] Appropriate data types (✗ stringly-typed)
+- [ ] Timestamps stored in UTC
+
+### New Query
+
+- [ ] Explicit column list (✗ `SELECT *`)
+- [ ] ANSI JOIN syntax with `ON` clauses
+- [ ] Parameterized values (✗ string interpolation)
+- [ ] `EXPLAIN ANALYZE` run on queries touching >10K rows
+- [ ] Pagination uses keyset pattern (or documented OFFSET justification)
+- [ ] ✗ N+1 patterns — batch queries
+- [ ] Leading commas · leading `AND`/`OR` · one column per line
+- [ ] Keywords uppercase · identifiers lowercase
+
+### New Migration
+
+- [ ] Sequential number + timestamp + descriptive name
+- [ ] Contains both up and down sections
+- [ ] One change per migration file
+- [ ] Schema and data changes in separate files
+- [ ] Down migration tested — cleanly reverses up
+- [ ] Backward compatible with running application
+- [ ] Large table operations use batching / concurrent index creation
+
+### New Index
+
+- [ ] Named `ix_<table>_<columns>`
+- [ ] Column order follows equality → range → sort
+- [ ] Not duplicating existing index prefix
+- [ ] Partial index considered for filtered queries
+- [ ] Covering index considered for read-heavy queries
+
+### SQLite Connection
+
+- [ ] `PRAGMA foreign_keys = ON`
+- [ ] `PRAGMA journal_mode = WAL`
+- [ ] `PRAGMA busy_timeout` set
+- [ ] `PRAGMA synchronous = NORMAL` (with WAL)
+
+### Security
+
+- [ ] All user-supplied values parameterized
+- [ ] Dynamic identifiers validated against allowlist
+- [ ] ✗ SQL string concatenation with external input
+- [ ] Least-privilege DB user for application connections

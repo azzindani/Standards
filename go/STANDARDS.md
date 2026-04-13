@@ -696,3 +696,200 @@ tidy:
 	go mod tidy
 	go mod verify
 ```
+
+---
+
+## 13. Performance
+
+See `performance/STANDARDS.md` for general profiling strategy. Go-specific optimizations below.
+
+### Allocation Reduction
+
+| Technique | Example |
+|---|---|
+| Pre-allocate slices when size known | `make([]T, 0, expectedLen)` |
+| Reuse buffers with `sync.Pool` | See below |
+| Avoid `fmt.Sprintf` in hot paths | Use `strconv` or string concatenation |
+| Pass large structs by pointer | `func process(s *LargeStruct)` not `func process(s LargeStruct)` |
+| Use `strings.Builder` for concatenation | ✗ `+=` in loops |
+| Return slices, ✗ append to parameter | Caller controls allocation |
+
+### sync.Pool
+
+```go
+var bufPool = sync.Pool{
+    New: func() any {
+        return new(bytes.Buffer)
+    },
+}
+
+func process(data []byte) string {
+    buf := bufPool.Get().(*bytes.Buffer)
+    defer func() {
+        buf.Reset()
+        bufPool.Put(buf)
+    }()
+    // use buf...
+    return buf.String()
+}
+```
+
+### Profiling
+
+```go
+// CPU profile
+import _ "net/http/pprof"
+go func() { http.ListenAndServe("localhost:6060", nil) }()
+// Then: go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30
+
+// Memory profile
+// go tool pprof http://localhost:6060/debug/pprof/heap
+
+// Trace
+// go tool trace http://localhost:6060/debug/pprof/trace?seconds=5
+```
+
+### Benchmark-Driven Optimization
+
+| Rule | Detail |
+|---|---|
+| ✗ optimize without benchmark proof | Write `BenchmarkX` first, measure, then optimize |
+| Use `b.ReportAllocs()` | Track allocations per operation |
+| Compare with `benchstat` | `benchstat old.txt new.txt` for statistical comparison |
+| `-benchmem` flag | `go test -bench=. -benchmem` |
+
+### Hot Path Rules
+
+| Rule | Detail |
+|---|---|
+| ✗ `interface{}` / `any` in hot paths | Type assertions have cost |
+| ✗ reflection in hot paths | `reflect` = 10–100x slower |
+| Minimize allocations per request | Target zero-alloc for critical paths |
+| Use `[]byte` over `string` when mutating | Avoid copy on conversion |
+
+---
+
+## 14. Go-Specific Anti-Patterns
+
+| Anti-Pattern | Problem | Fix |
+|---|---|---|
+| Nil pointer without check | Panic at runtime | Check `if x == nil` before dereference |
+| Unclosed resources | Leak: file descriptors, connections, goroutines | `defer f.Close()` immediately after open; check close error on writes |
+| `init()` overuse | Hidden execution order, hard to test | Explicit initialization in `main()` or constructors |
+| Goroutine fire-and-forget | Leak, lost errors, no shutdown | Use `errgroup`, track lifecycle, pass `context.Context` |
+| Naked return in long functions | Unreadable — unclear what's returned | Named returns only when function ≤ 10 lines |
+| Interface pollution | Premature abstraction, unused interfaces | Extract interface only when needed by consumer |
+| `panic` for control flow | Crashes production, unrecoverable | Return `error` — `panic` only for programmer bugs |
+| Empty error wrapping | Lost context — debugging nightmare | Always wrap: `fmt.Errorf("context: %w", err)` |
+| Package-level mutable state | Race conditions, test pollution | Pass dependencies explicitly, ✗ global `var` |
+| `select{}` without `ctx.Done()` | Goroutine blocks forever if context canceled | Always include `case <-ctx.Done():` |
+| String keyed context values | Collision risk across packages | Use unexported struct type as key |
+| Ignoring `Close()` errors | Data loss on buffered writers | `if err := w.Close(); err != nil { ... }` |
+| Slice append without understanding | Shared backing array mutation | Copy slice before modifying if shared |
+| `time.Sleep` for synchronization | Flaky, slow | Use channels, `sync.WaitGroup`, or `sync.Cond` |
+
+### Resource Cleanup Pattern
+
+```go
+f, err := os.Create(path)
+if err != nil {
+    return fmt.Errorf("create %s: %w", path, err)
+}
+defer func() {
+    if cerr := f.Close(); cerr != nil && err == nil {
+        err = fmt.Errorf("close %s: %w", path, cerr)
+    }
+}()
+```
+
+---
+
+## 15. Checklist
+
+### Package & Module
+
+- [ ] Package names: short, lowercase, no underscores
+- [ ] ✗ stutter (`auth.AuthClient` → `auth.Client`)
+- [ ] Domain logic in `internal/`
+- [ ] `go mod tidy` run, `go.sum` committed
+- [ ] ✗ `replace` directives in library modules
+
+### Interfaces
+
+- [ ] Interfaces ≤ 3 methods
+- [ ] Defined at consumer, not provider
+- [ ] Functions accept interfaces, return concrete structs
+
+### Errors
+
+- [ ] All returned errors checked
+- [ ] Errors wrapped with context at boundaries: `fmt.Errorf("...: %w", err)`
+- [ ] Sentinel errors use `ErrX` naming, checked with `errors.Is`
+- [ ] Custom error types checked with `errors.As`
+- [ ] ✗ `panic` for expected failures
+- [ ] ✗ log-and-return (choose one)
+
+### Naming
+
+- [ ] Exported = `PascalCase`, unexported = `camelCase`
+- [ ] Acronyms all-caps (`HTTP`, `ID`, `URL`)
+- [ ] Receivers = 1–2 letter abbreviation
+- [ ] Constructors = `NewX` pattern
+- [ ] Getters = field name, ✗ `Get` prefix
+
+### Structs
+
+- [ ] Fields ordered by alignment, grouped by purpose
+- [ ] ✗ exported type embedded in exported struct
+- [ ] Constructors validate inputs, return `(*T, error)`
+- [ ] Functional options for complex configuration
+
+### Concurrency
+
+- [ ] Every goroutine has known shutdown path
+- [ ] `context.Context` passed and respected
+- [ ] Mutex scope minimized — ✗ lock held during I/O
+- [ ] `errgroup` used when goroutine errors matter
+- [ ] ✗ goroutine leaks (unbuffered chan with no reader)
+
+### Context
+
+- [ ] First parameter, named `ctx`
+- [ ] ✗ stored in struct fields
+- [ ] Timeouts set at entry points
+- [ ] `ctx.Err()` checked in long loops
+- [ ] Context values = request-scoped metadata only
+
+### Testing
+
+- [ ] Table-driven tests with named cases
+- [ ] `t.Helper()` on test helper functions
+- [ ] `t.Cleanup()` for resource teardown
+- [ ] `httptest` for HTTP testing
+- [ ] Build tags separate integration/e2e tests
+- [ ] Benchmarks use `b.ReportAllocs()`
+
+### Tooling
+
+- [ ] `gofmt` applied (zero tolerance)
+- [ ] `go vet` passes
+- [ ] `golangci-lint` configured and passing
+- [ ] `govulncheck` run periodically
+- [ ] `-race` flag in test CI
+
+### Performance
+
+- [ ] Slices pre-allocated when size known
+- [ ] `sync.Pool` for frequently allocated buffers
+- [ ] ✗ reflection/`any` in hot paths
+- [ ] ✗ optimization without benchmark proof
+- [ ] `strings.Builder` for string concatenation
+
+### Anti-Patterns Avoided
+
+- [ ] ✗ nil pointer dereference without check
+- [ ] ✗ unclosed resources
+- [ ] ✗ `init()` for complex initialization
+- [ ] ✗ fire-and-forget goroutines
+- [ ] ✗ package-level mutable state
+- [ ] ✗ `time.Sleep` for synchronization
