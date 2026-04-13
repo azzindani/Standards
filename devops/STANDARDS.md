@@ -487,3 +487,81 @@ configuration/STANDARDS.md for secret cascade patterns.
 - Old container images purged per retention policy (§2)
 - Expired feature-branch environments destroyed automatically (§4)
 
+---
+
+## 12. Scale Matrix
+
+Apply rules proportionally to project scale.
+
+| Rule | Side Project / PoC | Small Production | Large Production |
+|---|---|---|---|
+| Infrastructure as Code (§1) | Scripts or manual ok | IaC for all infra; local state ok | Full IaC · remote state · drift detection · peer review |
+| Containers (§2) | Any base image; no scanning | Minimal base · scanning on build | Distroless · signed images · enforced size budgets |
+| Deployment (§3) | Manual deploy ok | Rolling update via CI/CD | Canary/blue-green · automated rollback · smoke tests |
+| Environments (§4) | Local + production | Dev + staging + production | Full tier model · ephemeral envs · parity enforced |
+| Monitoring (§5) | Basic health check | Infrastructure + application metrics · alerts | Full SLO-based alerting · dashboards · anomaly detection |
+| Incident Response (§6) | Fix when noticed | Severity levels · postmortems for SEV-1/2 | Full incident workflow · on-call rotation · all postmortems |
+| Scaling (§7) | Single instance | Manual scaling; min 2 instances | Auto-scaling · capacity planning · load testing |
+| Backup & DR (§8) | Manual backup | Automated daily backups · quarterly restore test | Continuous replication · multi-region · monthly DR drill |
+| Networking (§9) | Direct connections | TLS everywhere · basic segmentation | Service mesh · mTLS · network policies · L7 load balancing |
+| Secrets (§10) | Environment variables | Centralized vault · no static creds in code | Dynamic secrets · auto-rotation · audit logging |
+| Cost Management (§11) | Not needed | Tagged resources · monthly review | Full unit economics · automated cleanup · budget alerts |
+
+### Scale Transition
+
+Graduating to next scale: apply incrementally using strangler fig pattern.
+See architecture/STANDARDS.md §11. Priority order for upgrades:
+1. Secrets management (security risk)
+2. Backup & DR (data loss risk)
+3. Monitoring & alerting (visibility)
+4. IaC (reproducibility)
+5. Deployment automation (reliability)
+6. Everything else
+
+---
+
+## 13. Checklist
+
+### New Service — Infrastructure Setup
+
+- [ ] Infrastructure defined in IaC; committed to version control (§1)
+- [ ] All resources tagged: environment, service, team, cost-center, managed-by (§1)
+- [ ] Container image built: minimal base, non-root, health check, size within budget (§2)
+- [ ] Image scanned for vulnerabilities; no critical/high findings (§2)
+- [ ] Deployment strategy selected and configured with automated rollback (§3)
+- [ ] All environments provisioned from IaC; parity validated (§4)
+- [ ] Infrastructure metrics collected and dashboarded (§5)
+- [ ] Application metrics collected; SLO-based alerts configured (§5)
+- [ ] Severity levels assigned to all alerts; runbooks written (§5, §6)
+- [ ] Incident escalation path defined (§6)
+- [ ] Scaling limits defined: min instances, max instances, scale triggers (§7)
+- [ ] Backup configured and first restore test passed (§8)
+- [ ] RTO/RPO tier assigned and validated (§8)
+- [ ] TLS enabled on all endpoints; certificates auto-renewed (§9)
+- [ ] Network segmentation enforced; egress restricted (§9)
+- [ ] Secrets in vault; no static credentials in code or config (§10)
+- [ ] Secret rotation schedule defined (§10)
+- [ ] Cost tags applied; budget alert configured (§11)
+
+### Ongoing Operations
+
+- [ ] Monthly: cost review, right-sizing assessment (§11)
+- [ ] Monthly: restore test for critical-tier data (§8)
+- [ ] Quarterly: capacity planning review (§7)
+- [ ] Quarterly: alert tuning — remove or adjust noisy alerts (§5)
+- [ ] Quarterly: secret rotation compliance check (§10)
+- [ ] Quarterly: resource right-sizing review (§11)
+- [ ] Annually: DR failover drill (§8)
+- [ ] Annually: full security audit of infrastructure (See security/STANDARDS.md)
+- [ ] Per incident: postmortem within SLA (§6)
+- [ ] Per incident: action items tracked to completion (§6)
+
+### Pre-Production Gate
+
+- [ ] All §13 "New Service" items completed
+- [ ] Load test passed at 2x expected peak traffic (§7)
+- [ ] DR failover tested at least once (§8)
+- [ ] On-call rotation established with ≥ 2 engineers (§6)
+- [ ] Runbooks written for all paging alerts (§5, §6)
+- [ ] Deployment runbook written and rehearsed (§3)
+- [ ] Cost projection reviewed and approved (§11)
