@@ -36,7 +36,7 @@ Central standards library for all projects. Each standard = one directory + one 
 |---|---|---|---|
 | 1 | `architecture/` | System structure · tier model · 29 core principles | Done |
 | 2 | `design/` | Design patterns · module design · abstraction rules | Planned |
-| 3 | `directory/` | Project layout · file organization · naming | Planned |
+| 3 | `directory/` | Project layout · file organization · naming | Done |
 | 4 | `code_writing/` | Clean code · readability · function style · naming | Planned |
 | 5 | `testing/` | Test pyramid · contract tests · coverage strategy | Planned |
 | 6 | `error_handling/` | Error types · boundaries · recovery · reporting | Planned |
