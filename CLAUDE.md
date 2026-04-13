@@ -39,7 +39,7 @@ Central standards library for all projects. Each standard = one directory + one 
 | 3 | `directory/` | Project layout · file organization · naming | Done |
 | 4 | `code_writing/` | Clean code · readability · function style · naming | Planned |
 | 5 | `testing/` | Test pyramid · contract tests · coverage strategy | Done |
-| 6 | `error_handling/` | Error types · boundaries · recovery · reporting | Planned |
+| 6 | `error_handling/` | Error types · boundaries · recovery · reporting | Done |
 | 7 | `observability/` | Structured logging · receipts · metrics · health | Done |
 | 8 | `security/` | Validation boundary · secrets · access control · input | Done |
 | 9 | `api/` | API design · protocols · contracts · versioning · serialization | Done |
@@ -49,7 +49,7 @@ Central standards library for all projects. Each standard = one directory + one 
 | 13 | `git/` | Branching · commits · tags · workflows · history | Done |
 | 14 | `cicd/` | Build · test · lint · deploy · release stages | Done |
 | 15 | `documentation/` | Code docs · API docs · decision records · runbooks | Planned |
-| 16 | `performance/` | Profiling · budgets · optimization · caching | Planned |
+| 16 | `performance/` | Profiling · budgets · optimization · caching | Done |
 | 17 | `devops/` | Infrastructure · containers · deployment · monitoring | Planned |
 | 18 | `code_review/` | Review criteria · approval flow · feedback style | Planned |
 | 19 | `workflow/` | Idea → PoC → production lifecycle · task management | Planned |
