@@ -178,71 +178,24 @@ See `database/STANDARDS.md` for migration and schema evolution rules.
 
 ### 5.1 Explicit Column Lists
 
-```sql
--- Correct
-SELECT
-    customer_id
-    , first_name
-    , email
-FROM customer;
-
--- Wrong: schema changes silently break consumers
-SELECT * FROM customer;
-```
-
-✗ `SELECT *` in application queries. Allowed only in: ad-hoc exploration, `EXISTS` subqueries, CTEs that immediately follow with explicit column list.
+✗ `SELECT *` in application queries. Allowed only in: ad-hoc exploration, `EXISTS` subqueries, CTEs immediately followed by explicit column list.
 
 ### 5.2 ANSI JOIN Syntax
 
-✗ implicit joins (comma-separated FROM with WHERE conditions).
-
-```sql
--- Correct (ANSI)
-SELECT
-    o.id
-    , c.email
-FROM purchase_order o
-INNER JOIN customer c
-    ON c.id = o.customer_id;
-
--- Wrong (implicit/theta)
-SELECT
-    o.id
-    , c.email
-FROM purchase_order o, customer c
-WHERE c.id = o.customer_id;
-```
+✗ implicit joins (comma-separated FROM with WHERE). Always `JOIN ... ON`.
 
 ### 5.3 Table Aliases
 
-- Use short meaningful aliases, not single letters (unless table name is short).
-- Alias every table when query has 2+ tables.
+Short meaningful aliases. Alias every table when query has 2+ tables.
+FROM the driving table first. JOIN in logical dependency order.
 
-| Table | Acceptable Aliases |
-|---|---|
-| `customer` | `c`, `cust` |
-| `purchase_order` | `o`, `po` |
-| `order_line_item` | `li`, `oli` |
-| Single-table query | No alias needed |
+### 5.4 WHERE Clause Style
 
-### 5.4 JOIN Order
+Leading `AND`/`OR` operators. ✗ trailing `AND`. Parenthesize complex conditions even when precedence is unambiguous.
 
-FROM the driving/primary table first. JOIN tables in logical dependency order.
+### 5.5 INSERT Style
 
-### 5.5 WHERE Clause Style
-
-```sql
-WHERE
-    o.status = 'shipped'
-    AND o.created_at >= :start_date
-    AND o.total_amount > 0
-```
-
-- Leading `AND`/`OR` operators.
-- ✗ trailing `AND` style.
-- Group complex conditions with parentheses — even when precedence is unambiguous.
-
-### 5.6 INSERT Style
+Always specify column list. ✗ `INSERT INTO table VALUES (...)` without columns.
 
 ```sql
 INSERT INTO customer (
@@ -257,8 +210,6 @@ INSERT INTO customer (
     , NOW()
 );
 ```
-
-✗ `INSERT INTO table VALUES (...)` without column list.
 
 ---
 

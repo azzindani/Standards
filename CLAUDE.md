@@ -63,7 +63,7 @@ Central standards library for all projects. Each standard = one directory + one 
 | 22 | `go/` | Package layout · interfaces · error returns · concurrency | Planned |
 | 23 | `typescript/` | Types · modules · async patterns · build config | Planned |
 | 24 | `shell/` | Script structure · error handling · portability | Planned |
-| 25 | `sql/` | Query style · schema conventions · migration format | Planned |
+| 25 | `sql/` | Query style · schema conventions · migration format | Done |
 
 ### Domain-Specific
 
@@ -71,7 +71,7 @@ Central standards library for all projects. Each standard = one directory + one 
 |---|---|---|---|
 | 26 | `local_mcp/` | MCP server development · tool design · engine/server split | Done |
 | 27 | `html_generation/` | Charts · dashboards · theming · offline-first output | Done |
-| 28 | `data_pipeline/` | ETL · data validation · schema enforcement · batch | Planned |
+| 28 | `data_pipeline/` | ETL · data validation · schema enforcement · batch | Done |
 | 29 | `cli/` | Argument parsing · output format · exit codes · help | Done |
 | 30 | `web/` | Routing · middleware · state · auth · frontend/backend | Planned |
 | 31 | `ml/` | Model lifecycle · experiment tracking · data versioning | Planned |
