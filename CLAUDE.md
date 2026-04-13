@@ -42,7 +42,7 @@ Central standards library for all projects. Each standard = one directory + one 
 | 6 | `error_handling/` | Error types · boundaries · recovery · reporting | Planned |
 | 7 | `observability/` | Structured logging · receipts · metrics · health | Done |
 | 8 | `security/` | Validation boundary · secrets · access control · input | Done |
-| 9 | `api/` | API design · protocols · contracts · versioning · serialization | Planned |
+| 9 | `api/` | API design · protocols · contracts · versioning · serialization | Done |
 | 10 | `database/` | Schema design · migrations · queries · transactions | Planned |
 | 11 | `configuration/` | Cascade · environment · secrets · feature flags | Planned |
 | 12 | `dependencies/` | Versioning · isolation · wrappers · lock files | Done |
