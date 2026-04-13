@@ -421,3 +421,617 @@ function isRole(v: string): v is Role {
 - ✗ Use in libraries (breaks `--isolatedModules`, `--preserveConstEnums`)
 - Allowed in application code only when bit-flag arithmetic needed
 - ✗ String `const enum` — use string literal union instead
+
+---
+
+## 7. Function Types
+
+### 7.1 Parameter and Return Type Rules
+
+| Rule | Detail |
+|---|---|
+| Parameter types | Always explicit — ✗ rely on inferred parameter types |
+| Return types on public functions | Always explicit — documents contract, catches drift |
+| Return types on private/internal | Inferred allowed — reduces noise when function is short |
+| Arrow vs function declaration | Declarations for named exports; arrows for callbacks and inline |
+| Max parameters | 3 positional. Beyond 3 → use options object |
+
+```typescript
+// ✗ Too many positional parameters
+function createUser(name: string, email: string, role: string, active: boolean): User;
+
+// ✓ Options object
+interface CreateUserOptions {
+  name: string;
+  email: string;
+  role: Role;
+  active?: boolean; // default: true
+}
+function createUser(options: CreateUserOptions): User;
+```
+
+### 7.2 Generic Constraints
+
+Always constrain generics. ✗ unconstrained `<T>` unless truly universal.
+
+```typescript
+// ✗ Unconstrained — accepts anything
+function merge<T>(a: T, b: T): T;
+
+// ✓ Constrained to objects
+function merge<T extends Record<string, unknown>>(a: T, b: Partial<T>): T;
+```
+
+Use `extends` to bound, `keyof` for key access, `infer` sparingly.
+
+### 7.3 Overloads
+
+Use overloads only when return type varies by input. If return type is constant,
+use a union parameter or optional parameter instead.
+
+```typescript
+// ✓ Overloads — return type changes based on input
+function parse(input: string): ParsedText;
+function parse(input: Buffer): ParsedBinary;
+function parse(input: string | Buffer): ParsedText | ParsedBinary {
+  // implementation
+}
+```
+
+Implementation signature is not callable — only overload signatures are visible to callers.
+
+### 7.4 Callbacks and Higher-Order Functions
+
+```typescript
+// ✓ Named type for reusable callbacks
+type Predicate<T> = (item: T) => boolean;
+type AsyncMapper<T, R> = (item: T) => Promise<R>;
+
+// ✓ Explicit parameter types in callbacks when not inferable
+const filtered = items.filter((item: User): item is ActiveUser => item.active);
+```
+
+---
+
+## 8. Error Handling
+
+Ref: `architecture/STANDARDS.md` §7 (Error Architecture), `error_handling/STANDARDS.md`.
+
+### 8.1 Typed Error Classes
+
+Every module defines its own error classes extending a base.
+
+```typescript
+abstract class AppError extends Error {
+  abstract readonly code: string;
+  abstract readonly statusCode: number;
+  readonly timestamp = new Date();
+
+  constructor(message: string, public readonly cause?: unknown) {
+    super(message);
+    this.name = this.constructor.name;
+  }
+}
+
+class NotFoundError extends AppError {
+  readonly code = "NOT_FOUND";
+  readonly statusCode = 404;
+}
+
+class ValidationError extends AppError {
+  readonly code = "VALIDATION_FAILED";
+  readonly statusCode = 400;
+  constructor(message: string, public readonly fields: string[]) {
+    super(message);
+  }
+}
+```
+
+### 8.2 Result Pattern
+
+Prefer `Result<T, E>` over throw/catch for expected failures. Reserve `throw` for
+unexpected / programmer errors.
+
+```typescript
+type Result<T, E = Error> =
+  | { readonly kind: "ok"; readonly value: T }
+  | { readonly kind: "error"; readonly error: E };
+
+function ok<T>(value: T): Result<T, never> {
+  return { kind: "ok", value };
+}
+
+function err<E>(error: E): Result<never, E> {
+  return { kind: "error", error };
+}
+
+// Usage
+function parseConfig(raw: string): Result<Config, ParseError> {
+  try {
+    const data = JSON.parse(raw) as unknown;
+    const config = validateConfig(data);
+    return ok(config);
+  } catch (e) {
+    return err(new ParseError("Invalid config", e));
+  }
+}
+```
+
+### 8.3 Error Handling Decision Table
+
+| Error Type | Mechanism | Example |
+|---|---|---|
+| Expected business failure | `Result<T, E>` | Validation failure, not found |
+| Unexpected programmer error | `throw` | Null deref, index out of bounds |
+| Async boundary error | `try/catch` returning `Result` | Network timeout, file not found |
+| Exhaustive check failure | `assertNever` | Missing switch case |
+
+```typescript
+function assertNever(x: never): never {
+  throw new Error(`Unexpected value: ${JSON.stringify(x)}`);
+}
+```
+
+### 8.4 ✗ Swallowing Errors
+
+```typescript
+// ✗ Silent swallow
+try { riskyOp(); } catch { /* empty */ }
+
+// ✗ Logging and continuing without handling
+try { riskyOp(); } catch (e) { console.log(e); }
+
+// ✓ Handle, transform, or propagate
+try {
+  riskyOp();
+} catch (e) {
+  return err(AppError.fromUnknown(e));
+}
+```
+
+---
+
+## 9. Build Configuration
+
+### 9.1 tsconfig.json — Required Settings
+
+```jsonc
+{
+  "compilerOptions": {
+    // Type safety
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalProperties": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // Module system
+    "module": "NodeNext",           // or "ESNext" for bundled apps
+    "moduleResolution": "NodeNext", // or "Bundler" for bundled apps
+    "esModuleInterop": true,
+    "isolatedModules": true,        // required for esbuild/swc/bun
+    "verbatimModuleSyntax": true,   // enforces `import type`
+
+    // Output
+    "target": "ES2022",             // minimum — baseline for Node 18+
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": "src",
+
+    // Path aliases
+    "baseUrl": ".",
+    "paths": { "@/*": ["src/*"] }
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}
+```
+
+### 9.2 Target and Module Matrix
+
+| Environment | `target` | `module` | `moduleResolution` |
+|---|---|---|---|
+| Node 18+ (ESM) | `ES2022` | `NodeNext` | `NodeNext` |
+| Node 18+ (CJS legacy) | `ES2022` | `CommonJS` | `Node` |
+| Browser (bundled) | `ES2022` | `ESNext` | `Bundler` |
+| Library (dual) | `ES2022` | `NodeNext` | `NodeNext` |
+| Deno | `ESNext` | `ESNext` | `Bundler` |
+
+### 9.3 Path Aliases
+
+One alias prefix per project: `@/*` → `src/*`. ✗ multiple alias prefixes unless
+monorepo with distinct packages.
+
+Runtime resolution requires `tsx`, `tsconfig-paths`, or bundler — raw `tsc` output
+does not resolve aliases. Libraries: ✗ path aliases — use relative imports for
+published packages.
+
+### 9.4 Project References (Monorepo)
+
+```jsonc
+// tsconfig.json (root)
+{
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/api" }
+  ]
+}
+```
+
+Each package has own `tsconfig.json` with `composite: true`.
+
+---
+
+## 10. Project Structure
+
+Follows `architecture/STANDARDS.md` §2 tier model mapped to directories.
+
+### 10.1 `src/` Layout
+
+```
+src/
+├── types/           # Tier 0 — shared types, branded types, constants
+│   ├── user.ts
+│   ├── errors.ts
+│   └── index.ts     # barrel
+├── engine/          # Tier 1 — domain logic, validators, transforms
+│   ├── user.ts
+│   └── index.ts
+├── services/        # Tier 2 — orchestration, use cases
+│   ├── user-service.ts
+│   └── index.ts
+├── adapters/        # Tier 3 — I/O: HTTP, DB, file, CLI
+│   ├── http/
+│   ├── db/
+│   └── index.ts
+├── config.ts        # Tier 0 — config schema
+├── main.ts          # entry point (Tier 3)
+└── index.ts         # public API barrel (libraries only)
+```
+
+### 10.2 File Naming
+
+| Entity | Convention | Example |
+|---|---|---|
+| Source files | `kebab-case.ts` | `user-service.ts` |
+| Test files | `*.test.ts` (colocated) or `__tests__/` | `user-service.test.ts` |
+| Type declaration files | `*.d.ts` | `env.d.ts` |
+| Constants files | `constants.ts` or within `types/` | `types/roles.ts` |
+| Config files | Root of project | `tsconfig.json`, `.eslintrc.cjs` |
+
+### 10.3 Declaration Files
+
+| Scenario | Action |
+|---|---|
+| Augmenting `process.env` | `src/env.d.ts` with `declare namespace NodeJS` |
+| Untyped npm package | `src/types/<package>.d.ts` with `declare module` |
+| Global type augmentation | `src/types/global.d.ts` — ✗ pollute global namespace beyond env |
+| Generated types (DB schema, API) | `src/generated/` — ✗ hand-edit, regenerate via scripts |
+
+### 10.4 Barrel File Rules
+
+- Barrel (`index.ts`) exports only public API of directory
+- ✗ Logic in barrel files — only `export { X } from "./x.js"` statements
+- ✗ Default exports — use named exports exclusively
+- Entry point `src/index.ts` for libraries; `src/main.ts` for applications
+
+---
+
+## 11. Testing
+
+Ref: `testing/STANDARDS.md` for general test strategy.
+
+### 11.1 Framework
+
+| Category | Tool |
+|---|---|
+| Test runner | Vitest (preferred) or Jest with `ts-jest` |
+| Assertion | Vitest built-in or `expect` from Jest |
+| Type testing | `expectTypeOf` (Vitest built-in) or `tsd` |
+| Mocking | Vitest `vi.mock` / Jest `jest.mock` |
+| HTTP mocking | `msw` (Mock Service Worker) |
+| E2E (API) | Supertest + Vitest |
+
+### 11.2 Type Testing
+
+Verify complex types at the type level — catches type regressions without runtime code.
+
+```typescript
+import { expectTypeOf } from "vitest";
+
+test("parseConfig returns Config", () => {
+  expectTypeOf(parseConfig).returns.toEqualTypeOf<Result<Config, ParseError>>();
+});
+
+test("User.id is branded UserId", () => {
+  expectTypeOf<User["id"]>().toEqualTypeOf<UserId>();
+});
+```
+
+### 11.3 Mocking Typed Modules
+
+```typescript
+import { vi, describe, it, expect } from "vitest";
+import { UserService } from "../services/user-service.js";
+
+// ✓ Typed mock — vi.mock auto-types the module
+vi.mock("../adapters/db/user-repo.js", () => ({
+  findById: vi.fn().mockResolvedValue({ id: "1", name: "Test" }),
+}));
+
+// ✗ Casting to any to bypass types in mocks
+// ✗ Incomplete mocks missing required interface fields
+```
+
+### 11.4 Test Organization
+
+```typescript
+describe("UserService", () => {
+  describe("createUser", () => {
+    it("returns ok with valid input", async () => { /* ... */ });
+    it("returns error for duplicate email", async () => { /* ... */ });
+    it("returns error for invalid role", async () => { /* ... */ });
+  });
+});
+```
+
+Rules:
+- One `describe` per module/class, nested `describe` per method
+- Test names describe expected behavior, not implementation
+- Test pure logic (Tier 0–1) with unit tests, no mocks needed
+- Test services (Tier 2) with mocked adapters
+- Test adapters (Tier 3) with integration tests against real I/O
+
+---
+
+## 12. Linting & Formatting
+
+### 12.1 Required Toolchain
+
+| Tool | Purpose |
+|---|---|
+| `typescript-eslint` | Type-aware linting |
+| `eslint` v9+ | Flat config format |
+| `prettier` | Formatting (non-negotiable — ✗ manual formatting debates) |
+
+### 12.2 ESLint — Minimum Rule Set
+
+```typescript
+// eslint.config.mjs
+import eslint from "@eslint/js";
+import tseslint from "typescript-eslint";
+
+export default tseslint.config(
+  eslint.configs.recommended,
+  ...tseslint.configs.strictTypeChecked,
+  ...tseslint.configs.stylisticTypeChecked,
+  {
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      // Critical
+      "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": "error",
+      "@typescript-eslint/strict-boolean-expressions": "error",
+      "@typescript-eslint/switch-exhaustiveness-check": "error",
+      "@typescript-eslint/no-non-null-assertion": "warn",
+
+      // Import discipline
+      "import/no-cycle": ["error", { maxDepth: 5 }],
+      "import/no-default-export": "error",
+
+      // Naming
+      "@typescript-eslint/naming-convention": [
+        "error",
+        { selector: "typeLike", format: ["PascalCase"] },
+        { selector: "variable", format: ["camelCase", "UPPER_CASE"] },
+        { selector: "function", format: ["camelCase"] },
+      ],
+    },
+  }
+);
+```
+
+### 12.3 Prettier — Required Settings
+
+```jsonc
+// .prettierrc
+{
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "printWidth": 100,
+  "tabWidth": 2
+}
+```
+
+✗ Overriding Prettier with ESLint formatting rules. Prettier owns formatting; ESLint owns logic.
+
+### 12.4 Pre-Commit Enforcement
+
+| Tool | Purpose |
+|---|---|
+| `lint-staged` | Run linters on staged files only |
+| `husky` or `lefthook` | Git hook management |
+
+```jsonc
+// package.json
+{
+  "lint-staged": {
+    "*.ts": ["eslint --fix", "prettier --write"]
+  }
+}
+```
+
+---
+
+## 13. Runtime Validation
+
+TypeScript types evaporate at runtime. All data entering Tier 3 boundaries
+must be validated. Ref: `architecture/STANDARDS.md` §2 (Tier 3 — I/O boundary).
+
+### 13.1 Validation Library
+
+| Library | Use When |
+|---|---|
+| `zod` | Default choice — mature, broad ecosystem |
+| `valibot` | Bundle-size sensitive (tree-shakeable) |
+| `arktype` | Performance-critical with complex schemas |
+
+### 13.2 Schema-First at Boundaries
+
+```typescript
+import { z } from "zod";
+
+// Define schema (source of truth)
+const UserSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(200),
+  email: z.string().email(),
+  role: z.enum(["admin", "editor", "viewer"]),
+});
+
+// Derive TypeScript type from schema — ✗ duplicate type definitions
+type User = z.infer<typeof UserSchema>;
+
+// Validate at boundary (Tier 3)
+function handleCreateUser(body: unknown): Result<User, ValidationError> {
+  const parsed = UserSchema.safeParse(body);
+  if (!parsed.success) {
+    return err(new ValidationError("Invalid user", parsed.error.issues));
+  }
+  return ok(parsed.data); // typed as User
+}
+```
+
+### 13.3 Validation Placement
+
+| Boundary | Validate |
+|---|---|
+| HTTP request body/params/query | Always — `unknown` → schema |
+| Environment variables | At startup — fail fast |
+| Config files (JSON/YAML) | At load time |
+| Database query results | When schema could drift (generated types preferred) |
+| Third-party API responses | Always — external contract can change |
+| Internal function calls (Tier 0–2) | ✗ — types are sufficient; runtime checks waste cycles |
+
+### 13.4 Environment Variable Validation
+
+```typescript
+const EnvSchema = z.object({
+  NODE_ENV: z.enum(["development", "production", "test"]),
+  PORT: z.coerce.number().int().min(1).max(65535),
+  DATABASE_URL: z.string().url(),
+  API_KEY: z.string().min(1),
+});
+
+// Validate at startup — process exits immediately on failure
+export const env = EnvSchema.parse(process.env);
+```
+
+---
+
+## 14. Anti-Patterns
+
+### 14.1 Type Assertion Abuse
+
+| Pattern | Severity | Fix |
+|---|---|---|
+| `x as SomeType` without validation | ✗ Critical | Validate with type guard or schema |
+| `x as any` | ✗ Critical | Use `unknown` + narrowing |
+| `x as unknown as Target` (double assertion) | ✗ Critical | Redesign types — indicates broken model |
+| `x as const` | ✓ Allowed | Literal type inference |
+| `x as T` after `is` guard | ✓ Allowed | Guard already validated |
+
+### 14.2 Implicit `any`
+
+Sources of implicit `any` (all caught by `strict: true`):
+
+| Source | Example | Fix |
+|---|---|---|
+| Untyped function params | `function f(x) {}` | Add parameter type |
+| Untyped `catch` clause | `catch (e)` | `useUnknownInCatchVariables` makes it `unknown` |
+| Dynamic property access | `obj[key]` | `noPropertyAccessFromIndexSignature` |
+| Array index | `arr[i]` | `noUncheckedIndexedAccess` returns `T \| undefined` |
+| Untyped JSON | `JSON.parse(s)` | Parse as `unknown`, then validate |
+
+### 14.3 Complex Conditional Types
+
+✗ Conditional types beyond 2 levels of nesting. Unreadable, unmaintainable, slow compiler.
+
+```typescript
+// ✗ Over-engineered — nobody can read this
+type DeepPartialExcept<T, K extends keyof T> = {
+  [P in keyof T]: P extends K ? T[P] : T[P] extends object
+    ? T[P] extends Array<infer U>
+      ? Array<DeepPartialExcept<U, never>> | undefined
+      : DeepPartialExcept<T[P], never> | undefined
+    : T[P] | undefined;
+};
+
+// ✓ Use a library (ts-toolbelt) or simplify the type model
+```
+
+### 14.4 Other Anti-Patterns
+
+| Anti-Pattern | Issue | Fix |
+|---|---|---|
+| `@ts-ignore` | Silences all errors on next line | `@ts-expect-error` with explanation — fails if error disappears |
+| Default exports | Inconsistent naming across imports | Named exports only |
+| `namespace` | Legacy TS construct, not ESM-compatible | Use modules |
+| `declare global` pollution | Untracked globals | Minimize; use module scope |
+| `Function` type | Accepts any callable | Specific signature: `(...args: unknown[]) => unknown` |
+| `Object` / `{}` type | Accepts almost anything | `Record<string, unknown>` or specific shape |
+| Mutable exports | `export let x = 5` | `export const` or function returning value |
+| Class for pure data | Unnecessary complexity | Interface + plain object or `type` |
+| Overusing `Partial<T>` | Hides required fields | Explicit optional fields per use case |
+
+---
+
+## 15. Checklist
+
+### New TypeScript Project
+
+- [ ] `strict: true` + `noUncheckedIndexedAccess` + `exactOptionalProperties` in tsconfig
+- [ ] `verbatimModuleSyntax: true` enforcing `import type`
+- [ ] ESM configured: `"type": "module"` in `package.json`
+- [ ] `typescript-eslint` strict + stylistic configs enabled
+- [ ] Prettier configured, no format rules in ESLint
+- [ ] `@typescript-eslint/no-explicit-any: "error"`
+- [ ] `@typescript-eslint/no-floating-promises: "error"`
+- [ ] `import/no-cycle` enabled
+- [ ] `import/no-default-export` enabled
+- [ ] Runtime validation library installed (zod/valibot)
+- [ ] Environment variables validated at startup
+- [ ] Path alias `@/*` → `src/*` configured (if not library)
+- [ ] Pre-commit hooks: `lint-staged` + `husky`/`lefthook`
+- [ ] `src/` follows tier model: `types/`, `engine/`, `services/`, `adapters/`
+
+### Per-File Review
+
+- [ ] Zero `any` — `unknown` + narrowing used
+- [ ] Zero `@ts-ignore` — `@ts-expect-error` with ticket reference if needed
+- [ ] Zero unhandled promises — all `await`ed or explicit `void` with catch
+- [ ] Zero non-null assertions outside tests (or with immediate guard)
+- [ ] All public functions have explicit return types
+- [ ] All discriminated unions have `kind` field
+- [ ] All boundary data validated with schema (Tier 3)
+- [ ] All imports use `type` keyword for type-only imports
+- [ ] No barrel file contains logic
+- [ ] No circular imports
+
+### Error Handling Review
+
+- [ ] Custom error classes extend base `AppError`
+- [ ] Expected failures use `Result<T, E>` pattern
+- [ ] `catch` clauses handle `unknown` — narrow before accessing
+- [ ] `assertNever` used in exhaustive switches
+- [ ] ✗ empty catch blocks — every catch handles, transforms, or propagates

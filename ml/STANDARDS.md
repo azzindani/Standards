@@ -155,3 +155,112 @@ Every training run = one experiment record. No untracked runs.
 - Minimum two comparisons per evaluation: (1) vs baseline model, (2) vs previous best.
 - Comparison table includes: all metrics · parameter diff · data version diff · resource usage.
 - Winner determined by primary metric; ties broken by secondary metric, then resource efficiency.
+
+---
+
+## 5. Model Training
+
+### Hyperparameter Management
+
+- All hyperparameters defined in configuration file, ✗ hardcoded in training script.
+- Configuration file versioned alongside code.
+- Search strategy declared explicitly: grid | random | Bayesian | manual.
+- Search budget defined before starting: max trials · max wall-clock time · max compute cost.
+
+| Search Strategy | When to Use | Budget Rule |
+|---|---|---|
+| Grid | ≤3 params, ≤5 values each | Exhaustive — budget = grid size |
+| Random | >3 params or continuous ranges | Min 50 trials or 2× grid equivalent |
+| Bayesian | Expensive-to-evaluate models | Min 20 trials; surrogate model logged |
+| Manual | Expert tuning on top of automated search | Each manual trial logged as experiment |
+
+### Training Discipline
+
+- Early stopping required for iterative models: patience defined, metric monitored, best checkpoint saved.
+- Learning rate schedule declared: constant | step decay | cosine | warmup+decay.
+- Gradient clipping enabled for deep models — max norm documented.
+- Batch size justified: memory-constrained → largest that fits; convergence-constrained → validated via ablation.
+- Checkpoint saved at configurable interval (epoch/step count). Minimum: best + last.
+- Training resumes from checkpoint without restarting from scratch.
+
+### Resource Budgets
+
+| Resource | Requirement |
+|---|---|
+| GPU memory | Peak usage logged; must not exceed 90% of available |
+| Wall-clock time | Maximum training time defined before start |
+| Disk | Checkpoint size budgeted; old checkpoints pruned (keep top-K by metric) |
+| CPU/RAM | Peak usage logged; OOM = failed run, not silent degradation |
+
+### Cross-Validation Rules
+
+- K-fold (k≥5) required when dataset < 10K rows.
+- Stratified folds for classification tasks.
+- Group-aware folds when data has entity grouping.
+- Report mean ± std of primary metric across folds.
+- ✗ Select best single fold — report aggregate.
+
+---
+
+## 6. Model Evaluation
+
+### Metrics by Task Type
+
+| Task Type | Primary Metric | Required Secondary Metrics |
+|---|---|---|
+| Binary classification | F1 or AUC-ROC (domain-dependent) | Precision · Recall · AUC-PR · accuracy |
+| Multi-class classification | Macro F1 | Per-class F1 · confusion matrix · weighted F1 |
+| Regression | RMSE or MAE (domain-dependent) | R² · MAPE · residual distribution |
+| Ranking | NDCG@K | MAP@K · MRR · precision@K |
+| Clustering | Silhouette score | Calinski-Harabasz · Davies-Bouldin · cluster size distribution |
+| Time-series forecasting | MASE or sMAPE | RMSE · directional accuracy · coverage (if probabilistic) |
+| Anomaly detection | AUC-PR | Precision@K · recall@K · false positive rate |
+| Generative / NLP | Task-specific (BLEU, ROUGE, etc.) | Human evaluation score · perplexity |
+
+### Evaluation Rules
+
+- Every model compared against at least one baseline:
+
+| Baseline Type | Definition |
+|---|---|
+| Naive baseline | Predict mean (regression) · predict majority class (classification) · random (ranking) |
+| Previous production model | Current deployed model, if exists |
+| Simple model | Linear/logistic regression or decision tree on same features |
+
+- Evaluation on holdout test set happens once per model candidate. ✗ Iterate on test set — use validation set for tuning.
+- Metrics computed on full test set and per-segment (demographic, temporal, geographic slices).
+- Performance thresholds defined before evaluation: "model passes if metric X ≥ Y."
+- Confidence intervals or statistical significance tests required when comparing models with <5% metric difference.
+- Evaluation artifacts stored: confusion matrix · ROC curve · calibration plot · residual plot (as applicable).
+
+---
+
+## 7. Model Explainability
+
+### Explainability Requirements by Risk Level
+
+| Risk Level | Examples | Required Explainability |
+|---|---|---|
+| Low | Recommendation, content ranking | Global feature importance |
+| Medium | Pricing, fraud scoring | Global + local explanations for flagged cases |
+| High | Credit decisions, medical diagnosis, hiring | Global + local + counterfactual + bias audit |
+
+### Explanation Methods
+
+| Method | Scope | Use When |
+|---|---|---|
+| Feature importance (built-in) | Global | Tree-based models; fast first-pass |
+| Permutation importance | Global | Any model; model-agnostic validation |
+| SHAP values | Global + Local | Default choice for detailed explanations |
+| LIME | Local | When SHAP is too expensive; tabular/text |
+| Partial dependence plots | Global | Understanding feature-target relationships |
+| Counterfactual explanations | Local | High-risk decisions requiring "what-if" |
+
+### Explainability Rules
+
+- Global feature importance generated for every production model, regardless of risk level.
+- Top-K features (K ≥ 10 or all if fewer) documented with importance scores.
+- If top feature contributes >50% of total importance → investigate for leakage or proxy bias.
+- Local explanations stored for every prediction on high-risk models.
+- Explanations validated: perturb top features → prediction must change proportionally.
+- ✗ Use explainability as post-hoc justification for a decision already made. Generate before decision.

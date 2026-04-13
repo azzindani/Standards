@@ -328,3 +328,172 @@ Default: backward compatible. Full compatibility required for shared data platfo
 - Pipeline refuses to run if producer/consumer version ranges don't overlap
 
 See database/STANDARDS.md — schema design, migration patterns.
+
+---
+
+## 7. Batch Processing
+
+### Chunking Strategy
+
+| Rule | Detail |
+|---|---|
+| Never load full dataset into memory | Process in bounded chunks |
+| Chunk size = configuration | Default: 10,000 rows; tunable per pipeline |
+| Chunk boundaries respect record integrity | ✗ split mid-record (multi-line JSON, nested structures) |
+| Each chunk is independently processable | No state carried between chunks except explicit accumulators |
+
+### Memory Management
+
+| Pattern | When |
+|---|---|
+| Streaming read (row-by-row) | Source is unbounded or larger than available memory |
+| Chunk-and-flush | Intermediate results fit in memory per chunk; flush after each |
+| Memory-mapped files | Random access needed on large files; OS manages paging |
+| Spill-to-disk | Accumulator (sort, group-by) exceeds memory budget |
+
+Declare memory budget per stage. If stage exceeds budget → spill to disk or fail, ✗ crash with OOM.
+
+See architecture/STANDARDS.md §1 — principle #29 (explicit resource budgets).
+
+### Progress Reporting
+
+| Rule | Detail |
+|---|---|
+| Report progress per chunk | Emit: chunks completed, total chunks (if known), rows processed |
+| Estimated time remaining | After first chunk, extrapolate; update each chunk |
+| Machine-readable format | Structured log/event, not free text |
+| No progress → stall detection | If no progress event in configured timeout → alert |
+
+### Partial Failure Handling
+
+| Failure Scope | Response |
+|---|---|
+| Single row fails validation | Route to dead letter; continue processing |
+| Chunk fails (transient) | Retry chunk with backoff; max 3 attempts |
+| Chunk fails (persistent) | Route failed chunk rows to dead letter; continue remaining chunks |
+| Stage fails entirely | Halt pipeline; trigger recovery (§10) |
+
+Rejection threshold applies across chunks: if cumulative rejection rate exceeds threshold, halt pipeline even if individual chunks succeed.
+
+---
+
+## 8. Streaming vs Batch
+
+### Selection Criteria
+
+| Factor | Batch | Streaming | Hybrid |
+|---|---|---|---|
+| Latency requirement | Minutes–hours acceptable | Seconds–minutes required | Mixed SLAs |
+| Data volume | Bounded, known size | Unbounded, continuous | Both patterns present |
+| Processing complexity | Complex joins/aggregations | Simple transforms/filters | Complex on batch; simple on stream |
+| Resource availability | Can burst; off-peak scheduling | Constant resource allocation | Tiered allocation |
+| Ordering guarantees | Natural (file order) | Must be enforced (watermarks) | Per-path |
+| Reprocessing need | Full rerun | Replay from offset | Batch backfill + stream forward |
+
+Default to batch unless latency SLA demands streaming. Batch is simpler to debug, test, and recover.
+
+### Hybrid Patterns
+
+| Pattern | Description |
+|---|---|
+| Lambda | Batch layer for accuracy + speed layer for freshness; merge at query time |
+| Kappa | Stream-only; batch = replay of stream from beginning |
+| Batch-triggered stream | Batch pipeline triggers streaming enrichment for near-real-time consumers |
+| Stream-to-batch landing | Stream writes micro-batches to storage; batch pipeline reads on schedule |
+
+### Windowing (Streaming)
+
+| Window Type | Use when |
+|---|---|
+| Tumbling (fixed) | Non-overlapping fixed intervals (e.g., 5-minute aggregations) |
+| Sliding (hopping) | Overlapping windows for moving averages |
+| Session | Group events by activity gaps (e.g., user sessions) |
+| Global | Accumulate across entire stream lifetime (counters, running totals) |
+
+Every windowed operation declares: window size, allowed lateness, trigger policy (on-time, early, late).
+
+Late data policy: accept with configured lateness threshold → update result; beyond threshold → route to dead letter.
+
+---
+
+## 9. Idempotency
+
+### Core Rule
+
+Every pipeline stage, and the pipeline as a whole, produces identical output when run multiple times with identical input. This enables safe retries, backfill, and crash recovery.
+
+See architecture/STANDARDS.md §1 — principle #16 (idempotency).
+
+### Idempotency Patterns
+
+| Pattern | Mechanism | Best for |
+|---|---|---|
+| Overwrite | Write output to deterministic location; re-run overwrites | File-based sinks |
+| Upsert | Insert or update on natural key | Database sinks |
+| Deduplication key | Assign deterministic ID to each record; reject duplicates | Streaming sinks |
+| Transactional write | Write output + checkpoint in same transaction | Database-backed pipelines |
+| Partition swap | Write to staging partition; atomic swap into target | Partitioned data stores |
+
+### Deduplication Rules
+
+| Rule | Detail |
+|---|---|
+| Deterministic record ID | Derive from business key (✗ random UUID) |
+| Deduplicate at sink | Sink is responsible for rejecting duplicate writes |
+| Idempotency window | Define time window for duplicate detection (streaming) |
+| At-least-once + dedup = exactly-once | Prefer this over complex exactly-once protocols |
+
+### Non-Idempotent Operations
+
+Some operations are inherently non-idempotent (sending email, external API calls). Isolate them:
+
+- Gate behind a "processed" flag checked before execution
+- Record completion in durable state before proceeding
+- If flag check and execution are not atomic, accept and handle duplicates downstream
+
+---
+
+## 10. Error Recovery
+
+### Checkpoint/Restart
+
+| Rule | Detail |
+|---|---|
+| Checkpoint after each stage | Persist intermediate state at stage boundaries |
+| Checkpoint after each chunk | Within a stage, persist progress per chunk |
+| Checkpoint = input offset + stage state | Enough to resume without re-reading processed data |
+| Checkpoint storage is durable | ✗ in-memory only; use file system or database |
+| Resume = skip completed chunks | On restart, read checkpoint, skip processed chunks, continue |
+
+See architecture/STANDARDS.md §6 — WAL (write-ahead log), crash recovery.
+
+### Dead Letter Queues
+
+| Property | Rule |
+|---|---|
+| Every pipeline has a dead letter destination | Matching the output format of the failing stage |
+| Dead letter records include | Original data · error message · stage name · timestamp · pipeline run ID |
+| Dead letter data is replayable | Can feed dead letter output back into pipeline as input |
+| Dead letter has same retention as primary output | ✗ auto-delete dead letter data before primary |
+
+### Retry Strategy
+
+| Failure Type | Strategy |
+|---|---|
+| Transient (network timeout, temp file lock) | Retry with exponential backoff; max 3 attempts; jitter |
+| Persistent (schema mismatch, corrupt data) | Route to dead letter immediately; ✗ retry |
+| Ambiguous (unknown error code) | Retry once; if same error, treat as persistent |
+| Resource exhaustion (OOM, disk full) | Halt pipeline; alert operator; ✗ retry without intervention |
+
+### Poison Pill Handling
+
+A poison pill is a record that crashes the processing stage (not just fails validation).
+
+| Rule | Detail |
+|---|---|
+| Isolate on detection | If a chunk fails, binary-search to identify failing record(s) |
+| Quarantine | Move poison record(s) to dead letter with crash details |
+| Continue | Resume processing remaining records after quarantine |
+| Alert | Poison pill detection → immediate alert to pipeline owner |
+
+✗ Let a single bad record halt an entire pipeline permanently. ✗ Silently skip poison records without logging.

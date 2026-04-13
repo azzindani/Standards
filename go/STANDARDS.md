@@ -458,3 +458,241 @@ func WithTraceID(ctx context.Context, id string) context.Context {
 // ✗ Passing dependencies, config, or business data through context
 ctx = context.WithValue(ctx, "db", database)  // wrong
 ```
+
+---
+
+## 9. Module Structure
+
+### go.mod Rules
+
+| Rule | Detail |
+|---|---|
+| Module path = repository path | `module github.com/org/project` |
+| Pin Go version to minimum required | `go 1.22` |
+| ✗ commit vendor/ unless required for hermetic builds | Use module proxy |
+| Run `go mod tidy` before every commit | Removes unused, adds missing |
+| ✗ replace directives in libraries | Only permitted in final binaries |
+
+### Version Management
+
+| Action | Command |
+|---|---|
+| Add dependency | `go get pkg@version` |
+| Update specific | `go get pkg@latest` |
+| Update all | `go get -u ./...` then `go mod tidy` |
+| Check for vulnerabilities | `govulncheck ./...` |
+| Verify checksums | `go mod verify` |
+
+### go.sum
+
+- Always commit `go.sum` — provides integrity verification
+- ✗ manually edit `go.sum`
+- If checksum mismatch occurs, investigate before running `go mod tidy`
+
+---
+
+## 10. Code Organization
+
+Maps to `architecture/STANDARDS.md §2` tier model. See `directory/STANDARDS.md` for general layout rules.
+
+### Standard Project Layout
+
+```
+project/
+├── cmd/
+│   └── server/
+│       └── main.go          // Tier 3: entry point, wiring
+├── internal/
+│   ├── auth/                 // Tier 1–2: domain packages
+│   │   ├── auth.go
+│   │   ├── token.go
+│   │   └── auth_test.go
+│   ├── billing/
+│   └── platform/             // Tier 0: shared types, utilities
+│       ├── errors.go
+│       └── config.go
+├── pkg/                      // Public API (use sparingly)
+│   └── client/
+├── go.mod
+├── go.sum
+└── Makefile
+```
+
+### Directory Rules
+
+| Directory | Purpose | Visibility |
+|---|---|---|
+| `cmd/` | Binary entry points. One `main.go` per binary | — |
+| `internal/` | Private packages. Compiler-enforced | ✗ importable outside module |
+| `pkg/` | Public library code. Use only when external consumers exist | Importable by anyone |
+| Root `.go` files | Only if module is single-package library | — |
+
+### File Organization Within Package
+
+| Rule | Detail |
+|---|---|
+| One primary type per file | `server.go` contains `type Server struct` |
+| File name = primary type, lowercase | `server.go`, `client.go`, `handler.go` |
+| `doc.go` for package documentation | `// Package auth provides...` |
+| `_test.go` suffix for tests | Same package or `_test` package |
+| Keep files under 500 lines | Split by sub-concern if larger |
+
+### Tier Mapping to Go Packages
+
+| Tier | Go Location | Contains |
+|---|---|---|
+| 0 (Kernel) | `internal/platform/` or `internal/types/` | Types, constants, pure utilities |
+| 1 (Engine) | `internal/{domain}/` | Business logic, validation, transforms |
+| 2 (Service) | `internal/{domain}/service.go` or `internal/service/` | Orchestration, workflows |
+| 3 (Interface) | `cmd/`, `internal/api/`, `internal/handler/` | HTTP, gRPC, CLI, DB adapters |
+
+---
+
+## 11. Testing
+
+### Core Rules
+
+| Rule | Detail |
+|---|---|
+| Table-driven tests by default | Reduces boilerplate, covers edge cases |
+| Test file = `x_test.go` next to `x.go` | Same package for white-box, `_test` package for black-box |
+| Test function = `TestXxx` | `TestServer_Start`, `TestParseConfig_InvalidYAML` |
+| ✗ test against implementation details | Test behavior through public API |
+| Test helpers return values, ✗ `*testing.T` assertions | Except `t.Helper()` marked functions |
+
+### Table-Driven Tests
+
+```go
+func TestParseSize(t *testing.T) {
+    tests := []struct {
+        name    string
+        input   string
+        want    int64
+        wantErr bool
+    }{
+        {name: "bytes", input: "1024", want: 1024},
+        {name: "kilobytes", input: "1KB", want: 1024},
+        {name: "megabytes", input: "1MB", want: 1048576},
+        {name: "invalid", input: "abc", wantErr: true},
+        {name: "empty", input: "", wantErr: true},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got, err := ParseSize(tt.input)
+            if tt.wantErr {
+                require.Error(t, err)
+                return
+            }
+            require.NoError(t, err)
+            assert.Equal(t, tt.want, got)
+        })
+    }
+}
+```
+
+### Test Helpers
+
+```go
+// t.Helper() marks function — failures report caller's line, not helper's
+func newTestServer(t *testing.T) *Server {
+    t.Helper()
+    s, err := NewServer("localhost:0", WithLogger(slog.Default()))
+    require.NoError(t, err)
+    t.Cleanup(func() { s.Close() })
+    return s
+}
+```
+
+### HTTP Testing
+
+```go
+func TestHealthEndpoint(t *testing.T) {
+    srv := newTestServer(t)
+    
+    req := httptest.NewRequest(http.MethodGet, "/health", nil)
+    rec := httptest.NewRecorder()
+    
+    srv.ServeHTTP(rec, req)
+    
+    assert.Equal(t, http.StatusOK, rec.Code)
+    assert.JSONEq(t, `{"status":"ok"}`, rec.Body.String())
+}
+```
+
+### Benchmark Tests
+
+```go
+func BenchmarkParse(b *testing.B) {
+    input := loadTestData(b)
+    b.ResetTimer()
+    for b.Loop() {
+        _ = Parse(input)
+    }
+}
+```
+
+### Test Categories
+
+| Tag | Command | Use |
+|---|---|---|
+| No tag | `go test ./...` | Unit tests — fast, no I/O |
+| `//go:build integration` | `go test -tags=integration ./...` | DB, network, file system |
+| `//go:build e2e` | `go test -tags=e2e ./...` | Full system tests |
+| `-short` flag | `go test -short ./...` | Skip slow tests via `testing.Short()` |
+
+---
+
+## 12. Tooling
+
+### Required Tools
+
+| Tool | Purpose | Enforcement |
+|---|---|---|
+| `gofmt` | Format code | ✗ commit unformatted code. CI rejects |
+| `go vet` | Static analysis (compiler-adjacent) | CI gate |
+| `golangci-lint` | Meta-linter (aggregates 50+ linters) | CI gate |
+| `staticcheck` | Advanced static analysis | Included in golangci-lint |
+| `govulncheck` | Vulnerability scanning | CI gate, weekly |
+
+### golangci-lint Configuration
+
+```yaml
+# .golangci.yml — minimal enforced set
+linters:
+  enable:
+    - errcheck       # unchecked errors
+    - govet          # suspicious constructs
+    - staticcheck    # advanced checks
+    - unused         # unused code
+    - gosimple       # simplifications
+    - ineffassign    # ineffectual assignments
+    - typecheck      # type errors
+    - gocritic       # opinionated style
+    - revive         # replacement for golint
+    - errname        # error naming convention
+    - errorlint      # error wrapping checks
+    - prealloc       # slice preallocation
+```
+
+### Makefile Targets
+
+```makefile
+.PHONY: lint test build
+
+lint:
+	golangci-lint run ./...
+
+test:
+	go test -race -count=1 ./...
+
+build:
+	go build -o bin/ ./cmd/...
+
+vet:
+	go vet ./...
+
+tidy:
+	go mod tidy
+	go mod verify
+```

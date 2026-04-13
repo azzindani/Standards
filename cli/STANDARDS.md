@@ -388,3 +388,156 @@ See error_handling/STANDARDS.md for full error taxonomy and boundary rules.
 | Exit after fatal error | Print error → cleanup → exit non-zero. ✗ continue after unrecoverable |
 | Aggregated errors | When validating multiple items: collect all errors, print all, then exit. ✗ stop at first |
 | stderr always | All error output to stderr. ✗ errors on stdout |
+
+---
+
+## 11. Interactive vs Non-Interactive
+
+### TTY Detection Rules
+
+| Condition | Mode | Behavior |
+|---|---|---|
+| stdin is TTY + stdout is TTY | Interactive | Prompts, color, progress bars, confirmation dialogs |
+| stdin is pipe OR stdout is pipe | Non-interactive | ✗ prompts, ✗ interactive elements, machine output |
+| `--no-input` flag | Forced non-interactive | ✗ prompts — use defaults or fail |
+| `--yes` / `-y` flag | Auto-confirm | Answer "yes" to all confirmation prompts |
+| `CI=true` env var | Non-interactive | Same as `--no-input` |
+
+### Prompt Rules
+
+| Rule | Detail |
+|---|---|
+| Confirmation for destructive ops | `Delete 47 records? [y/N]:` — default is safe option (No) |
+| Default shown in brackets | `[Y/n]` = default yes, `[y/N]` = default no |
+| Timeout | Prompts timeout after 30s in interactive mode → use default |
+| ✗ prompt in pipeline | If stdin is not TTY and confirmation needed → error + suggest `--yes` |
+| Password/secret input | Disable echo. ✗ show characters. ✗ log input |
+| Selection lists | Number each option. Accept number or exact text |
+| ✗ multi-step wizards | If > 3 prompts needed → require config file or flags instead |
+
+### Non-Interactive Guarantees
+
+| Guarantee | Detail |
+|---|---|
+| Deterministic | Same flags + same input → same output. ✗ behavior changes based on TTY |
+| No blocking reads | ✗ wait for user input when stdin is pipe and no data arrives |
+| Fail-fast on missing input | If required value missing and no prompt possible → exit 2 immediately |
+| Logging format | When not TTY: timestamps + structured format. When TTY: human-friendly |
+
+---
+
+## 12. Versioning
+
+### `--version` Output
+
+Single line: `tool-name 1.2.3`
+
+Optional extended format with `-vv --version`:
+```
+tool-name 1.2.3
+commit: abc1234
+built: 2025-01-15T10:30:00Z
+go: 1.22.0 / python: 3.12.1 / rust: 1.75.0
+platform: linux/amd64
+```
+
+### Version Rules
+
+| Rule | Detail |
+|---|---|
+| SemVer | MAJOR.MINOR.PATCH. Follow semver.org strictly |
+| MAJOR bump | Breaking: removed flags, changed output format, changed exit codes |
+| MINOR bump | New flags, new subcommands, new output fields (additive) |
+| PATCH bump | Bug fixes, performance improvements, documentation |
+| Pre-release | `1.2.3-beta.1` for unstable releases |
+| ✗ 0.x in production | Tools used by others → 1.0+ with stability commitment |
+| Deprecation warnings | Deprecated flags: warn for 2 minor versions before removal |
+| Changelog | Maintain CHANGELOG.md. Every release documented |
+
+### Compatibility Promises
+
+| Category | Promise |
+|---|---|
+| Flag names | ✗ rename or remove without MAJOR bump |
+| Exit codes | ✗ change meaning without MAJOR bump |
+| stdout format | ✗ change field names/order in `--json` output without MAJOR bump |
+| stderr format | No stability guarantee — human-readable output may change |
+| Config file format | ✗ break existing config files without MAJOR bump + migration path |
+
+---
+
+## 13. Signal Handling
+
+### Required Signal Handlers
+
+| Signal | Code | Handler |
+|---|---|---|
+| SIGINT (Ctrl+C) | 130 | Graceful shutdown: stop work, flush buffers, cleanup temp files, exit 130 |
+| SIGTERM | 143 | Same as SIGINT. Process manager sends TERM before KILL |
+| SIGPIPE | 141 | Exit silently with 141. ✗ print error when downstream pipe closes |
+| SIGHUP | 129 | Cleanup and exit. Optional: reload config if long-running |
+| SIGQUIT (Ctrl+\\) | 131 | Dump debug state (goroutines, stack) then exit |
+
+### Signal Handling Rules
+
+| Rule | Detail |
+|---|---|
+| Double SIGINT = force quit | First SIGINT → graceful shutdown. Second SIGINT within 2s → immediate exit |
+| Cleanup on all exits | Temp files removed, partial output deleted, locks released |
+| Flush before exit | Flush stdout/stderr buffers before exiting |
+| ✗ catch SIGKILL/SIGSTOP | Cannot be caught. Design cleanup to tolerate missing these |
+| Atomic writes | Write to temp file → rename. SIGKILL mid-write leaves no corrupt output |
+| Progress indication | On SIGINT during long operation: print what completed before exiting |
+| Child process forwarding | Forward signals to child processes. ✗ leave orphan processes |
+
+### Timeout Support
+
+| Rule | Detail |
+|---|---|
+| `--timeout` flag | Set maximum operation duration: `--timeout 30s`, `--timeout 5m` |
+| Duration format | Accept: `30s`, `5m`, `2h`, `1h30m`. ✗ raw seconds only |
+| Timeout behavior | Same as SIGINT: graceful shutdown, cleanup, exit 7 |
+| ✗ infinite by default for network ops | Network operations require default timeout. Document the default |
+
+---
+
+## 14. Piping & Composition
+
+### Composability Rules
+
+| Rule | Detail |
+|---|---|
+| Read stdin when piped | If stdin is a pipe, read from it. No special flags needed |
+| Write stdout always | Primary data output goes to stdout. No exceptions |
+| Line-buffered when piped | ✗ block-buffer stdout when piped. Flush each line for real-time pipeline processing |
+| ✗ assume terminal width when piped | Output full-width data. ✗ truncate for 80 cols when stdout is pipe |
+| Handle partial reads | If downstream closes pipe (SIGPIPE), exit cleanly. ✗ error message |
+| Binary-safe piping | If tool handles binary data, pass through without encoding conversion |
+
+### Pipeline Patterns
+
+| Pattern | Composition |
+|---|---|
+| Filter | `tool list --json \| jq '.[] \| select(.status=="active")'` |
+| Transform | `tool export --csv \| tool-b import --csv` |
+| Fan-out | `tool list --json \| tee >(tool-a) \| tool-b` |
+| Aggregate | `tool process file1 file2 file3` (multi-file as args, not pipeline) |
+
+### Buffering Rules
+
+| Scenario | Buffering |
+|---|---|
+| stdout is TTY | Line-buffered (default terminal behavior) |
+| stdout is pipe | Line-buffered. ✗ block-buffered — breaks real-time pipelines |
+| stderr always | Unbuffered or line-buffered |
+| Large binary output | Block-buffered for performance. Document this exception |
+
+### Multi-Input Conventions
+
+| Rule | Detail |
+|---|---|
+| Files as arguments | `tool file1.txt file2.txt` — process each in order |
+| Glob support | Tool handles globs if shell does not expand: `tool "*.csv"` |
+| `--` separator | Arguments after `--` are literal, not flags: `tool -- --weirdfilename` |
+| Mixed stdin + files | `tool file1.txt - file2.txt` — `-` reads stdin at that position |
+| Recursive directory | `--recursive` / `-r` flag. ✗ recurse by default without flag |

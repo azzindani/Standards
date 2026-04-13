@@ -519,3 +519,495 @@ printf '\n' >&2  # final newline after \r
 ```
 
 ✗ spinner animations in non-interactive scripts. ✗ progress on stdout.
+
+---
+
+## 7. Portability
+
+### POSIX vs Bash
+
+| Feature | POSIX `sh` | Bash |
+|---|---|---|
+| `[[ ]]` | ✗ | Yes |
+| Arrays | ✗ | Yes |
+| `local` | Widely supported but not POSIX | Yes |
+| `$(( ))` | Yes | Yes |
+| `$( )` | Yes | Yes |
+| Backticks `` ` ` `` | Yes (avoid) | Yes (avoid) |
+| `set -o pipefail` | ✗ | Yes |
+| `${var,,}` lowercase | ✗ | Bash 4+ |
+| `=~` regex | ✗ | Bash 3+ |
+| `&>` redirect | ✗ | Yes |
+| Process substitution `<()` | ✗ | Yes |
+
+### When to Use Which
+
+| Script type | Target |
+|---|---|
+| CI pipeline scripts | Bash — `pipefail` mandatory |
+| Docker entrypoints | `sh` — Alpine has no bash by default |
+| Install scripts (public) | `sh` — maximum portability |
+| Project automation | Bash — arrays + strict mode |
+| Cron jobs | Bash — error handling required |
+
+### Bashisms to Avoid in POSIX Scripts
+
+```bash
+# Bash-only          → POSIX equivalent
+[[ "$a" == "$b" ]]   → [ "$a" = "$b" ]
+[[ -n $var ]]         → [ -n "$var" ]
+echo "${var,,}"       → echo "$var" | tr '[:upper:]' '[:lower:]'
+array+=("item")       → no equivalent (use positional params or files)
+read -r -a arr        → no equivalent
+local var="x"         → var="x" (function scope varies)
+(( count++ ))         → count=$((count + 1))
+```
+
+### Platform Differences
+
+| Command | GNU (Linux) | BSD (macOS) |
+|---|---|---|
+| `sed -i` | `sed -i ''` needs no arg | `sed -i ''` requires empty string |
+| `readlink -f` | Works | ✗ — use `realpath` or `python -c` |
+| `date -d` | Works | ✗ — use `date -j` |
+| `grep -P` | PCRE support | ✗ — use `grep -E` |
+| `mktemp` | `mktemp` (auto) | `mktemp -t prefix` |
+| `stat` format | `stat -c '%s'` | `stat -f '%z'` |
+
+Handle with detection:
+
+```bash
+if sed --version 2>/dev/null | grep -q GNU; then
+  SED_INPLACE=(sed -i)
+else
+  SED_INPLACE=(sed -i '')
+fi
+"${SED_INPLACE[@]}" 's/old/new/' file.txt
+```
+
+---
+
+## 8. File Operations
+
+### Temp Files
+
+```bash
+readonly TMPDIR_SCRIPT=$(mktemp -d)
+trap 'rm -rf "${TMPDIR_SCRIPT}"' EXIT
+
+# Single temp file
+tmpfile=$(mktemp "${TMPDIR_SCRIPT}/data.XXXXXX")
+```
+
+| Rule | Detail |
+|---|---|
+| `mktemp` for all temp files | ✗ hardcode `/tmp/myfile` — race condition + predictable name |
+| Create temp dir, clean in trap | Single cleanup point |
+| `XXXXXX` suffix | mktemp replaces with random |
+| Trap cleanup before creating temps | Ensures cleanup on early exit |
+
+### Atomic File Writes
+
+```bash
+# Write to temp, move atomically
+write_config() {
+  local dest="$1"
+  local tmp
+  tmp=$(mktemp "${dest}.XXXXXX")
+
+  generate_config > "${tmp}"
+  chmod 644 "${tmp}"
+  mv -f "${tmp}" "${dest}"
+}
+```
+
+`mv` on same filesystem = atomic rename. ✗ redirect directly to target file — partial writes on failure. See `architecture/STANDARDS.md` §1 (rule 17 — copy-on-write).
+
+### File Existence Checks
+
+```bash
+[[ -f "${path}" ]] || die "File not found: ${path}"
+[[ -d "${dir}" ]]  || die "Directory not found: ${dir}"
+[[ -r "${file}" ]] || die "File not readable: ${file}"
+[[ -w "${dir}" ]]  || die "Directory not writable: ${dir}"
+[[ -x "${bin}" ]]  || die "Not executable: ${bin}"
+[[ -s "${file}" ]] || die "File is empty: ${file}"
+```
+
+Check before use. Specific test per need — ✗ generic `-e` when you need `-f`.
+
+### Safe Directory Traversal
+
+```bash
+# Correct — null-delimited, handles spaces/newlines in names
+while IFS= read -r -d '' file; do
+  process "${file}"
+done < <(find "${dir}" -type f -name '*.log' -print0)
+
+# Wrong — breaks on whitespace in filenames
+for file in $(find "${dir}" -name '*.log'); do
+  process "${file}"
+done
+```
+
+`find -print0` + `read -d ''` = safe for all filenames. ✗ for-loop over `find` output.
+
+---
+
+## 9. Security
+
+### Command Injection
+
+```bash
+# CRITICAL: Never eval user input
+eval "$user_input"            # ✗ arbitrary code execution
+bash -c "$user_input"         # ✗ same risk
+"${user_input}"               # ✗ command from variable
+
+# Safe — validate against allowlist
+case "${action}" in
+  start|stop|restart) systemctl "${action}" myservice ;;
+  *) die "Invalid action: ${action}" ;;
+esac
+```
+
+| Rule | Detail |
+|---|---|
+| ✗ `eval` | No exceptions. Redesign if you think you need it |
+| ✗ unquoted variables in commands | Injection via word splitting |
+| ✗ `bash -c "$var"` | Same as eval |
+| Allowlist over denylist | Validate against known-good values |
+
+### Path Validation
+
+```bash
+# Validate path is under expected directory
+validate_path() {
+  local path="$1"
+  local base_dir="$2"
+  local resolved
+
+  resolved=$(realpath -m "${path}")
+  [[ "${resolved}" == "${base_dir}"/* ]] || die "Path traversal: ${path}"
+}
+
+validate_path "${user_file}" "/var/data"
+```
+
+✗ trust paths from user input, arguments, or environment without validation.
+
+### Secrets
+
+```bash
+# ✗ secrets in command arguments — visible in ps output
+mysql -p"${DB_PASS}" ...           # ✗ visible in process list
+
+# Correct — use environment or stdin
+export MYSQL_PWD="${DB_PASS}"
+mysql ...
+
+# Correct — file descriptor
+echo "${SECRET}" | command --password-stdin
+```
+
+| Rule | Detail |
+|---|---|
+| ✗ secrets in CLI args | Visible in `ps aux`, `/proc/*/cmdline` |
+| ✗ secrets in `export` at script top | Visible in `/proc/*/environ` |
+| Use env vars or stdin piping | Per-command scope |
+| `umask 077` for temp files with secrets | Restrict read access |
+| Unset secret vars after use | `unset DB_PASS` |
+
+### Permissions
+
+```bash
+# Set restrictive umask for sensitive files
+umask 077
+echo "${token}" > "${TMPDIR_SCRIPT}/auth_token"
+
+# Verify ownership before sourcing
+[[ "$(stat -c '%u' "${config}")" == "$(id -u)" ]] || die "Config not owned by current user"
+```
+
+✗ source files not owned by current user. ✗ execute files from world-writable directories.
+
+See `security/STANDARDS.md` for comprehensive input validation and access control rules.
+
+---
+
+## 10. Testing
+
+### ShellCheck — Mandatory
+
+Every `.sh` file passes [ShellCheck](https://github.com/koalaman/shellcheck) with zero warnings.
+
+```bash
+# Run on all scripts
+shellcheck -x -s bash scripts/*.sh
+
+# In CI
+shellcheck --format=gcc scripts/*.sh
+```
+
+| Flag | Purpose |
+|---|---|
+| `-x` | Follow sourced files |
+| `-s bash` | Specify shell dialect |
+| `--format=gcc` | CI-friendly output |
+| `-e SC1091` | Exclude specific warnings (sparingly, with justification) |
+
+Disable per-line only when justified:
+
+```bash
+# shellcheck disable=SC2059  # format string intentionally from variable
+printf "${format}" "${args[@]}"
+```
+
+✗ blanket `# shellcheck disable=` at file top. Per-line only with comment explaining why.
+
+### BATS Framework
+
+[BATS](https://github.com/bats-core/bats-core) (Bash Automated Testing System) for all test scripts.
+
+```bash
+#!/usr/bin/env bats
+
+setup() {
+  TEST_TMPDIR=$(mktemp -d)
+  export TEST_TMPDIR
+}
+
+teardown() {
+  rm -rf "${TEST_TMPDIR}"
+}
+
+@test "deploy exits 2 on missing arguments" {
+  run ./deploy.sh
+  [ "${status}" -eq 2 ]
+  [[ "${output}" == *"Usage"* ]]
+}
+
+@test "deploy validates environment name" {
+  run ./deploy.sh invalid_env
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"Invalid environment"* ]]
+}
+
+@test "config parser extracts database url" {
+  echo 'DATABASE_URL=postgres://localhost/db' > "${TEST_TMPDIR}/env"
+  run ./parse_config.sh "${TEST_TMPDIR}/env" DATABASE_URL
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "postgres://localhost/db" ]
+}
+```
+
+### Test Structure
+
+| Rule | Detail |
+|---|---|
+| Test file per script | `tests/deploy.bats` for `scripts/deploy.sh` |
+| `setup`/`teardown` in every file | Temp dirs, env vars |
+| Use `run` to capture exit + output | `${status}` and `${output}` |
+| Test exit codes explicitly | ✗ only test output |
+| Test error paths | Missing args, bad input, missing deps |
+
+### CI Integration
+
+```yaml
+# In pipeline — see cicd/STANDARDS.md
+lint:
+  - shellcheck -x scripts/*.sh
+test:
+  - bats tests/*.bats
+```
+
+ShellCheck runs before tests. Failing ShellCheck = failing build. No exceptions.
+
+---
+
+## 11. Script Structure
+
+### Main Function Pattern
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Constants
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_NAME="${0##*/}"
+
+# Source libraries (after constants, before functions)
+source "${SCRIPT_DIR}/lib/logging.sh"
+
+# Functions (alphabetical or dependency order)
+usage() { ... }
+parse_args() { ... }
+validate_env() { ... }
+do_work() { ... }
+
+# Main
+main() {
+  parse_args "$@"
+  validate_env
+  do_work
+}
+
+main "$@"
+```
+
+| Section | Order |
+|---|---|
+| 1 | Shebang + strict mode |
+| 2 | Script description comment |
+| 3 | Constants (`readonly`) |
+| 4 | Source external libraries |
+| 5 | Function definitions |
+| 6 | `main()` function |
+| 7 | `main "$@"` invocation |
+
+### Source-able Libraries
+
+Libraries that are `source`d by other scripts follow different rules:
+
+```bash
+#!/usr/bin/env bash
+# lib/logging.sh — Structured logging functions
+# Source this file; do not execute directly.
+
+# Guard against double-sourcing
+[[ -n "${_LIB_LOGGING_LOADED:-}" ]] && return 0
+readonly _LIB_LOGGING_LOADED=1
+
+# Guard against direct execution
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  echo "This script is meant to be sourced, not executed" >&2
+  exit 1
+fi
+
+log_info() { ... }
+log_error() { ... }
+```
+
+| Rule | Detail |
+|---|---|
+| Include guard with `_LIB_*_LOADED` | Prevents double-sourcing side effects |
+| Direct execution guard | ✗ `./lib/logging.sh` |
+| ✗ `set -euo pipefail` in libraries | Caller controls strict mode |
+| ✗ `main` function in libraries | Libraries export functions, not entry points |
+| ✗ `exit` in library functions | Return codes only; caller decides to exit |
+
+### Script Directory Resolution
+
+```bash
+# Robust — works with symlinks
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Wrong — fails with symlinks, sourced scripts, PATH lookup
+SCRIPT_DIR="$(dirname "$0")"
+```
+
+`${BASH_SOURCE[0]}` over `$0` — correct when sourced. `cd + pwd` resolves symlinks.
+
+---
+
+## 12. Common Patterns
+
+### Lock File
+
+```bash
+readonly LOCK_FILE="/var/run/${SCRIPT_NAME}.lock"
+
+acquire_lock() {
+  if ! mkdir "${LOCK_FILE}" 2>/dev/null; then
+    die "Another instance is running (lock: ${LOCK_FILE})"
+  fi
+  trap 'rm -rf "${LOCK_FILE}"' EXIT
+}
+```
+
+`mkdir` is atomic on all filesystems. ✗ check-then-create with `[ -f ]` — race condition.
+
+### Retry Loop
+
+```bash
+retry() {
+  local -i max_attempts="$1"; shift
+  local -i delay="$1"; shift
+  local -i attempt=1
+
+  until "$@"; do
+    if (( attempt >= max_attempts )); then
+      die "Command failed after ${max_attempts} attempts: $*"
+    fi
+    log WARN "Attempt ${attempt}/${max_attempts} failed, retrying in ${delay}s..."
+    sleep "${delay}"
+    (( attempt++ ))
+  done
+}
+
+# Usage
+retry 3 5 curl -sf "https://api.example.com/health"
+```
+
+### Logging Library
+
+```bash
+readonly LOG_LEVELS=([DEBUG]=0 [INFO]=1 [WARN]=2 [ERROR]=3)
+LOG_LEVEL="${LOG_LEVEL:-INFO}"
+
+log() {
+  local level="$1"; shift
+  (( ${LOG_LEVELS[${level}]:-0} >= ${LOG_LEVELS[${LOG_LEVEL}]:-0} )) || return 0
+  printf '[%s] [%-5s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${level}" "$*" >&2
+}
+```
+
+### Parallel Execution
+
+```bash
+# GNU parallel (preferred)
+find . -name '*.log' -print0 | parallel -0 gzip {}
+
+# Bash background jobs with limited concurrency
+readonly MAX_JOBS=4
+for file in "${files[@]}"; do
+  process_file "${file}" &
+  # Limit concurrent jobs
+  while (( $(jobs -rp | wc -l) >= MAX_JOBS )); do
+    wait -n
+  done
+done
+wait  # wait for remaining
+```
+
+### Confirmation Prompt
+
+```bash
+confirm() {
+  local prompt="${1:-Continue?}"
+  if [[ "${FORCE:-false}" == "true" ]]; then
+    return 0
+  fi
+  read -r -p "${prompt} [y/N] " response
+  [[ "${response}" =~ ^[Yy]$ ]]
+}
+
+confirm "Deploy to production?" || die "Aborted"
+```
+
+### Configuration File Parsing
+
+```bash
+# Simple key=value (no sections)
+parse_env_file() {
+  local file="$1"
+  [[ -f "${file}" ]] || return 1
+  while IFS='=' read -r key value; do
+    [[ "${key}" =~ ^[[:space:]]*# ]] && continue  # skip comments
+    [[ -z "${key}" ]] && continue                  # skip empty lines
+    key=$(echo "${key}" | xargs)                   # trim whitespace
+    export "${key}=${value}"
+  done < "${file}"
+}
+```

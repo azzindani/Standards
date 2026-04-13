@@ -277,3 +277,133 @@ All API responses use consistent envelope structure.
 | URL as state | Shareable/bookmarkable state encoded in URL (filters · pagination · selected tab) |
 | ✗ sensitive data in client state | Tokens in memory only — ✗ localStorage for auth tokens (XSS risk) |
 | Derived state | Compute from source state — ✗ duplicate/sync separate copies |
+
+---
+
+## 7. Authentication
+
+### Strategy Selection
+
+| Strategy | Use When | ✗ Use When |
+|---|---|---|
+| Session cookie | Server-rendered apps · same-origin frontend | Third-party API consumers |
+| JWT (access token) | Stateless APIs · cross-origin · mobile clients | Long-lived sessions (JWT can't be revoked without infra) |
+| OAuth 2.0 + OIDC | Third-party login · SSO · delegated access | Simple internal tools |
+| API key | Machine-to-machine · server-to-server | Browser-based user auth |
+
+### Token Rules
+
+| Rule | Detail |
+|---|---|
+| Access token lifetime | Short: 5–15 minutes |
+| Refresh token lifetime | Moderate: 1–14 days. Rotate on use (one-time use) |
+| ✗ JWT in localStorage | XSS exposes tokens. Use `HttpOnly` cookies or in-memory only |
+| Token payload | Minimal claims: sub · exp · iat · roles. ✗ embed sensitive data |
+| Signature algorithm | RS256 or ES256 for production. ✗ HS256 with shared secrets across services |
+| Token revocation | Maintain server-side deny list for compromised tokens |
+
+### Cookie Security
+
+| Attribute | Required Value | Reason |
+|---|---|---|
+| `HttpOnly` | `true` | ✗ JavaScript access to auth cookies |
+| `Secure` | `true` | Transmit over HTTPS only |
+| `SameSite` | `Lax` minimum · `Strict` for sensitive ops | CSRF mitigation |
+| `Domain` | Explicit, narrowest scope | ✗ overly broad domain |
+| `Path` | `/` or narrowest applicable path | Limit cookie scope |
+| `Max-Age` / `Expires` | Explicit. Match session policy | ✗ session cookies without expiry |
+
+### CSRF Protection
+
+| Rule | Detail |
+|---|---|
+| Synchronizer token | Server generates unique token per session → embedded in forms → validated on submit |
+| Double-submit cookie | Alternative: random value in cookie + request header/body → server compares |
+| `SameSite` cookies | Defense-in-depth — ✗ sole CSRF protection (older browsers lack support) |
+| Safe methods exempt | GET · HEAD · OPTIONS ✗ mutate state → no CSRF token needed |
+| ✗ state mutation via GET | GET requests are idempotent + safe. ✗ `/delete?id=5` via GET |
+
+---
+
+## 8. Authorization
+
+### Model Selection
+
+| Model | Use When | Complexity |
+|---|---|---|
+| Role-Based (RBAC) | Fixed permission sets per role (admin · editor · viewer) | Low |
+| Permission-Based | Granular: `orders.create` · `orders.delete` per user | Medium |
+| Attribute-Based (ABAC) | Context-dependent: time · IP · resource owner · department | High |
+| Relationship-Based (ReBAC) | "User X can edit because they own resource Y" | High |
+
+Start with RBAC. Move to permission-based when roles become insufficient. ABAC/ReBAC only when ownership or context rules dominate.
+
+### Authorization Rules
+
+| Rule | Detail |
+|---|---|
+| Server-side enforcement | All authorization checks on server. ✗ client-side auth checks as sole protection |
+| Middleware placement | Authorization middleware runs after authentication (position 8 in §3) |
+| Default deny | Unauthenticated requests → 401. Unauthorized requests → 403 |
+| Resource-level checks | Verify caller has access to specific resource, not just endpoint. ✗ "can access /orders" without checking order ownership |
+| ✗ role checks in business logic | Use middleware or decorators. Domain logic receives pre-authorized context |
+| Audit trail | Log authorization decisions (granted + denied) with caller identity · resource · action |
+| Principle of least privilege | Grant minimum permissions required. Expand only when justified |
+
+### Frontend Authorization
+
+| Rule | Detail |
+|---|---|
+| UI gating | Hide/disable UI elements user cannot access — for UX, not security |
+| ✗ client-only enforcement | Server re-validates every request regardless of frontend checks |
+| Permission-aware components | Components receive permission set → render conditionally |
+| ✗ embed permission logic in components | Centralize permission evaluation → components consume boolean results |
+
+---
+
+## 9. Frontend Architecture
+
+### Component Design
+
+| Rule | Detail |
+|---|---|
+| Single responsibility | One component = one purpose. Split when component handles >1 concern |
+| Presentational vs container | Separate data-fetching components from rendering components |
+| Props down, events up | Parent → child via props/attributes. Child → parent via events/callbacks |
+| ✗ prop drilling >3 levels | Use context/state management for deeply nested data |
+| Composition over inheritance | Build complex components by composing simple ones |
+| Deterministic rendering | Same props + same state = same output. ✗ side effects in render path |
+
+### Frontend State Management
+
+| State Type | Storage | Example |
+|---|---|---|
+| Server state | Cache layer with stale/revalidate | API responses · user profile |
+| UI state | Component-local state | Dropdown open · modal visible |
+| URL state | URL params / query string | Active tab · filters · page number |
+| Form state | Component or form library | Input values · validation errors |
+| Global app state | State store (single source of truth) | Auth status · theme · feature flags |
+
+✗ put everything in global store. Most state is local or server-derived.
+
+### Frontend Routing
+
+| Rule | Detail |
+|---|---|
+| Declarative route config | Routes defined as data structure — ✗ scattered across components |
+| Code splitting per route | Each route loads its own bundle. ✗ single monolithic bundle |
+| Route guards | Auth/permission checks before route renders |
+| 404 fallback | Unmatched routes → dedicated not-found page |
+| URL reflects state | Back button · bookmark · share URL all work correctly |
+| ✗ hash routing in production | Use history API (clean URLs). Hash routing = legacy fallback only |
+
+### Build Optimization
+
+| Rule | Detail |
+|---|---|
+| Tree shaking | Dead code elimination enabled. ✗ import entire libraries for one function |
+| Code splitting | Route-based + component-based lazy loading |
+| Bundle analysis | Run bundle analyzer in CI. Fail build if bundle exceeds budget (see §13) |
+| Source maps | Generate for production but ✗ serve publicly. Upload to error tracking service |
+| Minification | HTML · CSS · JS all minified in production builds |
+| Environment variables | Inject at build time. ✗ runtime environment checks in client bundle |

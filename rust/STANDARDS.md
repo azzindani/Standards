@@ -547,3 +547,499 @@ async fn main() -> Result<()> {
 | Prefer structured concurrency: `tokio::select!`, `JoinSet` over unbounded `spawn` |
 | ✗ `tokio::sync::Mutex` when `std::sync::Mutex` suffices (no await while locked) |
 | Cancel safety: every `.await` point is a potential cancellation — hold no invariants across awaits |
+
+---
+
+## 9. Memory
+
+### Stack vs Heap
+
+| Allocation | When | Cost |
+|---|---|---|
+| Stack | Fixed-size, short-lived, function-local | ~0 (pointer bump) |
+| Heap (`Box`, `Vec`, `String`) | Dynamic size, shared ownership, long-lived | Allocator call + potential fragmentation |
+
+**Rule:** default to stack. Heap when size unknown at compile time or data must outlive current scope.
+
+### Smart Pointer Selection
+
+| Type | Ownership | Thread-safe | Use case |
+|---|---|---|---|
+| `Box<T>` | Single owner | Depends on T | Large structs, trait objects, recursive types |
+| `Rc<T>` | Shared, ref-counted | ✗ No | Single-thread shared ownership (trees, graphs) |
+| `Arc<T>` | Shared, ref-counted | Yes | Cross-thread shared data |
+| `Cow<'a, T>` | Borrowed or owned | Depends on T | Avoid cloning when original might suffice |
+
+```rust
+// ✓ Cow — clone only when mutation needed
+fn normalize(input: &str) -> Cow<'_, str> {
+    if input.contains('\t') {
+        Cow::Owned(input.replace('\t', "    "))
+    } else {
+        Cow::Borrowed(input)
+    }
+}
+```
+
+### Allocation Anti-Patterns
+
+| Anti-pattern | Fix |
+|---|---|
+| `Vec::new()` in loop body, same capacity each iteration | Allocate once before loop, `.clear()` and reuse |
+| `format!()` for static strings | Use `&str` literals directly |
+| `to_string()` on string literals at every call site | Accept `&str`, let caller own if needed |
+| `collect::<Vec<_>>()` then immediate iteration | Chain iterators — skip intermediate allocation |
+| `Box<dyn Trait>` when enum with 2–3 variants suffices | Use enum dispatch — stack-allocated, no vtable |
+
+```rust
+// ✓ reuse allocation across iterations
+let mut buf = String::with_capacity(256);
+for item in items {
+    buf.clear();
+    write!(&mut buf, "{}: {}", item.key, item.value)?;
+    output.push_str(&buf);
+}
+```
+
+---
+
+## 10. Cargo & Dependencies
+
+### Cargo.toml Conventions
+
+```toml
+[package]
+name = "my-crate"
+version = "0.1.0"
+edition = "2021"        # always latest stable edition
+rust-version = "1.75"   # MSRV — minimum supported Rust version
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[dev-dependencies]
+proptest = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[lints.rust]
+unsafe_code = "forbid"  # unless crate requires unsafe
+
+[lints.clippy]
+all = "deny"
+pedantic = "warn"
+```
+
+### Feature Flag Rules
+
+| Rule |
+|---|
+| Default features = minimal working set — ✗ kitchen-sink defaults |
+| Feature names use kebab-case: `json-output`, `tls-native` |
+| ✗ features that change public API shape — leads to combinatorial testing burden |
+| Document each feature in `Cargo.toml` comments and crate-level docs |
+| `#[cfg(feature = "x")]` blocks stay in dedicated modules when possible |
+
+### Workspace Dependencies
+
+```toml
+# root Cargo.toml — centralize versions
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+
+# crate Cargo.toml — inherit from workspace
+[dependencies]
+serde = { workspace = true }
+tokio = { workspace = true }
+```
+
+**Rule:** all shared dependencies defined in `[workspace.dependencies]`. ✗ version duplication across crates.
+
+### Dependency Selection
+
+| Criterion | Rule |
+|---|---|
+| Maturity | Prefer crates with 1.0+ version, active maintenance |
+| Dependency tree | Check `cargo tree` — ✗ crates pulling 100+ transitive deps for one function |
+| Build time | Measure `cargo build --timings` — heavy compile-time deps need justification |
+| Unsafe | Check `cargo geiger` — know how much unsafe you're inheriting |
+| Licensing | Verify compatibility before adding — `cargo deny check licenses` |
+
+---
+
+## 11. Testing
+
+See architecture/STANDARDS.md §1 — principle #2 (functions are I/O or logic, never both → pure logic is trivially testable).
+
+### Test Organization
+
+| Type | Location | Runs with | Purpose |
+|---|---|---|---|
+| Unit tests | `#[cfg(test)] mod tests` in same file | `cargo test` | Test private functions, edge cases |
+| Integration tests | `tests/*.rs` at crate root | `cargo test` | Test public API, cross-module behavior |
+| Doc tests | `///` comments with code blocks | `cargo test --doc` | Verify examples compile and run |
+| Benchmarks | `benches/*.rs` | `cargo bench` | Performance regression detection |
+| Fuzz tests | `fuzz/fuzz_targets/*.rs` | `cargo fuzz` | Input-space exploration |
+
+### Unit Test Conventions
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_valid_input_returns_expected_struct() {
+        let input = r#"{"name": "test", "value": 42}"#;
+        let result = parse(input).unwrap();
+        assert_eq!(result.name, "test");
+        assert_eq!(result.value, 42);
+    }
+
+    #[test]
+    fn parse_empty_input_returns_error() {
+        let result = parse("");
+        assert!(matches!(result, Err(ParseError::Empty)));
+    }
+}
+```
+
+| Rule |
+|---|
+| Test function name = `{method}_{scenario}_{expected_result}` |
+| One assert per behavior — ✗ mega-tests asserting 10 things |
+| `assert_eq!` over `assert!(a == b)` — better error messages |
+| `assert!(matches!(..))` for enum variant checking |
+| ✗ `#[ignore]` without issue tracker link in comment |
+| Test helpers go in `#[cfg(test)]` module — ✗ test utils in production code |
+
+### Integration Tests
+
+```rust
+// tests/api_workflow.rs — tests public API only
+use my_crate::{Engine, Config};
+
+#[test]
+fn full_processing_pipeline() {
+    let engine = Engine::new(Config::default());
+    let input = test_fixture("sample.json");
+    let output = engine.process(&input).unwrap();
+    assert_eq!(output.status, Status::Complete);
+}
+```
+
+### Doc Tests
+
+```rust
+/// Parses a duration string into seconds.
+///
+/// ```
+/// use my_crate::parse_duration;
+/// assert_eq!(parse_duration("5m").unwrap(), 300);
+/// assert_eq!(parse_duration("1h30m").unwrap(), 5400);
+/// ```
+pub fn parse_duration(s: &str) -> Result<u64, ParseError> { /* ... */ }
+```
+
+**Rule:** every public function has at least one doc test showing typical usage.
+
+### Property Testing (proptest)
+
+```rust
+use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn roundtrip_serialization(input in any::<Config>()) {
+        let bytes = serialize(&input).unwrap();
+        let output = deserialize(&bytes).unwrap();
+        prop_assert_eq!(input, output);
+    }
+}
+```
+
+Use proptest for: serialization roundtrips, parser fuzzing, invariant verification, boundary conditions.
+
+---
+
+## 12. Clippy & Formatting
+
+### rustfmt Configuration
+
+```toml
+# rustfmt.toml at crate root
+edition = "2021"
+max_width = 100
+use_field_init_shorthand = true
+use_try_shorthand = true
+```
+
+**Rule:** `cargo fmt --check` in CI — ✗ merge unformatted code. No team-specific overrides beyond those above.
+
+### Clippy Configuration
+
+```toml
+# Cargo.toml or .clippy.toml
+[lints.clippy]
+all = "deny"
+pedantic = "warn"
+nursery = "warn"
+# Selectively allow noisy pedantic lints
+module_name_repetitions = { level = "allow", priority = 1 }
+must_use_candidate = { level = "allow", priority = 1 }
+```
+
+### Critical Clippy Lints
+
+| Lint | Level | Rationale |
+|---|---|---|
+| `clippy::unwrap_used` | deny | Force explicit error handling |
+| `clippy::expect_used` | warn | Allowed with descriptive message in infallible contexts |
+| `clippy::panic` | deny (in lib) | Libraries ✗ panic — return errors |
+| `clippy::todo` | deny (in CI) | ✗ merge incomplete code |
+| `clippy::dbg_macro` | deny | ✗ debug macros in production |
+| `clippy::print_stdout` | deny (in lib) | Libraries use logging, not stdout |
+| `clippy::large_enum_variant` | warn | Box large variants to keep enum size uniform |
+| `clippy::needless_pass_by_value` | warn | Take `&T` instead of `T` when no ownership needed |
+
+### CI Pipeline
+
+```yaml
+# Minimum checks — all must pass before merge
+- cargo fmt --check
+- cargo clippy -- -D warnings
+- cargo test
+- cargo doc --no-deps  # verify docs build
+```
+
+---
+
+## 13. Performance
+
+### Zero-Cost Abstractions
+
+| Abstraction | Cost at runtime | Use freely |
+|---|---|---|
+| Generics (monomorphized) | Zero — compiled to concrete types | Yes |
+| Iterators (chained) | Zero — fused into single loop | Yes |
+| `enum` dispatch | Branch, no vtable | Yes |
+| `impl Trait` (static) | Zero — monomorphized | Yes |
+| `dyn Trait` (dynamic) | Vtable indirection | Measure first |
+| `Box<dyn Fn()>` closures | Heap alloc + vtable | Avoid in hot paths |
+
+### Iterator Chains over Loops
+
+```rust
+// ✓ iterator chain — compiler optimizes to single pass
+let total: u64 = records
+    .iter()
+    .filter(|r| r.is_active())
+    .map(|r| r.amount)
+    .sum();
+
+// ✗ manual loop with intermediate collection
+let mut active = Vec::new();
+for r in &records {
+    if r.is_active() {
+        active.push(r);
+    }
+}
+let total: u64 = active.iter().map(|r| r.amount).sum();
+```
+
+### Benchmarking with Criterion
+
+```rust
+// benches/engine_bench.rs
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+
+fn bench_parse(c: &mut Criterion) {
+    let input = include_str!("../fixtures/large.json");
+    c.bench_function("parse_large_json", |b| {
+        b.iter(|| parse(black_box(input)))
+    });
+}
+
+criterion_group!(benches, bench_parse);
+criterion_main!(benches);
+```
+
+| Rule |
+|---|
+| Benchmark before optimizing — ✗ premature optimization |
+| Use `criterion` for statistical benchmarks, not wall-clock timing |
+| `black_box()` to prevent compiler from eliminating dead code |
+| Track benchmark results in CI — detect regressions automatically |
+| Profile with `cargo flamegraph` or `perf` before micro-optimizing |
+| Prefer algorithmic improvements over micro-optimizations |
+
+### Common Performance Patterns
+
+| Pattern | Technique |
+|---|---|
+| Avoid repeated allocations | Pre-allocate with `Vec::with_capacity(n)`, reuse buffers |
+| Small string optimization | Use `smol_str` or `compact_str` for many short-lived strings |
+| Reduce monomorphization bloat | Extract non-generic inner function from generic outer function |
+| Avoid unnecessary copies | Return iterators instead of collected Vecs |
+| Batch I/O | Buffer writes with `BufWriter`, reads with `BufReader` |
+
+---
+
+## 14. Idiomatic Patterns
+
+### Builder Pattern
+
+```rust
+pub struct ServerConfig {
+    port: u16,
+    host: String,
+    max_connections: usize,
+}
+
+pub struct ServerConfigBuilder {
+    port: u16,
+    host: String,
+    max_connections: usize,
+}
+
+impl ServerConfigBuilder {
+    pub fn new() -> Self {
+        Self { port: 8080, host: "localhost".into(), max_connections: 100 }
+    }
+
+    pub fn port(mut self, port: u16) -> Self { self.port = port; self }
+    pub fn host(mut self, host: impl Into<String>) -> Self { self.host = host.into(); self }
+    pub fn max_connections(mut self, n: usize) -> Self { self.max_connections = n; self }
+
+    pub fn build(self) -> ServerConfig {
+        ServerConfig { port: self.port, host: self.host, max_connections: self.max_connections }
+    }
+}
+```
+
+**Rule:** builder takes `self` (consuming) — prevents reuse of partially-configured builder. Return `Result` from `build()` if validation needed.
+
+### From/Into Conversions
+
+```rust
+// Implement From — Into is derived automatically
+impl From<Config> for ServerConfig {
+    fn from(c: Config) -> Self {
+        Self { port: c.port, host: c.host, max_connections: c.max_conn }
+    }
+}
+
+// ✓ accept Into<T> for flexible APIs
+fn start_server(config: impl Into<ServerConfig>) {
+    let config = config.into();
+    // ...
+}
+```
+
+| Rule |
+|---|
+| Implement `From<A> for B` — ✗ implement `Into` directly (From gives Into for free) |
+| `From` conversions must be infallible — use `TryFrom` when conversion can fail |
+| ✗ `From` for lossy conversions — use named methods: `fn to_approximate(&self) -> f32` |
+| `From<&str> for MyType` when constructing from string slices is common |
+
+### Display and Debug
+
+```rust
+use std::fmt;
+
+// Debug — for developers, #[derive(Debug)] is sufficient for most types
+#[derive(Debug)]
+pub struct Request { method: Method, path: String }
+
+// Display — for users, implement manually
+impl fmt::Display for Request {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.method, self.path)
+    }
+}
+```
+
+| Rule |
+|---|
+| Every public type: `#[derive(Debug)]` minimum |
+| `Display` for types shown to users (logs, errors, CLI output) |
+| `Debug` output may be verbose — `Display` must be concise |
+| Error types: implement `Display` (required by `std::error::Error`) |
+
+### Iterator Protocol
+
+```rust
+// ✓ implement IntoIterator for collection types
+impl IntoIterator for TokenStream {
+    type Item = Token;
+    type IntoIter = std::vec::IntoIter<Token>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.tokens.into_iter()
+    }
+}
+
+// ✓ return impl Iterator for lazy evaluation
+fn active_users(users: &[User]) -> impl Iterator<Item = &User> {
+    users.iter().filter(|u| u.is_active)
+}
+```
+
+| Rule |
+|---|
+| Return `impl Iterator` over `Vec` when caller just needs to iterate |
+| Implement `IntoIterator` for custom collections |
+| Implement `Iterator` for custom cursor/streaming types |
+| ✗ collect into Vec just to pass to a function that takes `impl IntoIterator` |
+
+### Derive Conventions
+
+| Trait | Derive when |
+|---|---|
+| `Debug` | Always on public types |
+| `Clone` | Type is logically copyable |
+| `PartialEq`, `Eq` | Type supports equality comparison |
+| `Hash` | Type used as HashMap/HashSet key (requires `Eq`) |
+| `Default` | Type has meaningful zero/empty state |
+| `Serialize`, `Deserialize` | Type crosses serialization boundary |
+
+**Rule:** derive order = `Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize` — consistent across codebase.
+
+---
+
+## 15. Checklist
+
+### Pre-Commit
+
+- [ ] `cargo fmt` — no formatting diffs
+- [ ] `cargo clippy -- -D warnings` — no warnings
+- [ ] `cargo test` — all tests pass
+- [ ] `cargo doc --no-deps` — docs build without warnings
+- [ ] No `.unwrap()` in non-test code (use `?` or `.expect("reason")`)
+- [ ] No `todo!()` or `unimplemented!()` in committed code
+- [ ] Every `unsafe` block has `// SAFETY:` comment
+- [ ] Every public item has doc comment
+
+### Code Review
+
+- [ ] Ownership: prefer borrow over clone; justify each `.clone()`
+- [ ] Error handling: `thiserror` in libs, `anyhow` in bins; no `String` errors
+- [ ] Types: newtypes for IDs/units; enums for state machines; ✗ bool params
+- [ ] Traits: exist only when multiple impls needed or testing requires it
+- [ ] Pattern matching: exhaustive; ✗ wildcard on owned enums
+- [ ] Concurrency: correct `Send`/`Sync` bounds; ✗ `Mutex` guard across `.await`
+- [ ] Memory: no unnecessary allocations in hot paths; buffers reused
+- [ ] Dependencies: justified, audited (`cargo deny`), minimal feature set
+
+### New Crate
+
+- [ ] `edition = "2021"` (or latest stable)
+- [ ] `rust-version` (MSRV) set in `Cargo.toml`
+- [ ] `[lints.clippy]` configured — `all = "deny"`, `pedantic = "warn"`
+- [ ] `unsafe_code = "forbid"` unless crate requires unsafe
+- [ ] Workspace dependencies used for shared crates
+- [ ] `lib.rs` re-exports public API — clean, flat import paths
+- [ ] CI runs: fmt, clippy, test, doc, deny (licenses + advisories)
+- [ ] README with usage example and MSRV badge

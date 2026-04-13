@@ -52,42 +52,17 @@ PEP 8 as baseline with documented deviations.
 | Name-mangled | `__double_leading` | `__secret` (rare; prefer `_single`) |
 | Type variable | `PascalCase` + `T` suffix | `ItemT`, `ResponseT` |
 
-### Whitespace Rules
+### Whitespace
 
-```python
-# ✓ One blank line between methods
-class Processor:
-    def step_one(self) -> None:
-        ...
-
-    def step_two(self) -> None:
-        ...
-
-# ✓ Two blank lines between top-level definitions
-def first_function() -> None:
-    ...
-
-
-def second_function() -> None:
-    ...
-
-# ✓ Trailing commas in multi-line
-config = {
-    "host": "localhost",
-    "port": 8080,
-    "debug": True,  # ← trailing comma
-}
-```
+One blank line between methods. Two blank lines between top-level definitions.
+Trailing commas required in multi-line collections.
 
 ### Docstrings
 
-Google-style docstrings for all public functions, classes, modules.
+Google-style for all public functions, classes, modules.
 
 ```python
-def fetch_records(
-    query: str,
-    limit: int = 100,
-) -> list[Record]:
+def fetch_records(query: str, limit: int = 100) -> list[Record]:
     """Fetch records matching query from primary store.
 
     Args:
@@ -99,7 +74,6 @@ def fetch_records(
 
     Raises:
         QueryError: If query syntax invalid.
-        ConnectionError: If store unreachable after retries.
     """
 ```
 
@@ -124,12 +98,10 @@ Internal helpers: type hints strongly encouraged, enforced via mypy.
 | `cast()` requires comment | Explain why cast safe |
 | `# type: ignore` requires error code | `# type: ignore[attr-defined]` |
 
-### Generics and Protocols
+### Protocols
 
 ```python
-from typing import Protocol, TypeVar
-
-T = TypeVar("T")
+from typing import Protocol
 
 class Serializable(Protocol):
     def to_dict(self) -> dict[str, Any]: ...
@@ -167,42 +139,27 @@ Two layouts exist. Choose based on project type.
 | **src layout** | Libraries, packages published to PyPI, multi-package repos | `src/mylib/` |
 | **Flat layout** | Single-purpose apps, scripts, MCP servers, CLI tools | `myapp/` |
 
-### src Layout
+### src Layout (libraries, PyPI packages)
 
 ```
 project-root/
-├── pyproject.toml
-├── uv.lock
-├── src/
-│   └── mylib/
-│       ├── __init__.py
-│       ├── py.typed          # marker for PEP 561
-│       ├── core.py
-│       ├── models.py
-│       └── _internal.py      # private module
+├── pyproject.toml · uv.lock · .python-version
+├── src/mylib/
+│   ├── __init__.py · py.typed
+│   ├── core.py · models.py · _internal.py
 ├── tests/
-│   ├── conftest.py
-│   ├── test_core.py
-│   └── test_models.py
-└── .python-version
+│   ├── conftest.py · test_core.py · test_models.py
 ```
 
-### Flat Layout
+### Flat Layout (apps, scripts, MCP servers, CLI tools)
 
 ```
 project-root/
-├── pyproject.toml
-├── uv.lock
+├── pyproject.toml · uv.lock · .python-version
 ├── myapp/
-│   ├── __init__.py
-│   ├── main.py
-│   ├── config.py
-│   └── handlers/
-│       ├── __init__.py
-│       └── api.py
+│   ├── __init__.py · main.py · config.py
+│   └── handlers/__init__.py · handlers/api.py
 ├── tests/
-│   └── ...
-└── .python-version
 ```
 
 ### `__init__.py` Rules
@@ -248,31 +205,14 @@ See `directory/STANDARDS.md` for general project layout rules.
 name = "myproject"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = [
-    "httpx>=0.27",
-    "pydantic>=2.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-cov>=5.0",
-    "mypy>=1.10",
-    "ruff>=0.5",
-]
+dependencies = ["httpx>=0.27", "pydantic>=2.0"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.backends"
 
 [tool.uv]
-dev-dependencies = [
-    "pytest>=8.0",
-    "pytest-cov>=5.0",
-    "mypy>=1.10",
-    "ruff>=0.5",
-    "pre-commit>=3.7",
-]
+dev-dependencies = ["pytest>=8.0", "pytest-cov>=5.0", "mypy>=1.10", "ruff>=0.5", "pre-commit>=3.7"]
 ```
 
 ### Common uv Commands
@@ -307,26 +247,12 @@ Every project runs in an isolated virtual environment. ✗ system Python for pro
 | ✗ `virtualenv` / `venv` module | Use `uv venv` — faster, consistent |
 
 ```bash
-# Setup new environment
-uv venv --python 3.12          # creates .venv/ with Python 3.12
-uv sync                        # install all deps from lock
-
-# Activate (rare — prefer uv run)
-source .venv/bin/activate
-
-# Preferred: run without activation
-uv run python -m myapp
-uv run pytest -x
+uv venv --python 3.12     # creates .venv/ with Python 3.12
+uv sync                    # install all deps from lock
+uv run pytest -x           # run within venv (preferred over activating)
 ```
 
-### Python Version Pinning
-
-```bash
-# .python-version
-3.12
-```
-
-`uv` reads `.python-version` automatically. If Python version not installed, `uv` downloads it.
+Pin version in `.python-version` (just `3.12`). `uv` reads it automatically, downloads if missing.
 
 ---
 
@@ -802,3 +728,209 @@ uv run pytest --cov=src          # test + coverage
 ```
 
 All four must pass before merge. ✗ disabling checks for convenience.
+
+---
+
+## 13. Python-Specific Anti-Patterns
+
+### Mutable Default Arguments
+
+```python
+# ✗ WRONG — list shared across all calls
+def append_item(item: str, items: list[str] = []) -> list[str]:
+    items.append(item)
+    return items
+
+# ✓ CORRECT — None sentinel + factory
+def append_item(item: str, items: list[str] | None = None) -> list[str]:
+    if items is None:
+        items = []
+    items.append(item)
+    return items
+```
+
+### Late Binding Closures
+
+```python
+# ✗ WRONG — all lambdas capture i=4 (last value)
+funcs = [lambda: i for i in range(5)]
+[f() for f in funcs]  # [4, 4, 4, 4, 4]
+
+# ✓ CORRECT — default argument captures current value
+funcs = [lambda i=i: i for i in range(5)]
+[f() for f in funcs]  # [0, 1, 2, 3, 4]
+```
+
+### Global State
+
+```python
+# ✗ WRONG — module-level mutable state
+_cache = {}  # any import side-effects, any module can mutate
+
+# ✓ CORRECT — encapsulate in class or function scope
+class Cache:
+    def __init__(self) -> None:
+        self._data: dict[str, Any] = {}
+```
+
+### Other Anti-Patterns
+
+| Anti-Pattern | Problem | Fix |
+|---|---|---|
+| `isinstance()` chains | Fragile, violates open-closed | Protocol / dispatch / match-case |
+| Nested `try/except` | Hard to reason about | Flatten; one try per operation |
+| `hasattr()` for flow control | Hides bugs, slow | Explicit check or Protocol |
+| `eval()` / `exec()` | Security hole | ✗ Never in production code |
+| Star imports in non-`__init__` | Namespace pollution | Explicit imports |
+| Catching `KeyboardInterrupt` | Prevents clean exit | Let it propagate |
+| `os.path` for new code | String-based, error-prone | `pathlib.Path` |
+| `open()` without encoding | Platform-dependent default | `open(f, encoding="utf-8")` |
+| `datetime.now()` without tz | Naive datetime bugs | `datetime.now(tz=UTC)` |
+
+---
+
+## 14. Performance
+
+### General Rules
+
+| Pattern | When |
+|---|---|
+| List comprehension over `for`+`append` | All collection building |
+| Generator expression for large data | When full list not needed in memory |
+| `__slots__` on data-heavy classes | Many instances (>1000) with fixed attrs |
+| `dict` / `set` for membership tests | ✗ `if x in large_list` — O(n) vs O(1) |
+| `functools.lru_cache` | Pure functions with repeated inputs |
+| `itertools` over manual iteration | Chaining, grouping, combinations |
+
+### Comprehensions vs Loops
+
+```python
+# ✓ Comprehension — faster, clearer
+squares = [x * x for x in range(1000)]
+
+# ✓ Generator — lazy evaluation for large data
+total = sum(x * x for x in range(1_000_000))
+
+# ✓ Dict comprehension
+index = {item.id: item for item in items}
+
+# ✗ Loop+append — slower, verbose
+squares = []
+for x in range(1000):
+    squares.append(x * x)
+```
+
+### `__slots__`
+
+```python
+# ✓ Slots — 40-50% less memory per instance
+class Point:
+    __slots__ = ("x", "y", "z")
+
+    def __init__(self, x: float, y: float, z: float) -> None:
+        self.x = x
+        self.y = y
+        self.z = z
+
+# Or use dataclass with slots=True (3.10+)
+@dataclass(slots=True)
+class Point:
+    x: float
+    y: float
+    z: float
+```
+
+### Caching
+
+```python
+from functools import lru_cache, cache
+
+# ✓ Bounded cache — evicts LRU entries
+@lru_cache(maxsize=256)
+def expensive_lookup(key: str) -> Result:
+    return db.query(key)
+
+# ✓ Unbounded cache (3.9+) — use only for small key spaces
+@cache
+def parse_config(path: str) -> Config:
+    return load_and_parse(path)
+```
+
+### String Building
+
+```python
+# ✓ join() for many strings
+result = "".join(parts)
+
+# ✓ io.StringIO for complex string assembly
+import io
+buffer = io.StringIO()
+for chunk in data:
+    buffer.write(chunk)
+result = buffer.getvalue()
+
+# ✗ repeated concatenation — O(n²) for large n
+result = ""
+for chunk in data:
+    result += chunk
+```
+
+### Profiling
+
+Use `cProfile` / `py-spy` before optimizing. ✗ premature optimization.
+
+```bash
+uv run python -m cProfile -s cumtime src/myapp/main.py
+```
+
+---
+
+## 15. Checklist
+
+### New Project Setup
+
+- [ ] `pyproject.toml` with project metadata, dependencies, tool config
+- [ ] `uv.lock` committed
+- [ ] `.python-version` committed
+- [ ] `.venv/` in `.gitignore`
+- [ ] `py.typed` marker in package root
+- [ ] ruff + mypy configured in `pyproject.toml`
+- [ ] pre-commit hooks installed
+- [ ] src layout or flat layout chosen deliberately
+- [ ] `__init__.py` with `__all__` in every package
+
+### Every File
+
+- [ ] Type hints on all public functions (params + return)
+- [ ] Google-style docstring on public API
+- [ ] Imports ordered: stdlib → third-party → internal
+- [ ] ✗ wildcard imports
+- [ ] ✗ mutable default arguments
+- [ ] ✗ bare `except:`
+- [ ] f-strings for formatting (except logging)
+- [ ] `pathlib.Path` over `os.path`
+- [ ] `encoding="utf-8"` on `open()` calls
+
+### Every PR
+
+- [ ] `ruff check` passes
+- [ ] `ruff format --check` passes
+- [ ] `mypy --strict` passes
+- [ ] `pytest` passes with ≥80% coverage
+- [ ] No new `# type: ignore` without error code + comment
+- [ ] No new `Any` without justification comment
+- [ ] Lock file updated if deps changed
+
+### Async Code
+
+- [ ] ✗ blocking calls in async functions
+- [ ] `TaskGroup` used over bare `gather` where possible
+- [ ] Async context managers for resource lifecycle
+- [ ] ✗ `time.sleep()` — use `asyncio.sleep()`
+
+### Cross-References
+
+- `architecture/STANDARDS.md` — tier model, function contracts, error architecture
+- `code_writing/STANDARDS.md` — general readability, function style
+- `testing/STANDARDS.md` — test pyramid, coverage strategy
+- `dependencies/STANDARDS.md` — dependency management principles
