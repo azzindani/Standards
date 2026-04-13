@@ -398,3 +398,162 @@ Post-deployment surveillance. Detect problems before users report them.
 - Retrained model must pass same gates as original before promotion.
 - Automated retraining pipelines require human approval gate before production promotion.
 - Retraining frequency bounded: minimum interval between retrains to prevent thrashing.
+
+---
+
+## 11. Reproducibility
+
+Every result must be reproducible from recorded metadata alone.
+
+### Seed Management
+
+| Component | Rule |
+|---|---|
+| Global random seed | Set once at pipeline entry point; logged in experiment record |
+| Framework-specific seeds | Set explicitly for each framework (numpy, torch, tensorflow, etc.) |
+| Data shuffling | Seed-controlled; same seed → same shuffle order |
+| Model initialization | Seed-controlled; same seed → same initial weights |
+| Hardware non-determinism | Document known sources (GPU atomics, cuDNN auto-tune); disable auto-tune for strict reproducibility |
+
+### Deterministic Pipeline Rules
+
+- Pipeline = code version + data version + config version + environment version → deterministic output.
+- ✗ Download data at training time from mutable source. Snapshot first, version, then train.
+- ✗ Depend on system clock, hostname, or process ID for any computation affecting model output.
+- All random operations use seeded generators, ✗ default/unseeded random calls.
+- If exact reproducibility impossible (GPU non-determinism), document tolerance: "metrics reproducible within ±0.2%."
+
+### Environment Pinning
+
+- Exact dependency versions locked (lock file, not version ranges).
+- Runtime version pinned: language version + framework version + CUDA version (if GPU).
+- Container image or environment hash recorded per experiment.
+- ✗ "Works on my machine" — pipeline must reproduce in clean environment from recorded metadata.
+
+---
+
+## 12. Privacy & Ethics
+
+### Data Anonymization
+
+| Technique | Use When | Limitation |
+|---|---|---|
+| Pseudonymization | Need to re-link later (with key) | Reversible if key compromised |
+| K-anonymity | Publishing aggregate data | Vulnerable to background knowledge attacks |
+| Differential privacy | Training on sensitive data | Reduces model accuracy; privacy budget finite |
+| Data masking | Display/logging of sensitive fields | ✗ Use for model training — destroys signal |
+| Synthetic data | Cannot use real data at all | Must validate synthetic ≈ real distribution |
+
+### Anonymization Rules
+
+- PII removed or pseudonymized before data enters ML pipeline. ✗ PII in feature matrix.
+- Anonymization applied at data collection/ingestion stage, ✗ at training time.
+- Anonymization method + parameters logged as part of data version metadata.
+- Re-identification risk assessed: if k-anonymity k < 5, insufficient.
+
+### Bias Auditing
+
+- Bias audit required before production promotion (staging → production gate in §8).
+- Protected attributes identified per domain and jurisdiction (gender, race, age, disability, etc.).
+- Audit method: evaluate model metrics per protected group independently.
+
+| Fairness Metric | Definition | Threshold |
+|---|---|---|
+| Demographic parity | P(positive\|group A) ≈ P(positive\|group B) | Ratio within [0.8, 1.25] |
+| Equal opportunity | TPR(group A) ≈ TPR(group B) | Ratio within [0.8, 1.25] |
+| Predictive parity | Precision(group A) ≈ Precision(group B) | Ratio within [0.8, 1.25] |
+| Calibration | Predicted probability ≈ observed rate per group | Max deviation < 0.05 |
+
+- Fairness metric selection depends on domain — ✗ use single metric universally. Document which metric and why.
+- If bias detected: (1) investigate root cause in data, (2) apply mitigation (resampling, reweighting, constraint), (3) re-audit.
+- ✗ Ship model that fails bias audit without documented exception approved by accountable human.
+
+### Model Card
+
+Every production model has a model card documenting:
+
+| Section | Contents |
+|---|---|
+| Model details | Type · version · framework · training date · owner |
+| Intended use | Primary use case · known out-of-scope uses |
+| Training data | Dataset version · size · collection methodology · limitations |
+| Evaluation | Metrics on holdout · per-segment performance · comparison to baseline |
+| Fairness | Protected groups evaluated · fairness metrics · known disparities |
+| Limitations | Known failure modes · data gaps · performance ceilings |
+| Recommendations | Deployment constraints · required monitoring · update cadence |
+
+---
+
+## 13. Scale Matrix
+
+Apply ML rigor proportionally. See `architecture/STANDARDS.md` §12 for general scale guidance.
+
+| Concern | PoC / Notebook | Small (Pipeline) | Production (Full MLOps) |
+|---|---|---|---|
+| Data versioning (§2) | Manual notes on data source | Hashed snapshots | Full lineage tracking + automated versioning |
+| Data preparation (§3) | Notebook cells, manual splits | Script-based pipeline, reproducible splits | Automated pipeline with leakage tests |
+| Experiment tracking (§4) | Notebook output cells | Local tracking tool (MLflow, etc.) | Centralized tracking with comparison UI |
+| Hyperparameters (§5) | Manual tuning | Config file + grid/random search | Automated search with budget limits |
+| Cross-validation (§5) | Single train/test split | K-fold if small data | K-fold + holdout + temporal validation |
+| Evaluation (§6) | Primary metric only | Primary + secondary + baseline comparison | Full metric suite + per-segment + significance tests |
+| Explainability (§7) | Feature importance plot | SHAP/LIME for key predictions | Full global + local + bias audit |
+| Model registry (§8) | File system with naming convention | Local registry (MLflow, etc.) | Centralized registry with promotion gates |
+| Deployment (§9) | Manual file copy / notebook | Batch script or simple API | Full CI/CD + canary + A/B + rollback |
+| Monitoring (§10) | Manual checks | Scheduled drift reports | Real-time drift + performance + automated alerts |
+| Reproducibility (§11) | Seeds set, manual notes | Locked deps + seeded pipeline | Full environment pinning + container |
+| Privacy & Ethics (§12) | Awareness, no formal audit | PII removal + basic bias check | Full anonymization + bias audit + model card |
+
+### Scale Transition Rules
+
+- PoC → Small: triggered when model influences any business decision or user-facing output.
+- Small → Production: triggered when model serves >100 users or >$10K decisions per month.
+- Transition follows Strangler Fig pattern (see `architecture/STANDARDS.md` §11) — evolve, ✗ rewrite.
+
+---
+
+## 14. Checklist
+
+### New ML Project
+
+- [ ] Problem framed: task type · primary metric · success threshold · baseline defined
+- [ ] Data sourced: collection method · access documented · initial quality assessment
+- [ ] Data versioned: first snapshot created with schema + metadata (§2)
+- [ ] Splits defined: strategy selected per data type · leakage audit performed (§3)
+- [ ] Feature pipeline: transforms documented · deterministic · version-controlled (§3)
+- [ ] Experiment tracking configured: all required fields capturable (§4)
+- [ ] Training config: hyperparameters externalized · search strategy defined · resource budget set (§5)
+- [ ] Evaluation plan: metrics selected by task type · baseline model trained · thresholds set (§6)
+- [ ] Reproducibility: seeds set · dependencies locked · environment pinned (§11)
+
+### Model Promotion to Staging
+
+- [ ] Experiment logged with all required fields (§4)
+- [ ] Beats baseline on primary metric (§6)
+- [ ] Holdout evaluation complete — test set used exactly once (§6)
+- [ ] Global feature importance generated (§7)
+- [ ] Risk level assessed → explainability level determined (§7)
+- [ ] Model registered with full metadata (§8)
+- [ ] Serialization validated: load → predict → output matches expected (§9)
+- [ ] Input/output schema documented (§9)
+
+### Model Promotion to Production
+
+- [ ] All staging checks passed
+- [ ] Integration tests pass in staging environment (§9)
+- [ ] Latency SLA met: p50 · p95 · p99 measured (§9)
+- [ ] Bias audit passed per required fairness metrics (§12)
+- [ ] Model card written (§12)
+- [ ] Monitoring configured: drift detection · performance tracking · alerting (§10)
+- [ ] Retraining triggers defined (§10)
+- [ ] Rollback plan documented and tested (§9)
+- [ ] Canary/shadow deployment completed successfully (§9)
+- [ ] Human approval recorded
+
+### Retraining Cycle
+
+- [ ] Trigger documented (drift | schedule | data volume | performance degradation) (§10)
+- [ ] New data version created (§2)
+- [ ] Full lifecycle followed: preparation → training → evaluation → registry (§1)
+- [ ] Comparison to current production model documented (§6)
+- [ ] Promotion gates re-evaluated — ✗ skip any gate (§8)
+- [ ] Previous model archived, not deleted (§8)

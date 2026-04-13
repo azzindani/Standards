@@ -258,23 +258,17 @@ Pin version in `.python-version` (just `3.12`). `uv` reads it automatically, dow
 
 ## 6. Import Style
 
-### Ordering (enforced by ruff `I` rules)
-
-Three groups, separated by blank line:
+Three groups separated by blank line (enforced by ruff `I` rules):
+1. Standard library · 2. Third-party · 3. Internal / project
 
 ```python
-# 1. Standard library
-import os
-import sys
+import os                          # 1. stdlib
 from pathlib import Path
 
-# 2. Third-party
-import httpx
+import httpx                       # 2. third-party
 from pydantic import BaseModel
 
-# 3. Internal / project
-from myapp.config import Settings
-from myapp.models import User
+from myapp.config import Settings  # 3. internal
 ```
 
 ### Rules

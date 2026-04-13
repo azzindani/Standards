@@ -577,16 +577,13 @@ mod tests {
 
     #[test]
     fn parse_valid_input_returns_expected_struct() {
-        let input = r#"{"name": "test", "value": 42}"#;
-        let result = parse(input).unwrap();
+        let result = parse(r#"{"name": "test", "value": 42}"#).unwrap();
         assert_eq!(result.name, "test");
-        assert_eq!(result.value, 42);
     }
 
     #[test]
     fn parse_empty_input_returns_error() {
-        let result = parse("");
-        assert!(matches!(result, Err(ParseError::Empty)));
+        assert!(matches!(parse(""), Err(ParseError::Empty)));
     }
 }
 ```
@@ -600,21 +597,6 @@ mod tests {
 | ✗ `#[ignore]` without issue tracker link in comment |
 | Test helpers go in `#[cfg(test)]` module — ✗ test utils in production code |
 
-### Integration Tests
-
-```rust
-// tests/api_workflow.rs — tests public API only
-use my_crate::{Engine, Config};
-
-#[test]
-fn full_processing_pipeline() {
-    let engine = Engine::new(Config::default());
-    let input = test_fixture("sample.json");
-    let output = engine.process(&input).unwrap();
-    assert_eq!(output.status, Status::Complete);
-}
-```
-
 ### Doc Tests
 
 ```rust
@@ -623,29 +605,25 @@ fn full_processing_pipeline() {
 /// ```
 /// use my_crate::parse_duration;
 /// assert_eq!(parse_duration("5m").unwrap(), 300);
-/// assert_eq!(parse_duration("1h30m").unwrap(), 5400);
 /// ```
 pub fn parse_duration(s: &str) -> Result<u64, ParseError> { /* ... */ }
 ```
 
 **Rule:** every public function has at least one doc test showing typical usage.
 
-### Property Testing (proptest)
+### Property Testing
 
 ```rust
-use proptest::prelude::*;
-
 proptest! {
     #[test]
     fn roundtrip_serialization(input in any::<Config>()) {
-        let bytes = serialize(&input).unwrap();
-        let output = deserialize(&bytes).unwrap();
+        let output = deserialize(&serialize(&input).unwrap()).unwrap();
         prop_assert_eq!(input, output);
     }
 }
 ```
 
-Use proptest for: serialization roundtrips, parser fuzzing, invariant verification, boundary conditions.
+Use `proptest` for: serialization roundtrips, parser fuzzing, invariant verification, boundary conditions.
 
 ---
 
@@ -662,19 +640,6 @@ use_try_shorthand = true
 ```
 
 **Rule:** `cargo fmt --check` in CI — ✗ merge unformatted code. No team-specific overrides beyond those above.
-
-### Clippy Configuration
-
-```toml
-# Cargo.toml or .clippy.toml
-[lints.clippy]
-all = "deny"
-pedantic = "warn"
-nursery = "warn"
-# Selectively allow noisy pedantic lints
-module_name_repetitions = { level = "allow", priority = 1 }
-must_use_candidate = { level = "allow", priority = 1 }
-```
 
 ### Critical Clippy Lints
 
