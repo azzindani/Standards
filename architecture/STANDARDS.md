@@ -3,9 +3,10 @@
 Core architectural principles · all projects · all languages.
 Defines system structure — not code style, testing, or deployment (see respective standards).
 
-Derived from: Clean Architecture · Unix Philosophy · Functional Core/Imperative Shell ·
-Erlang/OTP · Actor Model · ECS · Microkernel · DDD · Contract-First · Rust Ownership ·
-ACID · TCP/IP · MapReduce · Circuit Breaker · Kubernetes reconciliation.
+Derived from: N-Tier Layered · OS Protection Rings · Clean Architecture · Unix Philosophy ·
+Functional Core/Imperative Shell · Erlang/OTP · Actor Model · ECS · Microkernel ·
+Linux Kernel · DDD · Contract-First · Rust Ownership · ACID · Copy-on-Write filesystems ·
+TCP/IP · MapReduce · Circuit Breaker · Kubernetes reconciliation.
 
 Composable with: design/ · testing/ · cicd/ · directory/ · code_writing/ · language-specific standards.
 
@@ -67,7 +68,8 @@ which principles conflict.
 
 ## 2. Layer Model
 
-Two invariants define the architecture. Everything between = system-specific.
+Based on OS protection rings (Ring 0 = kernel → Ring N = userspace) and N-tier layered architecture.
+Concentric model retained — fixed ring count removed. Two invariants; everything between = system-specific.
 
 ### Invariants
 
@@ -197,12 +199,11 @@ Functions = transformations between types.
 ### Data Over Objects
 
 Prefer plain data structures (structs · records · maps · tuples) over objects
-with hidden state. Data is transparent · serializable · printable · comparable.
+with hidden state. Data = transparent · serializable · printable · comparable.
 
 ### Return Contract
 
-Complex results → structured types · ✗ raw collections. Caller knows return
-shape without reading implementation. Simple operations → primitives.
+Complex results → structured types · ✗ raw collections. Simple operations → primitives.
 
 ---
 
@@ -370,10 +371,9 @@ max queue depth · max worker pool size. Unbounded consumption = architectural v
 
 ### Rules
 
-- ✗ shared mutable state between concurrent workers.
-- Each worker receives own copy or immutable reference.
+- ✗ shared mutable state between workers — own copy or immutable reference.
 - Every concurrent operation has explicit timeout.
-- Results collected into single accumulator at orchestration layer · ✗ assembled inside workers.
+- Results collected into single accumulator at coordination layer · ✗ inside workers.
 
 ---
 
