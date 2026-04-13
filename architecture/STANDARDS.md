@@ -67,45 +67,48 @@ which principles conflict.
 
 ## 2. Layer Model
 
-Layers are **roles**, not fixed positions. Count determined by system complexity · ✗ prescribed.
+Two invariants define the architecture. Everything between = system-specific.
 
-### Layer Roles
+### Invariants
 
-| Role | Contains | I/O |
+| Position | Rule | I/O |
 |---|---|---|
-| **Core** | Types · constants · enums · pure utilities | No |
-| **Logic** | Domain transforms · validators · rules | No |
-| **Orchestration** | Use cases · workflow composition · coordination | No |
-| **Boundary** | Adapters: CLI · API · MCP · file/network/DB I/O | Yes |
+| **Innermost** | Pure: types · constants · enums · pure utilities | ✗ never |
+| **Outermost** | Boundary: adapters · CLI · API · MCP · file/network/DB | Yes — all I/O here |
+| **Between** | As many layers as system needs · each progressively closer to I/O | No |
 
-Four roles shown — systems use as many or as few as complexity demands.
+### Spectrum, Not Tiers
+
+Layers form a **gradient** from pure-core to I/O-boundary. ✗ fixed count. ✗ prescribed names.
+Systems define their own layers based on complexity. Reference points for common layers:
+
+| Reference | Typical role | Examples |
+|---|---|---|
+| Inner | Domain types · shared constants · pure utilities | Type definitions · formatters · math |
+| Mid-inner | Domain transforms · validators · business rules | Price calculator · schema validator |
+| Mid-outer | Use cases · workflow composition · coordination | Order pipeline · report generator |
+| Outer | I/O adapters · external integrations | HTTP handler · DB client · file reader |
+
+Names are project-specific — the gradient rule is universal.
 
 ### Recursive Structure
 
-Every subsystem is itself a layer stack. Parent sees only subsystem's boundary.
+Every subsystem is itself a layer stack. Parent sees only subsystem's outermost layer.
 
 ```
 System
-├── Subsystem A (3 layers)
-│   ├── Core
-│   ├── Logic
-│   └── Boundary
-├── Subsystem B (4 layers)
-│   ├── Core
-│   ├── Logic
-│   ├── Orchestration
-│   └── Boundary
-└── Subsystem C (2 layers)
-    ├── Core
-    └── Boundary
+├── Subsystem A (2 layers):  types+logic | boundary
+├── Subsystem B (4 layers):  domain types | rules | orchestration | API
+└── Subsystem C (5 layers):  core | validation | logic | coordination | adapters
 ```
 
 ### Rules
 
-- Layer count = what complexity demands. Simple module → 2 layers. Complex subsystem → 4+.
-- All I/O in boundary layer exclusively. Inner layers receive + return data only.
-- Core layer contains only what every module in subsystem needs. Fat core = fragile core.
-- Subsystem internals invisible to parent — boundary is sole interface.
+- Layer count = what complexity demands. ✗ arbitrary cap.
+- All I/O in outermost layer exclusively. Inner layers receive + return data only.
+- Innermost layer = only what every module needs. Fat core = fragile core.
+- Subsystem internals invisible to parent — outermost layer is sole interface.
+- Adjacent layers do similar work → merge them.
 
 ---
 
@@ -117,7 +120,7 @@ Outer layers depend on inner layers · ✗ reverse.
 
 | Direction | Status |
 |---|---|
-| Boundary → Orchestration → Logic → Core | Allowed |
+| Outer → inner (inward) | Allowed |
 | Same layer (lateral) | Allowed between declared peers only |
 | Inner → outer (outward) | ✗ prohibited always |
 
@@ -133,7 +136,7 @@ Full dependency graph = DAG. A depends on B → B ✗ depends on A — directly 
 ### Third-Party Isolation
 
 Wrap externals at **risk boundaries**: unstable API · likely to swap · critical path.
-Core/Logic layers ✗ call third-party directly — thin adapter at boundary.
+Inner layers ✗ call third-party directly — thin adapter at outermost layer.
 Stable foundational libraries (language stdlib · mature utilities) used directly.
 
 ### Version Discipline
@@ -279,9 +282,9 @@ Every piece of data has one authoritative location. Derived data = computed · �
 
 | Layer | Behavior |
 |---|---|
-| Inner (core/logic) | Returns or raises errors · ✗ catches |
-| Orchestration | Catches domain errors → structured results |
-| Boundary | Catches environment errors → user-facing messages |
+| Inner layers | Returns or raises errors · ✗ catches |
+| Mid layers | Catches domain errors → structured results |
+| Outermost layer | Catches environment errors → user-facing messages |
 
 ### Error as Data
 
@@ -325,7 +328,7 @@ System reports degraded state.
 
 ### Rules
 
-- Config schema (shape) → core layer. Config loading (I/O) → boundary layer.
+- Config schema (shape) → innermost layer. Config loading (I/O) → outermost layer.
 - Config values flow inward as function arguments · ✗ global reads from inner layers.
 - Every value has sensible default. Zero-config runs default use case.
 - Secrets ✗ in committed files. Enter via environment at boundary · ✗ flow past boundary —
@@ -466,7 +469,7 @@ Project graduates → apply new rules incrementally via Strangler Fig (§11). �
 
 - [ ] Determine scale (PoC / Small / Production)
 - [ ] Define layer structure appropriate to scale
-- [ ] Identify core layer contents
+- [ ] Identify innermost layer contents
 - [ ] Define types + data structures before logic
 - [ ] Establish data format for inter-module communication
 - [ ] Define module boundaries + public APIs
