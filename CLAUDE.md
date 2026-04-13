@@ -40,7 +40,7 @@ Central standards library for all projects. Each standard = one directory + one 
 | 4 | `code_writing/` | Clean code · readability · function style · naming | Planned |
 | 5 | `testing/` | Test pyramid · contract tests · coverage strategy | Done |
 | 6 | `error_handling/` | Error types · boundaries · recovery · reporting | Planned |
-| 7 | `observability/` | Structured logging · receipts · metrics · health | Planned |
+| 7 | `observability/` | Structured logging · receipts · metrics · health | Done |
 | 8 | `security/` | Validation boundary · secrets · access control · input | Done |
 | 9 | `api/` | API design · protocols · contracts · versioning · serialization | Planned |
 | 10 | `database/` | Schema design · migrations · queries · transactions | Planned |
