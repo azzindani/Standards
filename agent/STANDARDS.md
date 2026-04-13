@@ -11,15 +11,16 @@ efficiency and behavioral accuracy.
 
 1. [File Types](#1-file-types)
 2. [Density Principles](#2-density-principles)
-3. [Context Budget](#3-context-budget)
-4. [File Structure](#4-file-structure)
-5. [Role & Persona](#5-role--persona)
-6. [Project Context](#6-project-context)
-7. [Rules & Restrictions](#7-rules--restrictions)
-8. [Investigation Protocol](#8-investigation-protocol)
-9. [Writing Discipline](#9-writing-discipline)
-10. [Anti-Patterns](#10-anti-patterns)
-11. [Checklist](#11-checklist)
+3. [High-Density Engineering](#3-high-density-engineering)
+4. [Context Budget](#4-context-budget)
+5. [File Structure](#5-file-structure)
+6. [Role & Persona](#6-role--persona)
+7. [Project Context](#7-project-context)
+8. [Rules & Restrictions](#8-rules--restrictions)
+9. [Investigation Protocol](#9-investigation-protocol)
+10. [Writing Discipline](#10-writing-discipline)
+11. [Anti-Patterns](#11-anti-patterns)
+12. [Checklist](#12-checklist)
 
 ---
 
@@ -82,7 +83,175 @@ Every line must either constrain behavior or provide actionable context.
 
 ---
 
-## 3. Context Budget
+## 3. High-Density Engineering
+
+Caveman writing (§2) removes filler. High-density engineering packs
+more meaning into fewer tokens using vocabulary, notation, compression,
+and prompt architecture techniques.
+
+### Vocabulary Engineering
+
+Define project-specific terms that replace long phrases. One defined
+term replaces a sentence every time it's used afterward.
+
+| Technique | Before (tokens wasted) | After (tokens saved) |
+|---|---|---|
+| Named concept | "functions that take data in and return data out without side effects" | "pure function" (defined once) |
+| Acronym with definition | "Architecture Decision Record" repeated 12 times | "ADR" (defined once, used 12x) |
+| Domain shorthand | "the module that handles CLI, API, MCP, file I/O" | "Tier 3" (defined in architecture) |
+| Compound term | "validate input at the system boundary then trust internally" | "validation boundary" |
+
+Rules:
+- Define every custom term on first use — never assume agent knows project vocabulary
+- Build a vocabulary section at file top if project has 5+ custom terms
+- Reuse terms from referenced standards — `Tier 0–3` from architecture, not re-explained
+- ✗ invent terms that collide with established technical meanings
+
+### Notation Systems
+
+Create rule encodings that pack boolean logic into scannable format.
+
+**Constraint notation:**
+```
+fn: 1 required arg · rest defaulted · single return · verb-first name
+```
+Encodes 4 rules in 1 line. Equivalent prose = 4 sentences.
+
+**Path notation:**
+```
+New Rust → rust/crates/ | rust/services/
+Schemas → shared/schemas.rs
+Config → shared/config/
+Tests → tests/ (mirror source structure)
+```
+Encodes file placement rules as lookup table, not paragraphs.
+
+**Dependency notation:**
+```
+shared → third-party only
+kernel → shared · trace_io · inference_bridge
+services/* → all internal crates
+```
+Encodes architecture boundaries in 3 lines. Equivalent prose = full paragraph per layer.
+
+**Status notation:**
+```
+✗ unwrap() | expect() in production → use ?
+✗ println!() → use tracing::{info,warn,error}!()
+✗ .await holding std::sync::Mutex → deadlock
+```
+Each line = rule + reason in one scannable row.
+
+### Compression Techniques
+
+**Reference compression** — point to existing definitions, don't repeat:
+```
+Follow architecture/STANDARDS.md (all sections)
+Override: line length 120 · max function params 4
+```
+Two lines replaces copying 500+ lines of architecture rules.
+
+**Inheritance** — layer project context on shared standards:
+```
+Base: architecture/ · code_writing/ · testing/ · git/
+Lang: python/
+Domain: data_pipeline/ · cli/
+Project-specific overrides below.
+```
+Three lines declare which standards apply. Agent loads them.
+
+**Conditional compression** — encode branching rules as tables:
+```
+| Condition | Action |
+| bug fix | read → trace → root-cause → fix → test |
+| new feature | design → implement → test → document |
+| refactor | test first → change → verify tests pass |
+```
+Three rows replace three paragraphs of workflow prose.
+
+**Grouped constraints** — stack related rules vertically:
+```
+Every public function:
+  typed return · doc comment · ≥1 test · in __all__
+Every file:
+  ≤400 lines · one concept · standard section order
+```
+Two groups, 8 rules, 4 lines total.
+
+### Prompt Engineering Techniques
+
+**Behavioral anchoring** — state identity/role first, rules follow:
+```
+Senior systems engineer. Rust · PostgreSQL · distributed systems.
+All code production-grade. No shortcuts.
+```
+Anchors all subsequent behavior to this identity.
+
+**Negative examples** — ✗ rules are more precise than positive rules:
+```
+✗ guess-and-check debugging → read first, understand, then fix
+✗ "works on my machine" → test in CI environment
+```
+Agent avoids specific failure mode, not just "be careful."
+
+**Pattern priming** — show the structure you want the agent to follow:
+```
+Commit format: type(scope): description
+  feat(auth): add JWT refresh token rotation
+  fix(db): prevent N+1 in user query
+  refactor(api): extract validation middleware
+```
+Three examples prime the pattern. Agent generalizes.
+
+**Constraint stacking** — layer multiple constraints in single rule:
+```
+Functions: ≤30 lines · ≤3 params · ≤3 nesting · single return type · verb-first name
+```
+Five constraints, one scannable line.
+
+**Escalation triggers** — define when agent stops and asks:
+```
+🛑 before: schema change · public API removal · new service · force-push
+```
+Prevents costly autonomous mistakes.
+
+### Layered Context Architecture
+
+Structure context in layers. Each layer has different lifetime and scope.
+
+```
+Layer 0: Standards (shared, rarely changes)
+  → architecture/STANDARDS.md, code_writing/STANDARDS.md, etc.
+  → Referenced, not inlined. Agent loads as needed.
+
+Layer 1: Project CLAUDE.md (project-specific, changes per project)
+  → Tech stack, boundaries, path rules, restrictions
+  → 100–200 lines. Core project identity.
+
+Layer 2: Session context (ephemeral, changes per conversation)
+  → Current task, recent changes, active branch
+  → Injected by the agent runtime or user. Not in files.
+```
+
+Rules:
+- ✗ inline Layer 0 content into Layer 1 — reference only
+- Layer 1 states only what Layer 0 does not cover or what overrides Layer 0
+- Layer 2 is conversation state, not file content
+- Total loaded context (Layer 0 refs + Layer 1) should not exceed ~2000 lines
+  to prevent context dilution in long sessions
+
+### Density Measurement
+
+| Metric | Target | How to measure |
+|---|---|---|
+| Rules per line | ≥ 0.5 | Count actionable rules ÷ total lines |
+| Tokens per rule | ≤ 30 | Average tokens per actionable constraint |
+| Filler ratio | ≤ 10% | Lines with zero behavioral impact ÷ total |
+| Reference ratio | ≥ 30% | Rules via reference ÷ total rules (for Layer 1) |
+
+---
+
+## 4. Context Budget
 
 ### Size Targets
 
@@ -103,7 +272,7 @@ Every line must either constrain behavior or provide actionable context.
 
 ---
 
-## 4. File Structure
+## 5. File Structure
 
 Every agent context file follows this order:
 
@@ -132,7 +301,7 @@ Nice-to-have preferences      ← first to be lost
 
 ---
 
-## 5. Role & Persona
+## 6. Role & Persona
 
 Define in 1–3 lines. Include: specialization, key technologies,
 primary task domain.
@@ -147,7 +316,7 @@ Rules:
 
 ---
 
-## 6. Project Context
+## 7. Project Context
 
 ### What to Include
 
@@ -174,7 +343,7 @@ Context files document constraints and decisions, not discoverable facts.
 
 ---
 
-## 7. Rules & Restrictions
+## 8. Rules & Restrictions
 
 ### Writing Rules
 
@@ -216,7 +385,7 @@ Define actions that require human confirmation before proceeding:
 
 ---
 
-## 8. Investigation Protocol
+## 9. Investigation Protocol
 
 Guide the agent's problem-solving approach. Prevents surface-level fixes.
 
@@ -237,7 +406,7 @@ Rules:
 
 ---
 
-## 9. Writing Discipline
+## 10. Writing Discipline
 
 ### Incremental Writing
 
@@ -266,7 +435,7 @@ When a project uses standards from a shared library (like this repo):
 
 ---
 
-## 10. Anti-Patterns
+## 11. Anti-Patterns
 
 | Anti-Pattern | Problem | Fix |
 |---|---|---|
@@ -283,7 +452,7 @@ When a project uses standards from a shared library (like this repo):
 
 ---
 
-## 11. Checklist
+## 12. Checklist
 
 ### New CLAUDE.md
 
