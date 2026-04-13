@@ -254,46 +254,22 @@ type Server struct {
 | Embed `sync.Mutex` as unexported | `mu sync.Mutex` field preferred over embedding |
 | Embed interfaces for partial implementation | Useful in test doubles |
 
-```go
-// ✓ Embedding for behavior
-type CountingWriter struct {
-    io.Writer
-    count int64
-}
-
-// ✗ Embedding for data — use field instead
-type Server struct {
-    Config  // leaks all Config methods to Server
-}
-```
-
-### Constructor Functions
+### Constructor + Functional Options
 
 ```go
-// NewX pattern — always validate, return ready-to-use struct
+type Option func(*Server)
+
+func WithTimeout(d time.Duration) Option { return func(s *Server) { s.timeout = d } }
+func WithLogger(l *slog.Logger) Option   { return func(s *Server) { s.logger = l } }
+
+// NewX — validate inputs, apply options, return ready-to-use struct
 func NewServer(addr string, opts ...Option) (*Server, error) {
     if addr == "" {
         return nil, errors.New("addr required")
     }
     s := &Server{addr: addr}
-    for _, opt := range opts {
-        opt(s)
-    }
+    for _, opt := range opts { opt(s) }
     return s, nil
-}
-```
-
-### Functional Options Pattern
-
-```go
-type Option func(*Server)
-
-func WithTimeout(d time.Duration) Option {
-    return func(s *Server) { s.timeout = d }
-}
-
-func WithLogger(l *slog.Logger) Option {
-    return func(s *Server) { s.logger = l }
 }
 ```
 
@@ -545,10 +521,10 @@ func TestParseSize(t *testing.T) {
 }
 ```
 
-### Test Helpers
+### Test Helpers + HTTP Testing
 
 ```go
-// t.Helper() marks function — failures report caller's line, not helper's
+// t.Helper() — failures report caller's line, not helper's
 func newTestServer(t *testing.T) *Server {
     t.Helper()
     s, err := NewServer("localhost:0", WithLogger(slog.Default()))
@@ -556,33 +532,21 @@ func newTestServer(t *testing.T) *Server {
     t.Cleanup(func() { s.Close() })
     return s
 }
-```
 
-### HTTP Testing
-
-```go
+// httptest for HTTP handlers
 func TestHealthEndpoint(t *testing.T) {
     srv := newTestServer(t)
-    
     req := httptest.NewRequest(http.MethodGet, "/health", nil)
     rec := httptest.NewRecorder()
-    
     srv.ServeHTTP(rec, req)
-    
     assert.Equal(t, http.StatusOK, rec.Code)
-    assert.JSONEq(t, `{"status":"ok"}`, rec.Body.String())
 }
-```
 
-### Benchmark Tests
-
-```go
+// Benchmarks: b.ResetTimer() after setup, b.ReportAllocs() for allocation tracking
 func BenchmarkParse(b *testing.B) {
     input := loadTestData(b)
     b.ResetTimer()
-    for b.Loop() {
-        _ = Parse(input)
-    }
+    for b.Loop() { _ = Parse(input) }
 }
 ```
 

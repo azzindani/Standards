@@ -142,21 +142,13 @@ pub enum StorageError {
 
 ```
 my-project/
-├── Cargo.toml          ← workspace root, [workspace] members
+├── Cargo.toml          ← [workspace] root
 ├── crates/
 │   ├── core/           ← domain logic, zero I/O (Tier 0–1)
-│   │   ├── Cargo.toml
-│   │   └── src/lib.rs
 │   ├── storage/        ← I/O adapters (Tier 3)
-│   │   ├── Cargo.toml
-│   │   └── src/lib.rs
 │   └── api/            ← HTTP/gRPC surface (Tier 3)
-│       ├── Cargo.toml
-│       └── src/lib.rs
-├── src/
-│   └── main.rs         ← binary entry point, wiring only
-└── tests/
-    └── integration.rs  ← cross-crate integration tests
+├── src/main.rs         ← binary entry, wiring only
+└── tests/              ← cross-crate integration tests
 ```
 
 ### lib.rs vs main.rs
@@ -193,12 +185,7 @@ pub use engine::Engine;
 
 ### Visibility Ladder
 
-```rust
-fn private()              // module-only (default)
-pub(crate) fn internal()  // crate-wide
-pub(super) fn parent()    // parent module
-pub fn public()           // external API
-```
+`fn private()` → `pub(crate)` → `pub(super)` → `pub fn public()`
 
 **Rule:** start private, widen only when needed. Every `pub` item = API contract you must maintain.
 
@@ -232,24 +219,14 @@ fn process(user: UserId, order: OrderId) {} // swapped args → compile error
 ### Enums as State Machines
 
 ```rust
-// Each variant carries only the data valid for that state
 enum Connection {
     Disconnected,
     Connecting { attempt: u32 },
-    Connected { stream: TcpStream, since: Instant },
+    Connected { stream: TcpStream },
     Failed { error: io::Error, retries: u32 },
 }
-
-// Transitions are explicit — ✗ invalid states
-impl Connection {
-    fn connect(self) -> Connection {
-        match self {
-            Connection::Disconnected => Connection::Connecting { attempt: 1 },
-            Connection::Failed { retries, .. } => Connection::Connecting { attempt: retries + 1 },
-            other => other, // already connecting/connected
-        }
-    }
-}
+// Each variant carries only data valid for that state
+// Transitions are functions: connect(self) -> Connection — ✗ invalid states
 ```
 
 See architecture/STANDARDS.md §6 — state architecture (states as types, transitions as functions).
@@ -716,30 +693,11 @@ let total: u64 = records.iter().filter(|r| r.is_active()).map(|r| r.amount).sum(
 ### Builder Pattern
 
 ```rust
-pub struct ServerConfig {
-    port: u16,
-    host: String,
-    max_connections: usize,
-}
-
-pub struct ServerConfigBuilder {
-    port: u16,
-    host: String,
-    max_connections: usize,
-}
-
 impl ServerConfigBuilder {
-    pub fn new() -> Self {
-        Self { port: 8080, host: "localhost".into(), max_connections: 100 }
-    }
-
+    pub fn new() -> Self { /* defaults */ }
     pub fn port(mut self, port: u16) -> Self { self.port = port; self }
     pub fn host(mut self, host: impl Into<String>) -> Self { self.host = host.into(); self }
-    pub fn max_connections(mut self, n: usize) -> Self { self.max_connections = n; self }
-
-    pub fn build(self) -> ServerConfig {
-        ServerConfig { port: self.port, host: self.host, max_connections: self.max_connections }
-    }
+    pub fn build(self) -> Result<ServerConfig, ConfigError> { /* validate + construct */ }
 }
 ```
 
@@ -747,66 +705,26 @@ impl ServerConfigBuilder {
 
 ### From/Into Conversions
 
-```rust
-// Implement From — Into is derived automatically
-impl From<Config> for ServerConfig {
-    fn from(c: Config) -> Self {
-        Self { port: c.port, host: c.host, max_connections: c.max_conn }
-    }
-}
-
-// ✓ accept Into<T> for flexible APIs
-fn start_server(config: impl Into<ServerConfig>) {
-    let config = config.into();
-    // ...
-}
-```
-
 | Rule |
 |---|
 | Implement `From<A> for B` — ✗ implement `Into` directly (From gives Into for free) |
 | `From` conversions must be infallible — use `TryFrom` when conversion can fail |
 | ✗ `From` for lossy conversions — use named methods: `fn to_approximate(&self) -> f32` |
-| `From<&str> for MyType` when constructing from string slices is common |
+| Accept `impl Into<T>` in public APIs for ergonomic ownership transfer |
 
 ### Display and Debug
-
-```rust
-use std::fmt;
-
-// Debug — for developers, #[derive(Debug)] is sufficient for most types
-#[derive(Debug)]
-pub struct Request { method: Method, path: String }
-
-// Display — for users, implement manually
-impl fmt::Display for Request {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}", self.method, self.path)
-    }
-}
-```
 
 | Rule |
 |---|
 | Every public type: `#[derive(Debug)]` minimum |
-| `Display` for types shown to users (logs, errors, CLI output) |
-| `Debug` output may be verbose — `Display` must be concise |
+| `Display` for types shown to users (logs, errors, CLI output) — implement manually |
+| `Debug` may be verbose — `Display` must be concise |
 | Error types: implement `Display` (required by `std::error::Error`) |
 
 ### Iterator Protocol
 
 ```rust
-// ✓ implement IntoIterator for collection types
-impl IntoIterator for TokenStream {
-    type Item = Token;
-    type IntoIter = std::vec::IntoIter<Token>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.tokens.into_iter()
-    }
-}
-
-// ✓ return impl Iterator for lazy evaluation
+// ✓ return impl Iterator for lazy evaluation — no intermediate allocation
 fn active_users(users: &[User]) -> impl Iterator<Item = &User> {
     users.iter().filter(|u| u.is_active)
 }
@@ -816,7 +734,6 @@ fn active_users(users: &[User]) -> impl Iterator<Item = &User> {
 |---|
 | Return `impl Iterator` over `Vec` when caller just needs to iterate |
 | Implement `IntoIterator` for custom collections |
-| Implement `Iterator` for custom cursor/streaming types |
 | ✗ collect into Vec just to pass to a function that takes `impl IntoIterator` |
 
 ### Derive Conventions
