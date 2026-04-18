@@ -41,19 +41,21 @@ constrained hardware with a local LLM — or at all.
 24. [Live state and reload](#24-live-state-and-reload)
 25. [Operation receipt log](#25-operation-receipt-log)
 26. [Output generation pattern](#26-output-generation-pattern)
-27. [Testing standards](#27-testing-standards)
-28. [Cross-platform compatibility](#28-cross-platform-compatibility)
-29. [Multi-client compatibility](#29-multi-client-compatibility)
-30. [Transport modes](#30-transport-modes)
-31. [Installation and distribution](#31-installation-and-distribution)
-32. [Naming conventions](#32-naming-conventions)
-33. [Dependency policy](#33-dependency-policy)
-34. [CI/CD requirements](#34-cicd-requirements)
-35. [Documentation requirements](#35-documentation-requirements)
-36. [What to never do](#36-what-to-never-do)
-37. [Checklist — new server from scratch](#37-checklist--new-server-from-scratch)
-38. [Checklist — new tool in existing server](#38-checklist--new-tool-in-existing-server)
-39. [Domain reference table](#39-domain-reference-table)
+27. [Shared data I/O standards](#27-shared-data-io-standards)
+28. [LLM input resilience](#28-llm-input-resilience)
+29. [Testing standards](#29-testing-standards)
+30. [Cross-platform compatibility](#30-cross-platform-compatibility)
+31. [Multi-client compatibility](#31-multi-client-compatibility)
+32. [Transport modes](#32-transport-modes)
+33. [Installation and distribution](#33-installation-and-distribution)
+34. [Naming conventions](#34-naming-conventions)
+35. [Dependency policy](#35-dependency-policy)
+36. [CI/CD requirements](#36-cicd-requirements)
+37. [Documentation requirements](#37-documentation-requirements)
+38. [What to never do](#38-what-to-never-do)
+39. [Checklist — new server from scratch](#39-checklist--new-server-from-scratch)
+40. [Checklist — new tool in existing server](#40-checklist--new-tool-in-existing-server)
+41. [Domain reference table](#41-domain-reference-table)
 
 ---
 
@@ -247,11 +249,12 @@ pipeline, one install script.
 │   ├── __init__.py
 │   ├── version_control.py          # snapshot / rollback
 │   ├── patch_validator.py          # validate op arrays before applying
-│   ├── file_utils.py               # path resolution, atomic writes, JSON helpers
+│   ├── file_utils.py               # path resolution, atomic writes, CSV reading
 │   ├── platform_utils.py           # OS detection, hardware mode flags
 │   ├── progress.py                 # ok/fail/info/warn/undo progress helpers
 │   ├── receipt.py                  # operation receipt log
-│   └── html_theme.py              # shared HTML/CSS/Plotly theme for reports
+│   ├── html_theme.py               # shared HTML/CSS/Plotly theme + offline JS
+│   └── html_layout.py              # responsive CSS constants, chart layout helpers
 │
 ├── servers/
 │   ├── {domain}_{tier}/            # e.g. data_basic, ml_basic, office_basic
@@ -694,11 +697,34 @@ with 5 cleaning steps should be processed in one `apply_patch` call with 5 ops, 
 ```
 
 Rules:
-- `"op"` is always the first key
+- `"op"` is always the first key and always a **string**
 - All other fields are operation-specific required fields
 - Maximum 50 ops per batch
 - Ops are applied sequentially
-- Validate entire array before applying any operation
+- **Validate entire array before creating any snapshot or modifying any file**
+
+### Validate before snapshot — mandatory ordering
+
+This is the most commonly violated rule in patch implementations:
+
+```python
+# WRONG — snapshot before validation; leaves orphaned .bak on bad op names
+backup = snapshot(str(path))
+for op in ops:
+    if op.get("op") not in handler_map:
+        return {"error": "Unknown op", "backup": backup}   # orphaned backup!
+
+# CORRECT — validate all ops first, then snapshot only on confirmed valid input
+unknown = [op.get("op") for op in ops if op.get("op") not in handler_map]
+if unknown:
+    return {"success": False, "error": f"Unknown ops: {unknown}"}  # no snapshot
+
+backup = snapshot(str(path))   # only reached after full validation
+```
+
+Every failed validation call that creates a snapshot leaves a permanently orphaned
+`.mcp_versions/*.bak` file. Over time this fills the user's disk. The fix is
+unconditional: validate fully before touching the filesystem.
 
 ### Op naming convention
 
@@ -712,10 +738,6 @@ train_model       export_report       apply_transform
 
 Allowed verbs: `fill`, `drop`, `rename`, `replace`, `set`, `insert`, `delete`,
 `add`, `update`, `move`, `train`, `export`, `apply`, `restore`
-
-### Validation before execution
-
-Validate the entire op array before applying any operation. Stop on first failure — never partially apply a batch and report success.
 
 ---
 
@@ -834,24 +856,93 @@ under 1,000 lines and avoids creating sub-modules with only one small function.
 
 Tests still import from `engine.py` — sub-module structure is invisible to tests.
 
-### Lazy imports for heavy dependencies
+### Module-level imports with optional-dependency flags
 
-Sub-modules that depend on large libraries (torch, sklearn, transformers, plotly,
-ydata_profiling) should import those libraries **inside** the function, not at
-module level. This avoids paying the full import cost when the server loads for
-tools that don't need those libraries.
+**Do not use lazy function-body imports for heavy libraries on Windows.**
+
+The previous advice in this standard recommended lazy imports inside function bodies
+for heavy dependencies (scipy, statsmodels, torch, etc.). That advice is **wrong on
+Windows** and has been revised.
+
+**Why function-body lazy imports are harmful on Windows:**
+
+On Windows, the Defender real-time scanner inspects every `.pyc` file on first
+access. Libraries like scipy and statsmodels have 200+ compiled modules. A lazy
+import inside a function body means that on every server restart (LM Studio restarts
+servers per session), the first call to that function triggers a multi-minute Defender
+scan, appearing as a hang to the user.
+
+**The correct pattern: module-level import with optional-dependency flag:**
 
 ```python
-# _adv_report.py — import plotly only when the function is called
-def generate_report(model_path: str, theme: str = "light") -> dict:
-    import plotly.express as px        # lazy import
-    import plotly.graph_objects as go   # lazy import
-    from shared.html_theme import build_html_report, get_theme
+# At module level — pays the Defender scan cost once at server startup
+# (which is before user interaction and therefore invisible to the user)
+try:
+    from scipy import stats as _scipy_stats
+    from scipy.stats import linregress as _linregress
+    _SCIPY_OK = True
+except ImportError:
+    _scipy_stats = None   # type: ignore
+    _linregress = None    # type: ignore
+    _SCIPY_OK = False
+
+try:
+    import statsmodels.api as _sm  # type: ignore[import-untyped]
+    _STATSMODELS_OK = True
+except ImportError:
+    _sm = None   # type: ignore
+    _STATSMODELS_OK = False
+```
+
+**Guard functions with `is not None` checks, not boolean flags:**
+
+Pyright cannot narrow `None | module` type through a boolean variable. Use direct
+`is not None` checks to get correct type narrowing:
+
+```python
+# Wrong — pyright cannot narrow through boolean flag
+if _SCIPY_OK:
+    result = _scipy_stats.shapiro(data)   # pyright: reportOptionalCall error
+
+# Correct — pyright narrows through is not None
+if _scipy_stats is not None:
+    result = _scipy_stats.shapiro(data)   # pyright: OK
+
+# Correct for early-exit guards
+def my_tool(...) -> dict:
+    if _sm is None or _vif is None:
+        return {"success": False, "error": "statsmodels not installed",
+                "hint": "Install: uv add statsmodels"}
+    sm = _sm          # pyright now knows sm is not None
+    vif = _vif
+    # ... use sm and vif freely
+```
+
+**Exception: truly optional, large packages (geopandas, ydata_profiling, torch)**
+
+Libraries that are optional domain extensions — not always installed, very large,
+and not needed by most tools in the server — may still use lazy function-body
+imports. The criterion is: if the library is absent, most tools still work normally.
+
+```python
+# Acceptable lazy import — geopandas is not always installed
+def enrich_with_geo(file_path: str, geo_file_path: str, ...) -> dict:
+    try:
+        import geopandas as gpd
+    except ImportError:
+        return {"success": False, "error": "geopandas not installed",
+                "hint": "Install: uv add geopandas"}
     ...
 ```
 
-Exception: lightweight, always-needed libraries (numpy, pandas, pathlib) can be
-imported at module level in the helpers sub-module.
+**Rule of thumb:**
+
+| Library type | Import style |
+|---|---|
+| Core scientific (scipy, numpy, statsmodels, sklearn) | Module-level with flag |
+| Always-needed domain lib (pandas, PIL, cv2) | Module-level unconditional |
+| Optional domain extension (geopandas, torch, plotly) | Lazy in function body |
+| Standard library (pathlib, json, datetime) | Module-level unconditional |
 
 ---
 
@@ -1045,6 +1136,41 @@ This applies to:
 
 `snapshot()` in `shared/version_control.py` copies the file to `.mcp_versions/{stem}_{UTC_timestamp}{ext}.bak` and returns the backup path.
 
+### Atomic snapshot implementation
+
+Implement snapshot with temp-file + atomic rename to prevent partial backups:
+
+```python
+def snapshot(file_path: str) -> str:
+    path = Path(file_path)
+    versions_dir = path.parent / ".mcp_versions"
+    versions_dir.mkdir(exist_ok=True)
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S-%fZ")
+    backup_name = f"{path.stem}_{timestamp}.bak"
+    backup_path = versions_dir / backup_name
+
+    # Windows datetime resolution is coarser than microseconds — collision guard
+    counter = 1
+    while backup_path.exists():
+        backup_name = f"{path.stem}_{timestamp}_{counter}.bak"
+        backup_path = versions_dir / backup_name
+        counter += 1
+
+    # Write to temp in same directory, then atomic rename
+    fd, tmp = tempfile.mkstemp(dir=versions_dir)
+    try:
+        os.close(fd)
+        shutil.copy2(str(path), tmp)
+        shutil.move(tmp, str(backup_path))
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return str(backup_path)
+```
+
 ### The companion state file pattern
 
 For complex files, maintain a companion JSON state file:
@@ -1123,7 +1249,8 @@ On 8 GB GPU with 9B model (Q4_K_M):
 
 ### The hardware mode flag
 
-Every server reads a `MCP_CONSTRAINED_MODE` environment variable:
+Every server reads a `MCP_CONSTRAINED_MODE` environment variable **at call time**,
+not at import time:
 
 ```python
 # shared/platform_utils.py
@@ -1141,6 +1268,11 @@ def get_max_results() -> int:
 def get_max_depth() -> int:
     return 3 if is_constrained_mode() else 5
 ```
+
+Reading at call time (not module import time) means:
+- Test monkeypatching of `os.environ` works without reloading modules
+- Environment changes after startup are honored
+- CI can set `MCP_CONSTRAINED_MODE=1` in env and tests enforce smaller limits
 
 The installer sets `MCP_CONSTRAINED_MODE=1` automatically on machines with ≤8 GB
 VRAM. Never hardcode limits in engine functions — always call these helpers.
@@ -1378,10 +1510,57 @@ For HTML outputs (charts, reports, dashboards):
 - Use a shared `html_theme.py` module for CSS variables, viewport meta, and Plotly
   template
 - Support dark/light/device themes via CSS custom properties
-- Use `Plotly.js` loaded from local CDN or bundled — never a remote CDN in production
-- All charts must be `responsive: true` in their Plotly layout config
+- Use responsive CSS with `rem` units and `clamp()` for fluid scaling — no hardcoded
+  pixel breakpoints
+- All charts must be `responsive: true` and `autosize: true` in their Plotly config
 - Wrap wide tables in `<div style="overflow-x:auto">` to prevent horizontal overflow
-- Chart containers must have `overflow: hidden; max-width: 100%`
+
+### Offline-first Plotly — mandatory for HTML outputs
+
+**Never embed Plotly.js inline** (`include_plotlyjs=True`). The inline bundle is
+3.5 MB of JavaScript. On Windows, writing a 4 MB+ HTML file triggers Windows
+Defender scanning on every save, causing 2-minute hangs.
+
+**The correct pattern: copy Plotly once per output directory, use `"directory"` mode:**
+
+```python
+# shared/html_theme.py
+
+import shutil
+from pathlib import Path
+
+def _ensure_plotly_js(output_dir: Path) -> str:
+    """Copy plotly.min.js to output_dir once. Returns 'directory' or 'cdn'."""
+    target = output_dir / "plotly.min.js"
+    if target.exists():
+        return "directory"          # already there — reuse
+    try:
+        import plotly as _plotly
+        src = Path(_plotly.__file__).parent / "package_data" / "plotly.min.js"
+        if src.exists():
+            shutil.copy2(str(src), str(target))
+            return "directory"      # local file copy succeeded
+    except Exception:
+        pass
+    return "cdn"                    # silent fallback to CDN
+
+
+def save_chart(fig, output_path: Path, ...) -> None:
+    include_js = _ensure_plotly_js(output_path.parent)
+    html = fig.to_html(
+        include_plotlyjs=include_js,    # "directory" → <script src="plotly.min.js">
+        full_html=True,
+        config={"responsive": True, "displayModeBar": True},
+    )
+    atomic_write_text(str(output_path), html)
+```
+
+**Why this works:**
+- First chart in a directory: copies `plotly.min.js` (~3.5 MB, <100 ms), writes small HTML
+- Subsequent charts in same directory: reuse the existing file, only write small HTML
+- HTML file stays under 200 KB — no Defender trigger
+- Falls back silently to CDN if the plotly package file is missing
+- Offline capable: once the JS is copied, all charts work without internet
 
 ### Opening files after generation
 
@@ -1404,7 +1583,259 @@ def _open_file(path: Path) -> None:
 
 ---
 
-## 27. Testing Standards
+## 27. Shared Data I/O Standards
+
+### The single CSV reader rule
+
+**Never call `pd.read_csv()` directly in server or engine code.** Route all CSV
+reads through `shared/file_utils.read_csv()`. This single entry point handles:
+
+1. **Encoding fallback chain** — utf-8 → utf-8-sig (BOM) → cp1252 (Windows/Excel) → latin-1
+2. **Bad-line tolerance** — on tokenization errors (mismatched field counts from
+   unescaped commas), retries with `on_bad_lines='skip'`
+3. **Column name normalization** — strips leading/trailing whitespace from column names
+4. **Consistent low_memory handling** — always `low_memory=False`
+
+```python
+# shared/file_utils.py
+
+_ENCODING_FALLBACKS = ("utf-8-sig", "cp1252", "latin-1")
+
+def read_csv(
+    file_path: str,
+    encoding: str = "utf-8",
+    separator: str = ",",
+    max_rows: int = 0,
+) -> pd.DataFrame:
+    """Read CSV with automatic encoding fallback and bad-line tolerance."""
+    kwargs: dict = {"sep": separator, "low_memory": False}
+    if max_rows > 0:
+        kwargs["nrows"] = max_rows
+
+    def _try_encs(extra: dict) -> pd.DataFrame:
+        kw = {**kwargs, **extra}
+        try:
+            return pd.read_csv(file_path, encoding=encoding, **kw)
+        except UnicodeDecodeError:
+            pass
+        for enc in _ENCODING_FALLBACKS:
+            if enc == encoding:
+                continue
+            try:
+                return pd.read_csv(file_path, encoding=enc, **kw)
+            except UnicodeDecodeError:
+                continue
+        return pd.read_csv(file_path, encoding="latin-1", **kw)
+
+    try:
+        df = _try_encs({})
+    except Exception as exc:
+        if "tokeniz" in str(exc).lower() or "field" in str(exc).lower():
+            df = _try_encs({"on_bad_lines": "skip"})   # skip malformed rows
+        else:
+            raise
+
+    df.columns = df.columns.str.strip()
+    return df
+```
+
+**Why this matters:** A CSV from Excel may have a UTF-8 BOM. A CSV from a legacy
+system may be cp1252. A CSV with a free-text field may have an unescaped comma on
+one row. Any of these will hard-fail a bare `pd.read_csv()` call. The shared
+reader handles all three silently.
+
+### Numeric coercion before aggregation
+
+CSV files frequently have numeric columns read as string dtype (from mixed content,
+leading spaces, or non-numeric sentinel values). Always coerce before numeric
+operations:
+
+```python
+# Wrong — crashes on string-typed numeric column
+grouped = df.groupby(group_by)[agg_column].mean()
+
+# Correct — coerce first, warn on NaN-producing values
+numeric_funcs = {"sum", "mean", "min", "max"}
+if agg_func in numeric_funcs:
+    df[agg_column] = pd.to_numeric(df[agg_column], errors="coerce")
+    non_numeric = int(df[agg_column].isna().sum())
+    if non_numeric:
+        progress.append(warn(
+            f"Coerced '{agg_column}' to numeric",
+            f"{non_numeric} non-numeric values → NaN"
+        ))
+
+grouped = df.groupby(group_by)[agg_column].agg(agg_func)
+```
+
+Apply this pattern in every function that performs `mean`, `sum`, `min`, `max`,
+`std`, or any numeric aggregation on a user-supplied column name.
+
+### Date parsing — always use format="mixed"
+
+Never parse dates with a single fixed format string or without `format=`:
+
+```python
+# Wrong — fails on mixed date formats; dateutil fallback is slow row-by-row
+df[date_col] = pd.to_datetime(df[date_col])
+
+# Wrong — fails if even one row has a different format
+df[date_col] = pd.to_datetime(df[date_col], format="%Y-%m-%d")
+
+# Correct — vectorised C parser, handles mixed formats, coerces unparseable to NaT
+df[date_col] = pd.to_datetime(df[date_col], format="mixed", dayfirst=False, errors="coerce")
+```
+
+`format="mixed"` uses pandas' fast C parser while tolerating per-row format
+variation. `dayfirst=False` ensures ambiguous dates like `01/02/03` are read as
+MM/DD/YY (US convention) rather than DD/MM/YY. `errors="coerce"` turns unparseable
+values into NaT rather than raising.
+
+### Atomic file writes
+
+Never write output files directly — always temp-file + rename:
+
+```python
+# shared/file_utils.py
+def atomic_write_text(path: str, content: str, encoding: str = "utf-8") -> None:
+    target = Path(path)
+    fd, tmp = tempfile.mkstemp(dir=target.parent, suffix=target.suffix)
+    try:
+        with os.fdopen(fd, "w", encoding=encoding) as f:
+            f.write(content)
+        shutil.move(tmp, str(target))
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+```
+
+---
+
+## 28. LLM Input Resilience
+
+Local LLMs produce inconsistent argument formatting. Unlike API calls where the
+caller controls the schema, an LLM working with natural language instructions will
+frequently use alternate key names, nest parameters incorrectly, or omit required
+fields. Tools must be resilient to these patterns.
+
+### The dual-key pattern
+
+Many LLM-generated arguments use alternate key names for the same concept. Accept
+both spellings:
+
+```python
+# In filter/condition dicts — LLMs use both "op" and "operator" interchangeably
+op = cond.get("op", "") or cond.get("operator", "")
+
+# In patch ops — accept both "strategy" and "method"
+strategy = op.get("strategy", "") or op.get("method", "")
+```
+
+Document the canonical key name in the docstring but accept the alternate silently.
+Do not raise an error for alternate spellings — the LLM is being helpful, not wrong.
+
+### The op-coercion pattern
+
+LLMs sometimes nest parameters inside the `"op"` key instead of alongside it:
+
+```json
+// LLM produced (wrong):
+{"op": {"column": "price", "dtype": "float"}, "patch": true}
+
+// Expected (correct):
+{"op": "cast_column", "column": "price", "dtype": "float"}
+```
+
+Detect and repair this before validation:
+
+```python
+# Distinctive parameter sets that uniquely identify each op
+_OP_SIGNATURES: list[tuple[frozenset[str], str]] = [
+    (frozenset({"dtype"}),                "cast_column"),
+    (frozenset({"strategy"}),             "fill_nulls"),
+    (frozenset({"mapping"}),              "replace_values"),
+    (frozenset({"expression"}),           "add_column"),
+    (frozenset({"method", "lower", "upper"}), "cap_outliers"),
+    (frozenset({"subset"}),               "drop_duplicates"),
+]
+
+def _coerce_op(raw: dict) -> dict:
+    """Normalise a malformed op dict so 'op' is always a string."""
+    op_val = raw.get("op", "")
+    if isinstance(op_val, str) and op_val:
+        return raw  # already correct
+
+    # Extract params from the nested dict or top-level keys
+    if isinstance(op_val, dict):
+        params = {**op_val}
+        for k, v in raw.items():
+            if k not in ("op", "patch"):
+                params.setdefault(k, v)
+    else:
+        params = {k: v for k, v in raw.items() if k not in ("op", "patch")}
+
+    # Infer op name from distinctive params
+    param_keys = frozenset(params.keys())
+    inferred = ""
+    for sig_keys, op_name in _OP_SIGNATURES:
+        if sig_keys & param_keys:
+            inferred = op_name
+            break
+
+    return {"op": inferred, **params}
+
+
+# Apply before any validation:
+ops = [_coerce_op(o) for o in ops]
+```
+
+The signature table maps distinctive parameter keys to op names. `dtype` uniquely
+identifies `cast_column`; `strategy` uniquely identifies `fill_nulls`; etc.
+If inference fails (no distinctive params), the op passes through unchanged and
+fails at the validation stage with a clear error message.
+
+### Type-safe field extraction
+
+When extracting fields from LLM-provided dicts, always guard against wrong types,
+not just missing keys:
+
+```python
+# Wrong — crashes if LLM passes "op" as a dict (unhashable type)
+handler = handler_map.get(op.get("op", ""))
+
+# Correct — validate type before use
+op_name = op.get("op", "")
+if not isinstance(op_name, str):
+    return {
+        "success": False,
+        "error": f"'op' must be a string, got {type(op_name).__name__}",
+        "hint": f"Example: {{\"op\": \"cast_column\", \"column\": \"price\", \"dtype\": \"float\"}}",
+    }
+```
+
+### LLM formatting mistake reference
+
+These are the most common mistakes local LLMs make with tool arguments:
+
+| Mistake | Example | Correct fix |
+|---|---|---|
+| Nested params in "op" key | `{"op": {"col": "x", "dtype": "float"}}` | `_coerce_op()` |
+| Wrong key name | `{"operator": "contains"}` | Accept both keys |
+| String value for numeric param | `{"max_rows": "100"}` | `int()` coerce |
+| List wrapped in another list | `{"columns": [["a", "b"]]}` | Flatten one level |
+| Dict value for string param | `{"file_path": {"path": "/data/f.csv"}}` | Error with example |
+| Missing required key entirely | `{"column": "x"}` (no "op") | `_coerce_op()` inference |
+
+Build coercion and dual-key acceptance for the first three patterns into every
+pipeline tool. The last three warrant a clear error with a correct usage example
+rather than silent repair.
+
+---
+
+## 29. Testing Standards
 
 ### Test engine, not server
 
@@ -1442,6 +1873,7 @@ Fixtures must include real-world messiness. Required categories:
 8. **File not found** — error dict with correct hint
 9. **Index/column out of range** — error dict with available options in hint
 10. **Constrained mode** — `MCP_CONSTRAINED_MODE=1` enforces smaller limits
+11. **No orphaned snapshot on validation failure** — invalid ops must NOT create .bak files
 
 ### Coverage requirements
 
@@ -1480,11 +1912,11 @@ def test_path_outside_home(self):
 ```
 
 **macOS native libraries:** Tests that import XGBoost, LightGBM, or other C++
-libraries will fail on macOS unless `libomp` is installed. See §34 for the CI fix.
+libraries will fail on macOS unless `libomp` is installed. See §36 for the CI fix.
 
 ---
 
-## 28. Cross-Platform Compatibility
+## 30. Cross-Platform Compatibility
 
 ### The path rule — pathlib everywhere
 
@@ -1536,7 +1968,7 @@ logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
 C++ libraries that use OpenMP (XGBoost, LightGBM, etc.) require `libomp` on
 macOS. This is installed via `brew install libomp`. Without it, Python `import`
 fails with `Library not loaded: @rpath/libomp.dylib`. The CI workflow must
-include this step for macOS runners — see §34.
+include this step for macOS runners — see §36.
 
 ### Windows long paths
 
@@ -1544,6 +1976,18 @@ include this step for macOS runners — see §34.
 if sys.platform == "win32" and len(str(path)) > 200:
     path = Path("\\\\?\\" + str(path.resolve()))
 ```
+
+### Windows Defender and large file writes
+
+Windows Defender's real-time scanner checks files on write. Files larger than ~1 MB
+trigger a noticeable scan delay (seconds to minutes). Mitigations:
+
+- **HTML output:** Never embed large JS bundles inline; use offline-first Plotly
+  pattern (§26) to keep HTML under 200 KB
+- **Snapshot files:** Write to temp then rename (atomic); Defender scans the final
+  target, not the temp file during write
+- **Module imports:** Use module-level imports (§15) so Defender scans `.pyc` files
+  at server startup, not during user interaction
 
 ### Atomic file writes
 
@@ -1557,15 +2001,15 @@ shutil.move(tmp_path, path)
 
 ---
 
-## 29. Multi-Client Compatibility
+## 31. Multi-Client Compatibility
 
 Server code is identical regardless of AI client. The only difference is the config
 file location. `mcp_config_writer.py` in `install/` handles client differences.
-Standard mcp.json entry format is defined in §31.
+Standard mcp.json entry format is defined in §33.
 
 ---
 
-## 30. Transport Modes
+## 32. Transport Modes
 
 ### Every server supports two modes
 
@@ -1594,7 +2038,7 @@ HTTP auth tokens must be generated by the installer (32+ random hex chars), stor
 
 ---
 
-## 31. Installation and Distribution
+## 33. Installation and Distribution
 
 ### The self-updating mcp.json pattern
 
@@ -1711,7 +2155,7 @@ For projects that include an automated config writer:
 
 ---
 
-## 32. Naming Conventions
+## 34. Naming Conventions
 
 ### Server directories
 
@@ -1738,6 +2182,10 @@ DEFAULT_TEST_SIZE = 0.2
 # Private helpers — leading underscore
 _apply_single_op()
 _resolve_strategy()
+
+# Optional-dependency module references — leading underscore + _OK flag
+_scipy_stats = None   # type: ignore
+_SCIPY_OK = False
 ```
 
 ### MCP tool function names — verb_noun
@@ -1756,7 +2204,7 @@ Allowed verbs: `read`, `list`, `search`, `get`, `inspect`, `set`, `fill`, `drop`
 
 ---
 
-## 33. Dependency Policy
+## 35. Dependency Policy
 
 ### Approved licenses
 
@@ -1799,7 +2247,7 @@ Any cloud SDK used as primary execution engine (boto3 for ML, google-cloud-*, et
 
 ---
 
-## 34. CI/CD Requirements
+## 36. CI/CD Requirements
 
 ### CI workflow (`ci.yml`)
 
@@ -1892,6 +2340,10 @@ configure it in `pyproject.toml` so it applies to both local and CI runs.
 **`pyright` on sub-modules:** When using the sub-module pattern (§15), ensure
 `pyright` covers the full `servers/{name}/` directory, which includes
 `_adv_helpers.py`, `_adv_charts.py`, etc.
+
+**`pyright` and optional-dependency flags:** Pyright cannot narrow `None | module`
+through a boolean variable. Use `is not None` checks, not `if _SCIPY_OK:` boolean
+flags, when calling optional-dependency functions. See §15 for the full pattern.
 
 ### Release workflow (`release.yml`)
 
@@ -2013,7 +2465,7 @@ if errors:
 
 ---
 
-## 35. Documentation Requirements
+## 37. Documentation Requirements
 
 ### README.md required sections
 
@@ -2078,7 +2530,7 @@ Subsequent launches are instant.
 2. Find **mcp.json** or **Edit mcp.json** → click to open
 3. Paste this config:
 
-{mcp.json block — Windows PowerShell format from §31}
+{mcp.json block — Windows PowerShell format from §33}
 
 4. Wait for the blue dot next to each server
 5. Start chatting — the model will see all {N} tools
@@ -2087,7 +2539,7 @@ Subsequent launches are instant.
 
 Replace `powershell` / `args` with:
 
-{mcp.json block — bash format from §31}
+{mcp.json block — bash format from §33}
 
 Repeat for each tier, adjusting the server directory in the path.
 
@@ -2146,7 +2598,7 @@ def fill_nulls(file_path: str, column: str, strategy: str,
 
 ---
 
-## 36. What to Never Do
+## 38. What to Never Do
 
 These are absolute prohibitions. Any code that violates them is a defect.
 
@@ -2214,10 +2666,10 @@ These are absolute prohibitions. Any code that violates them is a defect.
 21. **Return `None` from an async tool.**
     Async engine functions must return a dict in all code paths.
 
-22. **Load the entire engine module at import time for a server that only uses a few
-    functions.**
-    Sub-module imports in `engine.py` are acceptable — lazy import sub-modules that
-    have heavy dependencies (torch, sklearn) only when the function is called.
+22. **Re-execute a module from disk inside a tool function using `importlib.util.exec_module`.**
+    This bypasses Python's `sys.modules` cache and re-runs the entire module on
+    every call. Use `importlib.import_module` (cached) or — better — direct
+    module-level imports at startup.
 
 23. **Require a GPU inside an MCP tool.**
     MCP tools run on CPU. VRAM constraints are about the LLM model, not tool
@@ -2239,9 +2691,39 @@ These are absolute prohibitions. Any code that violates them is a defect.
 27. **Use a project-specific environment variable name instead of `MCP_CONSTRAINED_MODE`.**
     All MCP servers use `MCP_CONSTRAINED_MODE`. No project-specific alternatives.
 
+28. **Call `pd.read_csv()` directly in server or engine code.**
+    Route all CSV reads through `shared/file_utils.read_csv()` for consistent
+    encoding fallback and bad-line tolerance. Scattered direct calls will fail on
+    real-world files with encoding issues or malformed rows.
+
+29. **Embed Plotly.js inline in HTML output (`include_plotlyjs=True`).**
+    The 3.5 MB bundle triggers Windows Defender on every write and makes charts
+    unusable offline. Use the offline-first directory pattern from §26.
+
+30. **Create a snapshot before validating op arrays.**
+    Validation failures after a snapshot leave orphaned `.bak` files. Validate
+    the complete op array first; snapshot only after all ops are confirmed valid.
+
+31. **Use lazy function-body imports for scipy, statsmodels, numpy, or sklearn.**
+    On Windows, these trigger Defender `.pyc` scans on every server restart.
+    Use module-level imports with `_SCIPY_OK` / `_STATSMODELS_OK` flags (§15).
+
+32. **Guard optional-dependency calls with a boolean flag variable.**
+    Pyright cannot narrow `None | module` through a boolean. Use `is not None`
+    checks directly on the module variable so type narrowing works correctly.
+
+33. **Apply numeric aggregations (mean, sum, min, max) to a column without coercing
+    to numeric first.**
+    CSVs read as string dtype silently crash on aggregation. Always call
+    `pd.to_numeric(col, errors='coerce')` before numeric operations (§27).
+
+34. **Parse dates with a single fixed format string or without `format=`.**
+    Use `format="mixed"` with `dayfirst=False` and `errors="coerce"` for all
+    full-column datetime conversions (§27).
+
 ---
 
-## 37. Checklist — New Server from Scratch
+## 39. Checklist — New Server from Scratch
 
 ### Discovery
 - [ ] Define the domain clearly
@@ -2263,28 +2745,37 @@ These are absolute prohibitions. Any code that violates them is a defect.
 - [ ] `uv sync` — no errors
 
 ### Shared modules
-- [ ] `shared/version_control.py` — tested
+- [ ] `shared/version_control.py` — snapshot() uses atomic temp+rename, collision guard
 - [ ] `shared/patch_validator.py` — tested
-- [ ] `shared/file_utils.py` — includes `resolve_path()` with path traversal check
-- [ ] `shared/platform_utils.py` — `is_constrained_mode()` and limit helpers
+- [ ] `shared/file_utils.py` — `resolve_path()`, `read_csv()` with encoding fallback + bad-line retry, `atomic_write_text()`
+- [ ] `shared/platform_utils.py` — reads env at call time, not import time
 - [ ] `shared/progress.py` — ok/fail/info/warn/undo helpers
-- [ ] `shared/receipt.py` — append_receipt / read_receipt_log
+- [ ] `shared/receipt.py` — append_receipt / read_receipt_log, never raises
+- [ ] `shared/html_theme.py` — `_ensure_plotly_js()` for offline-first charts (if generating HTML)
 
 ### Engine
 - [ ] `engine.py` with zero MCP imports
 - [ ] Surgical read tools implemented first
 - [ ] Every tool returns dict with `"success"` as first key
+- [ ] Every write tool validates all ops BEFORE calling `snapshot()`
 - [ ] Every write tool calls `snapshot()` before writing
 - [ ] Every write tool includes `"backup"` in return dict
 - [ ] Every write tool includes `"dry_run"` path
 - [ ] Every tool response includes `"progress"` array
 - [ ] Every tool response includes `"token_estimate"`
-- [ ] Bounded reads use `get_max_*()` helpers
+- [ ] Bounded reads use `get_max_*()` helpers (called at execution time)
 - [ ] No `print()` statements anywhere
 - [ ] `restore_version` delegates to `shared.version_control`
 - [ ] All file path inputs validated through `resolve_path()` before use
 - [ ] No `eval()` or `exec()` on user-provided input
 - [ ] Subprocess calls use argument lists with `shell=False` and `timeout`
+- [ ] All CSV reads go through `shared.file_utils.read_csv()`
+- [ ] All date parsing uses `format="mixed", dayfirst=False, errors="coerce"`
+- [ ] All numeric aggregations coerce column with `pd.to_numeric(..., errors="coerce")` first
+- [ ] Heavy optional libs (scipy, statsmodels) imported at module level with `_OK` flag
+- [ ] Optional-dependency guards use `is not None` checks, not boolean flags
+- [ ] No `importlib.util.exec_module()` inside any function body
+- [ ] Pipeline/batch tools use `_coerce_op()` or equivalent LLM resilience pattern
 
 ### Server
 - [ ] `server.py` with FastMCP setup
@@ -2303,17 +2794,20 @@ These are absolute prohibitions. Any code that violates them is a defect.
 - [ ] Test every write tool: snapshot created
 - [ ] Test every write tool: `"backup"` in response
 - [ ] Test every write tool: `dry_run=True` does not modify file
+- [ ] Test every write tool: invalid op names do NOT create snapshots
 - [ ] Test every bounded read: truncation at limit
 - [ ] Test `restore_version`: file reverts correctly
 - [ ] Run with `MCP_CONSTRAINED_MODE=1`: limits enforced
-- [ ] Path-outside-home tests use cross-platform paths (see §27)
+- [ ] Path-outside-home tests use cross-platform paths (see §29)
+- [ ] Test CSV with encoding issues: reads correctly via shared reader
+- [ ] Test CSV with malformed rows: reads with rows skipped, no crash
 - [ ] `uv run pytest` — all pass
 - [ ] `uv run pyright servers/{name}/` — no errors (covers sub-modules too)
 - [ ] `uv run ruff check .` — no errors
 - [ ] `uv run ruff format --check .` — no reformatting needed
 
 ### CI/CD
-- [ ] `.github/workflows/ci.yml` — lint + format + test (all 3 platforms)
+- [ ] `.github/workflows/ci.yml` — lint + format + type-check + test (all 3 platforms)
 - [ ] `.github/workflows/release.yml` — CI + release on tag push
 - [ ] macOS step: `brew install libomp` (if using XGBoost/LightGBM)
 - [ ] `PYTHONPATH: "."` set in CI env
@@ -2322,8 +2816,8 @@ These are absolute prohibitions. Any code that violates them is a defect.
 - [ ] CI passes on all three platforms (Ubuntu, macOS, Windows)
 
 ### Distribution and installation
-- [ ] mcp.json entry uses Windows PowerShell format from §31
-- [ ] mcp.json entry uses bash format for macOS/Linux from §31
+- [ ] mcp.json entry uses Windows PowerShell format from §33
+- [ ] mcp.json entry uses bash format for macOS/Linux from §33
 - [ ] Clone guard checks `.git` subfolder, not just directory existence
 - [ ] Update method is `git fetch origin + git reset --hard FETCH_HEAD`
 - [ ] Install path is `~/.mcp_servers/{REPO_NAME}`
@@ -2341,12 +2835,12 @@ These are absolute prohibitions. Any code that violates them is a defect.
 - [ ] Manual test in LM Studio (9B model) — four-tool loop works
 - [ ] Manual test in Claude Desktop — tools appear and execute
 - [ ] 10-step task test — context window not exceeded
-- [ ] README follows the required section order from §35
+- [ ] README follows the required section order from §37
 - [ ] Update `CLAUDE.md` progress tracker
 
 ---
 
-## 38. Checklist — New Tool in Existing Server
+## 40. Checklist — New Tool in Existing Server
 
 - [ ] Server tool count will not exceed 10 after adding
 - [ ] Tool name follows `verb_noun` snake_case convention
@@ -2355,6 +2849,7 @@ These are absolute prohibitions. Any code that violates them is a defect.
 - [ ] Engine function returns dict with `"success"` as first key
 - [ ] Engine function calls `resolve_path()` as first operation on any file path
 - [ ] Engine function validates file extension after resolve
+- [ ] Engine function validates all ops/inputs BEFORE calling `snapshot()`
 - [ ] Engine function calls `snapshot()` if it writes
 - [ ] Engine function includes `"backup"` in write responses
 - [ ] Engine function includes `"dry_run"` path if it writes
@@ -2362,22 +2857,29 @@ These are absolute prohibitions. Any code that violates them is a defect.
 - [ ] Engine function includes `"progress"` array
 - [ ] Engine function includes `"token_estimate"`
 - [ ] Engine function catches all exceptions → error dict
-- [ ] Error dict includes `"hint"` with actionable recovery
+- [ ] Error dict includes `"hint"` with actionable recovery (names a specific tool)
 - [ ] Engine function uses `get_max_*()` helpers for bounded returns
 - [ ] No `print()` statements
 - [ ] No `eval()` or `exec()` on user-provided input
 - [ ] Subprocess calls use `shell=False` and `timeout` (if applicable)
 - [ ] Tool can run offline (self-hosted execution principle)
+- [ ] CSV reads use `shared.file_utils.read_csv()`, not `pd.read_csv()` directly
+- [ ] Date parsing uses `format="mixed", dayfirst=False, errors="coerce"`
+- [ ] Numeric aggregations coerce column with `pd.to_numeric(errors='coerce')` first
+- [ ] Optional dependencies imported at module level with `_OK` flag and `is not None` guards
+- [ ] If tool accepts op arrays: uses `_coerce_op()` or dual-key pattern for LLM resilience
 - [ ] Add `@mcp.tool()` in `server.py` calling engine function
 - [ ] Tool docstring ≤ 80 characters
 - [ ] Tool annotations set (`readOnlyHint`, `destructiveHint`, etc.)
 - [ ] All parameters have allowed type annotations
 - [ ] Optional parameters have primitive defaults
-- [ ] Output-generating tools: default output goes to input file's directory, then ~/Downloads if no input file
+- [ ] Output-generating tools: default output goes to input file's directory, then ~/Downloads
 - [ ] Output-generating tools: use `get_default_output_dir()` from `shared/file_utils.py`
+- [ ] Output-generating HTML tools: use `_ensure_plotly_js()` for offline-first charts
 - [ ] Add success test
 - [ ] Add file-not-found / missing data failure test
 - [ ] Add snapshot-created test (write tools)
+- [ ] Add no-snapshot-on-validation-failure test (write tools with op arrays)
 - [ ] Add `dry_run=True` test (write tools)
 - [ ] Add progress array test
 - [ ] `uv run pytest tests/test_{server_name}.py` — all pass
@@ -2387,7 +2889,7 @@ These are absolute prohibitions. Any code that violates them is a defect.
 
 ---
 
-## 39. Domain Reference Table
+## 41. Domain Reference Table
 
 This table maps domains to their local execution engines, giving a quick reference
 for building new servers that comply with the self-hosted execution principle.
@@ -2409,13 +2911,19 @@ for building new servers that comply with the self-hosted execution principle.
 
 ---
 
-*Version: 5.1*
+*Version: 6.0*
 *Derived from: MCP_Microsoft_Office STANDARDS.md v1.1, expanded and battle-tested
 through MCP_Data_Analyst and MCP_Machine_Learning development.*
-*v5.0 additions: self-updating mcp.json standard (§31), CPU-first execution principle
+*v5.0 additions: self-updating mcp.json standard (§33), CPU-first execution principle
 (§21), Downloads-first output path (§26), strict Python 3.12 pin, setup-uv@v4,
-pyright + docstring verify in CI, unified MCP_CONSTRAINED_MODE env var, "never do"
-rules 23–27.*
+pyright + docstring verify in CI, unified MCP_CONSTRAINED_MODE env var.*
+*v6.0 additions: §27 Shared Data I/O Standards (single CSV reader, numeric coercion,
+date parsing, atomic writes); §28 LLM Input Resilience (_coerce_op, dual-key pattern,
+_OP_SIGNATURES, type-safe extraction); §15 revised import strategy (module-level with
+flags replaces lazy imports on Windows; pyright narrowing via is not None); §19
+atomic snapshot with Windows collision guard; §26 offline-first Plotly (_ensure_plotly_js,
+directory mode, CDN fallback); §13 validate-before-snapshot rule; §38 new prohibitions
+28–34; checklists updated with new rules throughout.*
 *This document should be linked from every MCP server project's README and CLAUDE.md.*
 *When these standards conflict with a specific project's CLAUDE.md, the project's
 CLAUDE.md takes precedence for that project. These are the defaults.*
