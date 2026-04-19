@@ -1171,6 +1171,58 @@ def snapshot(file_path: str) -> str:
     return str(backup_path)
 ```
 
+### Output path safety rule — never default to the input file
+
+**Transform and write tools must never default `output_path` to the input file.**
+
+The common pattern below is a defect — when `output_path` is omitted, the original
+file is silently overwritten even though a snapshot was taken:
+
+```python
+# WRONG — original file overwritten by default
+out = resolve_path(output_path) if output_path else path
+df.to_csv(str(out), index=False)
+```
+
+The correct default is a derived sibling filename beside the input:
+
+```python
+# CORRECT — original file preserved by default
+if output_path:
+    out = resolve_path(output_path)
+else:
+    out = path.parent / f"{path.stem}_filtered{path.suffix}"
+df.to_csv(str(out), index=False)
+```
+
+Choose a suffix that describes the operation: `_filtered`, `_merged`, `_imputed`,
+`_reshaped`, `_features`, `_cleaned`, `_customized`, etc.
+
+The original is only overwritten when the caller **explicitly** passes `output_path`
+pointing back to the source file. In that case, `snapshot()` still fires as the
+safety net.
+
+**Always return `"output_path": str(out)` in the response dict** so the caller can
+read the result without guessing the derived filename:
+
+```python
+result = {
+    "success": True,
+    "output_file": out.name,    # filename only
+    "output_path": str(out),    # absolute path — callers must use this
+    ...
+}
+```
+
+**Audit pattern** — search for this anti-pattern in any engine:
+
+```bash
+grep -rn "if output_path else path" servers/
+grep -rn "if out_path else path" servers/
+```
+
+Every hit is a potential silent data-loss bug.
+
 ### The companion state file pattern
 
 For complex files, maintain a companion JSON state file:
@@ -2721,6 +2773,18 @@ These are absolute prohibitions. Any code that violates them is a defect.
     Use `format="mixed"` with `dayfirst=False` and `errors="coerce"` for all
     full-column datetime conversions (§27).
 
+35. **Default `output_path` to the input file in a transform or write tool.**
+    When `output_path` is omitted, write to a derived sibling file
+    (`{stem}_filtered.csv`, `{stem}_merged.csv`, etc.). Only overwrite the
+    input when the caller explicitly passes `output_path` pointing back to the
+    source. Taking a snapshot does not make silent overwrite acceptable — the
+    user still loses their original in-place (§19).
+
+36. **Omit `"output_path"` from the response of any tool that writes a file.**
+    Callers must be able to chain tools without guessing the derived filename.
+    Always include both `"output_file"` (name only) and `"output_path"`
+    (absolute path) in the response dict.
+
 ---
 
 ## 39. Checklist — New Server from Scratch
@@ -2876,6 +2940,9 @@ These are absolute prohibitions. Any code that violates them is a defect.
 - [ ] Output-generating tools: default output goes to input file's directory, then ~/Downloads
 - [ ] Output-generating tools: use `get_default_output_dir()` from `shared/file_utils.py`
 - [ ] Output-generating HTML tools: use `_ensure_plotly_js()` for offline-first charts
+- [ ] Transform/write tools: default `output_path` is a derived sibling name, never the input path
+- [ ] Transform/write tools: response dict includes both `"output_file"` (name) and `"output_path"` (absolute)
+- [ ] Audit: `grep -rn "if output_path else path"` returns no hits in new engine code
 - [ ] Add success test
 - [ ] Add file-not-found / missing data failure test
 - [ ] Add snapshot-created test (write tools)
@@ -2911,12 +2978,15 @@ for building new servers that comply with the self-hosted execution principle.
 
 ---
 
-*Version: 6.0*
+*Version: 6.1*
 *Derived from: MCP_Microsoft_Office STANDARDS.md v1.1, expanded and battle-tested
 through MCP_Data_Analyst and MCP_Machine_Learning development.*
 *v5.0 additions: self-updating mcp.json standard (§33), CPU-first execution principle
 (§21), Downloads-first output path (§26), strict Python 3.12 pin, setup-uv@v4,
 pyright + docstring verify in CI, unified MCP_CONSTRAINED_MODE env var.*
+*v6.1 additions: §19 output path safety rule (never default to input file in transform
+tools; always return "output_path" in response); §38 prohibitions #35–36 (silent
+overwrite, missing output_path in response); §40 checklist items for transform tools.*
 *v6.0 additions: §27 Shared Data I/O Standards (single CSV reader, numeric coercion,
 date parsing, atomic writes); §28 LLM Input Resilience (_coerce_op, dual-key pattern,
 _OP_SIGNATURES, type-safe extraction); §15 revised import strategy (module-level with
