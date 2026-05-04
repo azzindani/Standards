@@ -4,8 +4,13 @@ Rules for continuous integration and continuous deployment pipelines.
 Every commit potentially deployable. Every repeatable action automated.
 Fast feedback, reproducible builds, immutable artifacts.
 
-Composable with: Testing Standards, Git Standards, Security Standards,
-Dependencies Standards, DevOps Standards.
+Pairs with `testing/STANDARDS.md` — CI/CD executes the test suites and
+reality dimensions defined there. Every test stage below names which
+testing dimension it gates; every reality dimension in testing names
+which CI/CD stage runs it. Confidence Level (`testing/STANDARDS.md §1`)
+determines which suites must pass before deploy.
+
+Composable with: Testing · Git · Security · Dependencies · DevOps.
 
 ---
 
@@ -25,8 +30,9 @@ Dependencies Standards, DevOps Standards.
 12. [Branch Pipeline Rules](#12-branch-pipeline-rules)
 13. [Rollback Strategy](#13-rollback-strategy)
 14. [Release Process](#14-release-process)
-15. [Scale Matrix](#15-scale-matrix)
-16. [CI/CD Checklist](#16-cicd-checklist)
+15. [Cross-Platform Matrix](#15-cross-platform-matrix)
+16. [Scale Matrix](#16-scale-matrix)
+17. [CI/CD Checklist](#17-cicd-checklist)
 
 ---
 
@@ -93,24 +99,26 @@ Enforces code consistency before any build or test resources consumed.
 
 | Check | Purpose | Failure Action |
 |---|---|---|
-| Code formatting | Consistent style across codebase | Block merge |
+| Code formatting | Consistent style | Block merge |
 | Static analysis | Catch bugs without execution | Block merge |
 | Type checking | Type errors caught early | Block merge |
 | Import ordering | Deterministic imports | Block merge |
+| Determinism violations | ✗ wall-clock · random · UUID without injection (`testing/STANDARDS.md §14`) | Block merge |
 | Dead code detection | Remove unused code | Warn (block in production) |
-| Complexity metrics | Flag functions exceeding threshold | Warn |
+| Complexity metrics | Flag threshold exceeders | Warn |
 | Commit message format | Enforce conventional commits | Block merge |
 
 ### Lint Rules
 
-- Linter config lives in repo root, version-controlled.
-- CI lint config identical to local developer config. ✗ divergent rules.
+- Linter config in repo root, version-controlled.
+- CI lint config identical to local. ✗ divergent rules.
 - Lint runs before build — cheapest check first.
 - Auto-fixable issues fixed locally before push (pre-commit hook). CI verifies, ✗ auto-fixes.
-- New lint rules applied incrementally — existing violations tracked, new violations blocked.
-- Lint warnings promoted to errors in CI. ✗ warning-only mode in pipeline.
+- New rules applied incrementally — existing violations tracked, new violations blocked.
+- Warnings promoted to errors in CI. ✗ warning-only mode.
+- Determinism enforcement runs alongside type check — gates §14 of testing standard at lint time, ✗ runtime.
 
-See `testing/STANDARDS.md` for test-specific linting rules.
+See `testing/STANDARDS.md §14` for determinism rules · §20 for test-specific lint.
 
 ---
 
@@ -142,35 +150,54 @@ Produces deployable artifact from source. Deterministic, reproducible, environme
 
 ## 5. Test Stage
 
-Executes test pyramid in pipeline. Test strategy defined in `testing/STANDARDS.md` —
-this section covers pipeline execution only.
+Executes test pyramid + reality dimensions per `testing/STANDARDS.md`. This section covers pipeline execution only — strategy lives in testing standard.
 
-### Test Execution Order
+### Suite Execution Mapping
 
-| Level | Runs When | Parallelizable | Failure Impact |
-|---|---|---|---|
-| Unit tests | Every push | Yes — per-module parallel | Blocks merge |
-| Integration tests | PR merge to trunk | Limited — may share resources | Blocks deploy |
-| Contract tests | PR merge to trunk | Yes | Blocks deploy |
-| E2E / smoke tests | Post-deploy per environment | No — sequential | Triggers rollback |
+Maps testing suites (`testing/STANDARDS.md §20`) → pipeline stages.
 
-### Test Stage Rules
+| Testing Suite | Reality Dimensions Covered | Pipeline Position | Parallel | Failure |
+|---|---|---|---|---|
+| Unit | Correctness · property · contract · fast adversarial · time-boundary | Every push | Yes — per-module | Blocks merge |
+| Integration | Boundary · faults (§10) · concurrency unit · resources w/ limits (§13) · observability (§17) · recovery (§18) | Every push | Limited — shared resources | Blocks merge |
+| E2E | Full workflow | Pre-merge | No — sequential | Blocks merge |
+| Scenario | Multi-step journeys (§7) | Nightly · pre-prod | Limited | Blocks promotion |
+| Long-run | State accumulation (§15) · leak · stress (§12) | Nightly | Yes — per-target | Notify, ✗ block merge |
+| Fuzz | Adversarial (§11) | Nightly | Yes — per-target | Crash = P1, blocks merge |
+| Mutation | Test effectiveness (§19) | Nightly | Weekly | Yes — per-module | L5 gates release |
+| Replay | Drift (§16) · prod traces | Pre-prod deploy | No — sequential | Blocks promotion |
+| Performance | Budgets (§25) | Nightly | Yes | Regression > 20% blocks |
 
-- All tests run in isolated environments. ✗ shared state between test runs.
-- Test database/state created fresh per run. ✗ depend on leftover data.
-- Tests produce machine-readable output (JUnit XML, TAP, or equivalent).
-- Test results published to CI dashboard — every run, not just failures.
-- Flaky test detected → quarantine immediately. Flaky test ✗ blocks pipeline for others.
-- Quarantined tests tracked in issue tracker. Max 7 days quarantine before fix or delete.
-- Coverage threshold enforced. Threshold ratchets — never decreases.
-- Test timeout per suite. Individual test timeout enforced. Hung test ✗ blocks pipeline indefinitely.
+### Confidence Level → Required Suites
+
+Per `testing/STANDARDS.md §1`. CI gates by declared level.
+
+| Level | Suites Gating Merge | Suites Gating Deploy |
+|---|---|---|
+| L1 | Unit (happy path) | Unit |
+| L2 | Unit + Contract + Property | Unit + Integration |
+| L3 | + Faults · Adversarial · Concurrency | + E2E |
+| L4 | + Resources · Time · Observability · Recovery | + Scenario + Long-run nightly green |
+| L5 | + all of L4 | + Mutation green · Replay green |
+
+### Rules
+
+- All tests run in isolated environments. ✗ shared state between runs.
+- Test DB/state fresh per run. ✗ leftover data dependency.
+- Machine-readable output (JUnit XML, TAP, or equivalent). Results published to CI dashboard every run.
+- Flaky test → quarantine immediately. Max 7 days before fix or delete (`testing/STANDARDS.md §3`).
+- Coverage threshold enforced, ratchets — ✗ decreases (`testing/STANDARDS.md §22`).
+- Per-suite + per-test timeout enforced. Hung test ✗ blocks pipeline indefinitely.
+- Race detector enabled in CI when toolchain supports (`testing/STANDARDS.md §12`).
+- Resource tests run with explicit cgroup/ulimit (`testing/STANDARDS.md §13`), ✗ host defaults.
+- Replay corpus runs in pre-prod env, ✗ against production.
 
 ### Parallelization
 
-- Unit tests split across runners by module/package.
-- Each runner gets independent environment.
-- Test ordering randomized to catch hidden dependencies.
+- Unit split per module/package across runners. Each runner = independent env.
+- Test order randomized to catch hidden dependencies.
 - Results aggregated after all runners complete.
+- Cross-platform matrix (§15) parallelizes across OS runners.
 
 ---
 
@@ -533,79 +560,131 @@ Each entry includes:
 
 ---
 
-## 15. Scale Matrix
+## 15. Cross-Platform Matrix
 
-Apply pipeline rules proportionally to project scale.
+CI/CD runners support Windows · macOS · Linux as first-class environments. Tests + build run on all target OS per `testing/STANDARDS.md §26`. Matrix executes in parallel; all OSes must pass to merge.
+
+### Runner Matrix
+
+| OS | Runner Type | Suite Coverage | Required For |
+|---|---|---|---|
+| Linux | x86_64 · arm64 | Full unit + integration + container | All projects |
+| Windows | Server LTSC | Full unit + integration; PowerShell scripts | Cross-platform target projects |
+| macOS | x86_64 (Intel) · arm64 (Apple Silicon) | Full unit + integration; native APIs | macOS-target or polyglot projects |
+
+### OS-Specific Stage Rules
+
+| Stage | Linux | Windows | macOS |
+|---|---|---|---|
+| Lint | All linters · POSIX shell scripts via shellcheck | PowerShell ScriptAnalyzer · YAML/JSON validators | All linters · zsh scripts validated |
+| Build | Native + container artifacts | Native binary, NSIS/MSI installer if shipping | Native binary, codesigned + notarized if shipping |
+| Unit test | Full suite · race detector enabled | Full suite · race detector if toolchain supports | Full suite · race detector enabled |
+| Integration | Full suite + container tests | Full suite · ✗ container tests (use Linux runner) | Full suite · ✗ container tests |
+| E2E | Full | Full where applicable to OS-target | Full where applicable |
+| Security scan | SCA + SAST + container scan | SCA + SAST | SCA + SAST |
+
+### Matrix Rules
+
+- All target platforms run in parallel via CI matrix. Total wall time = slowest runner, ✗ sum.
+- Container-based tests run on Linux only — explicitly documented as such, ✗ skipped silently.
+- Platform-specific code paths (`#ifdef`, `os.platform`, conditional imports) require platform-specific tests, OS-gated.
+- Path handling via stdlib abstractions only. ✗ raw `/` or `\` in source. Lint enforces (`testing/STANDARDS.md §26`).
+- Line endings normalized: source `\n` (enforced by `.gitattributes`); tests assert both `\n` and `\r\n` parsing.
+- Shell scripts in build/CI: bash equivalents in `scripts/posix/`, PowerShell equivalents in `scripts/windows/`. ✗ assume one shell on all OSes.
+- Encoding: source files UTF-8 (BOM-less) enforced by lint. Tests cover UTF-8 (Linux/macOS) + UTF-16/codepage (Windows) input handling.
+- File-locking semantics differ — tests assert behavior on each OS where locking matters.
+- Time resolution differs (Windows 100ns · POSIX ns) — performance tests use per-platform tolerance.
+
+### Matrix Failure Handling
+
+- Any OS fail = merge blocked. ✗ "Linux green is enough."
+- OS-specific flake → quarantine the OS-specific test, ✗ disable the OS from matrix.
+- Platform-specific bug = P1, fixed before next release. ✗ "Windows users can wait."
+- Removing an OS from the matrix = same review weight as removing test coverage — requires explicit owner sign-off.
+
+### Self-Hosted vs Hosted Runners
+
+| Runner Type | Use For | Limits |
+|---|---|---|
+| Hosted (provider-managed) | Default. All public + most private projects. | Spec varies, time-quota'd, ephemeral. |
+| Self-hosted | Specialty hardware (GPU, ARM, mainframe), restricted networks, large caches. | Patching + security ownership stays with project. |
+
+Self-hosted runners isolated per job (fresh container/VM). ✗ persist state between jobs. ✗ shared filesystem across builds.
+
+---
+
+## 16. Scale Matrix
+
+Apply pipeline rules proportionally to project scale. Cross-references `testing/STANDARDS.md §28` (testing scale matrix) — confidence level there gates pipeline gates here.
 
 | Aspect | PoC / Script | Small Project | Production System |
 |---|---|---|---|
 | Pipeline definition | Shell script or single CI file | Standard CI config | Multi-stage pipeline as code |
-| Lint stage | Formatter only | Formatter + static analysis | Full lint suite + type checking |
-| Build stage | Direct run (no build) | Single build command | Reproducible, cached, multi-target |
-| Unit tests | Smoke tests only | Full unit suite | Full suite + coverage threshold |
-| Integration tests | Manual | Basic integration | Full contract + integration suite |
+| Lint stage | Formatter only | Formatter + static analysis | Full lint + type check + determinism enforcement |
+| Build stage | Direct run | Single build command | Reproducible, cached, multi-target |
+| Test stage | Unit smoke | Unit + basic integration | Full suites per Confidence Level (§5) |
+| Reality dimensions (§5) | ✗ required | Faults + adversarial on critical paths | All per `testing/STANDARDS.md §28` |
 | Security scan | ✗ required | Dependency audit only | Full SCA + SAST + secret scan |
-| Artifact management | Local only | Registry with basic versioning | Signed, immutable, retention policy |
+| Artifact management | Local only | Registry, basic versioning | Signed, immutable, retention policy |
 | Environments | Local only | Dev + production | Dev + staging + production |
 | Deploy strategy | Manual | Script-based, single target | Blue-green or canary, zero-downtime |
-| Rollback | Manual redeploy | Script-based rollback | Automated rollback with health checks |
-| Secrets management | Environment variables | CI secret variables | Dedicated secret manager + rotation |
-| Monitoring post-deploy | Manual check | Basic health check | Full observability + automated rollback |
-| Release process | Git tag only | Tag + changelog | Full semver + signed artifacts + notes |
+| Rollback | Manual redeploy | Script-based | Automated with health checks |
+| Secrets | Env vars | CI secret variables | Secret manager + rotation |
+| Monitoring post-deploy | Manual | Basic health check | Full observability + auto rollback |
+| Release process | Git tag | Tag + changelog | Full semver + signed + notes |
+| Cross-platform (§15) | Single OS | Two target OSes | All target OSes in matrix |
 | Pipeline speed target | < 2 min | < 5 min | < 10 min |
 
-### Scale Transitions
+### Transitions
 
-- PoC → Small: Add CI config, linter, basic tests, single deploy target.
-- Small → Production: Add security scanning, staging environment, artifact signing, automated rollback, secret rotation.
-- Transition incrementally. ✗ rewrite pipeline from scratch. Add stages as project matures.
+- PoC → Small: CI config · linter · basic tests · single deploy target.
+- Small → Production: security scanning · staging env · artifact signing · automated rollback · secret rotation · reality dimensions per `testing/STANDARDS.md §28`.
+- Incremental, ✗ rewrite from scratch. Add stages as project matures.
 
 ---
 
-## 16. CI/CD Checklist
+## 17. CI/CD Checklist
 
 ### New Project Pipeline
 
 - [ ] Pipeline definition in repo, version-controlled
-- [ ] Lint stage configured (formatter + static analysis)
-- [ ] Build stage produces single versioned artifact
-- [ ] Unit test stage with coverage threshold
-- [ ] Pipeline runs on every push
-- [ ] Pipeline failure blocks merge
-- [ ] Secrets stored in secret manager, ✗ in repo
+- [ ] Confidence level declared (`testing/STANDARDS.md §1`); pipeline gates by it
+- [ ] Lint stage: formatter + static analysis + determinism enforcement (§3)
+- [ ] Build produces single versioned artifact
+- [ ] Unit + integration suites run every push (§5)
+- [ ] Cross-platform matrix configured for all target OS (§15)
+- [ ] Pipeline failure blocks merge · ✗ override without documented reason
+- [ ] Secrets in secret manager, ✗ repo
 - [ ] Pipeline duration baselined and monitored
 
 ### Production Readiness
 
-- [ ] Integration test stage active
-- [ ] Security scanning (SCA + SAST + secret scan) enabled
-- [ ] Artifact signed and stored in registry with retention policy
-- [ ] Dev → Staging → Production environment progression established
-- [ ] Environment parity verified (staging mirrors production)
-- [ ] Zero-downtime deployment strategy configured
+- [ ] Test stage gates by Confidence Level (§5)
+- [ ] Reality dimensions wired: faults · adversarial · concurrency in unit/integration suites
+- [ ] Nightly suites: scenario · long-run · fuzz · mutation · performance (`testing/STANDARDS.md §20`)
+- [ ] Replay corpus runs in pre-prod (L5) (`testing/STANDARDS.md §16`)
+- [ ] Cross-platform matrix green on every commit (§15)
+- [ ] Security scanning: SCA + SAST + secret scan
+- [ ] Artifact signed, stored with retention policy
+- [ ] Dev → Staging → Production progression with parity verified
+- [ ] Zero-downtime deployment configured
 - [ ] Automated rollback triggers defined and tested
-- [ ] Health check gates on every deploy
-- [ ] Monitoring + alerting post-deploy
-- [ ] Rollback procedure documented and tested monthly
-- [ ] Secret rotation schedule active
-- [ ] Release process follows semver with changelog
+- [ ] Health check gates on every deploy · monitoring + alerting active
+- [ ] Rollback procedure tested monthly
+- [ ] Secret rotation active · release process follows semver
 
 ### Per-Release
 
-- [ ] Version bumped according to semver
-- [ ] Changelog generated and reviewed
-- [ ] Release notes written (migration steps if breaking)
-- [ ] Tag created, pipeline triggered
-- [ ] Artifact signed and published
-- [ ] Staged deployment: dev → staging → production
-- [ ] Post-deploy health checks green
-- [ ] Monitoring baseline verified — no regression
+- [ ] Version bumped per semver · changelog generated · release notes written
+- [ ] Tag triggers pipeline · all suites green per Confidence Level (§5)
+- [ ] Cross-platform matrix green (§15)
+- [ ] Artifact signed and published · staged deployment · post-deploy health green
 
 ### Pipeline Maintenance
 
 - [ ] Pipeline duration reviewed monthly — no creep beyond targets
-- [ ] Flaky tests quarantined and resolved within 7 days
-- [ ] Security scan exceptions reviewed and renewed or resolved
-- [ ] Secret rotation schedule audited quarterly
-- [ ] Artifact retention cleanup running daily
-- [ ] Pipeline infrastructure capacity meets demand (queue wait < 1 min)
+- [ ] Flaky tests quarantined and resolved within 7 days (`testing/STANDARDS.md §3`)
+- [ ] Security scan exceptions reviewed and renewed
+- [ ] Secret rotation audited quarterly
+- [ ] Artifact retention cleanup daily
+- [ ] Runner queue wait < 1 min · cross-platform matrix all OSes provisioned
