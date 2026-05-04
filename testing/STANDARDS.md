@@ -7,6 +7,9 @@ faults, adversaries, concurrency, resource limits, time, drift.
 
 Pairs with `cicd/STANDARDS.md` — every reality dimension here names which
 CI/CD stage runs it; every CI/CD stage names which dimension it gates.
+Extends with `testing/PRESSURE.md` — system-level stress, endurance,
+survival, and penetration testing for production-tier projects.
+
 Composable with: Architecture · Code Writing · Error Handling ·
 Observability · Security · Dependencies · language-specific standards.
 
@@ -92,6 +95,16 @@ Tests classified on two orthogonal axes: **Pyramid** (size of unit under test, �
 Every reality dimension test pattern: **Inject condition → assert behavior → assert recovery (where applicable)**.
 
 Pipeline mapping → suite to CI/CD stage: see `cicd/STANDARDS.md §5` (Test Stage). Cross-platform matrix: see `cicd/STANDARDS.md §15`. Lint-time determinism enforcement: see `cicd/STANDARDS.md §3`.
+
+### System-Level Reality Dimensions
+
+Three additional dimensions live in `testing/PRESSURE.md` because they require dedicated infrastructure and run differently from per-commit tests:
+
+| Dimension | Catches | Required Level |
+|---|---|---|
+| Pressure (`PRESSURE.md §3`) | Capacity limits · slow-burn under load · scaling cliff | L4 |
+| Survival (`PRESSURE.md §4`) | Multi-fault · cascading · region loss · chaos | L4–L5 |
+| Penetration (`PRESSURE.md §5`) | Auth bypass · privilege escalation · exfil paths · logic flaws | L3+ |
 
 ---
 
@@ -830,9 +843,9 @@ Testing depth scales with project complexity. See `architecture/STANDARDS.md §1
 ### Transitions
 
 PoC → Small: unit + integration · linter · independence · factories.
-Small → Production: reality dimensions in priority — faults → adversarial → concurrency → observability → recovery → resources → state → replay → mutation.
+Small → Production: reality dimensions in priority — faults → adversarial → concurrency → observability → recovery → resources → state → replay → mutation. System-level dimensions per `testing/PRESSURE.md §10`.
 
-Incremental alongside features. ✗ "testing sprint" after the fact. T0–T1 first → integration at boundaries → reality dimensions per criticality.
+Incremental alongside features. ✗ "testing sprint" after the fact. T0–T1 first → integration at boundaries → reality dimensions per criticality → system-level pressure when production-tier.
 
 ---
 
@@ -878,3 +891,4 @@ Incremental alongside features. ✗ "testing sprint" after the fact. T0–T1 fir
 - [ ] No flaky tests · perf budgets met · contract tests pass
 - [ ] Replay corpus green (L5) · cross-platform matrix green (§26)
 - [ ] Effectiveness audit current (production-tier, §27)
+- [ ] Pressure / survival / pen test gates green per `testing/PRESSURE.md §8` (production-tier)

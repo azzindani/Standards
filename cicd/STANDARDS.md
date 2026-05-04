@@ -150,7 +150,7 @@ Produces deployable artifact from source. Deterministic, reproducible, environme
 
 ## 5. Test Stage
 
-Executes test pyramid + reality dimensions per `testing/STANDARDS.md`. This section covers pipeline execution only — strategy lives in testing standard.
+Executes test pyramid + reality dimensions per `testing/STANDARDS.md`. System-level pressure / survival / penetration suites per `testing/PRESSURE.md`. This section covers pipeline execution only — strategy lives in testing standards.
 
 ### Suite Execution Mapping
 
@@ -167,6 +167,9 @@ Maps testing suites (`testing/STANDARDS.md §20`) → pipeline stages.
 | Mutation | Test effectiveness (§19) | Nightly | Weekly | Yes — per-module | L5 gates release |
 | Replay | Drift (§16) · prod traces | Pre-prod deploy | No — sequential | Blocks promotion |
 | Performance | Budgets (§25) | Nightly | Yes | Regression > 20% blocks |
+| Pressure (`PRESSURE.md §3`) | Stress · endurance · capacity | Nightly + per release | No — dedicated runner | Regression > 20% blocks release |
+| Survival (`PRESSURE.md §4`) | Multi-fault · cascading · chaos | Nightly · weekly full matrix | No — pre-prod env | Single-fault blocks; multi-fault if user-facing |
+| Penetration (`PRESSURE.md §5`) | Auth · authz · session · server-side · logic flaws | Nightly + per release | Yes — staging | Critical/High blocks release |
 
 ### Confidence Level → Required Suites
 
@@ -176,9 +179,9 @@ Per `testing/STANDARDS.md §1`. CI gates by declared level.
 |---|---|---|
 | L1 | Unit (happy path) | Unit |
 | L2 | Unit + Contract + Property | Unit + Integration |
-| L3 | + Faults · Adversarial · Concurrency | + E2E |
-| L4 | + Resources · Time · Observability · Recovery | + Scenario + Long-run nightly green |
-| L5 | + all of L4 | + Mutation green · Replay green |
+| L3 | + Faults · Adversarial · Concurrency | + E2E + Pen tests (auth/authz/session) |
+| L4 | + Resources · Time · Observability · Recovery | + Scenario + Long-run nightly green + Pressure (stress/endurance/capacity) green + Survival single-fault green |
+| L5 | + all of L4 | + Mutation green · Replay green · Chaos nightly green · Pen full corpus green · annual red-team current |
 
 ### Rules
 
@@ -608,8 +611,11 @@ CI/CD runners support Windows · macOS · Linux as first-class environments. Tes
 |---|---|---|
 | Hosted (provider-managed) | Default. All public + most private projects. | Spec varies, time-quota'd, ephemeral. |
 | Self-hosted | Specialty hardware (GPU, ARM, mainframe), restricted networks, large caches. | Patching + security ownership stays with project. |
+| Dedicated pressure runner | Stress / endurance / capacity tests (`PRESSURE.md §9`). | Production-shaped; one test at a time per env; ✗ shared with regular CI workloads. |
+| Pre-prod survival environment | Survival / chaos / multi-fault (`PRESSURE.md §9`). | Multi-zone topology · fault-injection layer · isolated network. |
+| Staging pen-test environment | Penetration testing corpus (`PRESSURE.md §9`). | Mirrors prod auth/authz/TLS · synthetic data only · isolated from prod. |
 
-Self-hosted runners isolated per job (fresh container/VM). ✗ persist state between jobs. ✗ shared filesystem across builds.
+Self-hosted runners isolated per job (fresh container/VM). ✗ persist state between jobs. ✗ shared filesystem across builds. Pressure / survival / pen environments retain state between runs (capacity baselines, attack corpora) but reset per-test on demand.
 
 ---
 
@@ -624,6 +630,7 @@ Apply pipeline rules proportionally to project scale. Cross-references `testing/
 | Build stage | Direct run | Single build command | Reproducible, cached, multi-target |
 | Test stage | Unit smoke | Unit + basic integration | Full suites per Confidence Level (§5) |
 | Reality dimensions (§5) | ✗ required | Faults + adversarial on critical paths | All per `testing/STANDARDS.md §28` |
+| System-level dimensions (§5) | ✗ required | Pen auth/authz once · capacity baseline | Pressure + survival + pen per `testing/PRESSURE.md §10` |
 | Security scan | ✗ required | Dependency audit only | Full SCA + SAST + secret scan |
 | Artifact management | Local only | Registry, basic versioning | Signed, immutable, retention policy |
 | Environments | Local only | Dev + production | Dev + staging + production |
@@ -664,6 +671,8 @@ Apply pipeline rules proportionally to project scale. Cross-references `testing/
 - [ ] Nightly suites: scenario · long-run · fuzz · mutation · performance (`testing/STANDARDS.md §20`)
 - [ ] Replay corpus runs in pre-prod (L5) (`testing/STANDARDS.md §16`)
 - [ ] Cross-platform matrix green on every commit (§15)
+- [ ] Pressure / survival / pen test runners provisioned (`PRESSURE.md §9`)
+- [ ] Pressure suite gates per release (§5); chaos + pen-corpus nightly gates for L5
 - [ ] Security scanning: SCA + SAST + secret scan
 - [ ] Artifact signed, stored with retention policy
 - [ ] Dev → Staging → Production progression with parity verified
