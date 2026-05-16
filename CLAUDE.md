@@ -38,7 +38,7 @@ Central standards library for all projects. Each standard = one directory + one 
 | 2 | `design/` | Design patterns · module design · abstraction rules | Planned |
 | 3 | `directory/` | Project layout · file organization · naming | Done |
 | 4 | `code_writing/` | Clean code · readability · function style · naming | Planned |
-| 5 | `testing/` | Test pyramid · contract tests · coverage strategy | Done |
+| 5 | `testing/` | Test pyramid · contract · coverage · reality dimensions (STANDARDS.md) · pressure · survival · penetration (PRESSURE.md) | Done |
 | 6 | `error_handling/` | Error types · boundaries · recovery · reporting | Done |
 | 7 | `observability/` | Structured logging · receipts · metrics · health | Done |
 | 8 | `security/` | Validation boundary · secrets · access control · input | Done |
@@ -101,7 +101,9 @@ Standards/
 ├── design/STANDARDS.md
 ├── directory/STANDARDS.md
 ├── code_writing/STANDARDS.md
-├── testing/STANDARDS.md
+├── testing/
+│   ├── STANDARDS.md             ← done (pyramid + reality dimensions)
+│   └── PRESSURE.md              ← done (pressure · survival · penetration)
 ├── error_handling/STANDARDS.md
 ├── observability/STANDARDS.md
 ├── security/STANDARDS.md
