@@ -1,326 +1,234 @@
 # Go Standards
 
-Go-specific rules for package design, error handling, concurrency, testing,
-and tooling. Implements general principles from `architecture/STANDARDS.md`
-and `error_handling/STANDARDS.md` in idiomatic Go.
+> Idiomatic Go: package design, interfaces, the error-value mechanism, concurrency, context, and the go toolchain.
 
-Composable with: Architecture Standards, Code Writing Standards, Error Handling Standards, Testing Standards.
+**ID** `go` · **Tier** Language · **Version** 1.0
+**Owns** package design · interface design · identifier naming · error values + `%w` wrapping · struct + constructor patterns · goroutine and channel idioms · `context.Context` rules · module layout · go toolchain invocation · Go anti-patterns
+**Defers to** test strategy + coverage thresholds + mocking policy → [testing](../testing/STANDARDS.md) · error taxonomy + boundaries + recovery → [error_handling](../error_handling/STANDARDS.md) · lockfile + pinning + supply-chain policy → [dependencies](../dependencies/STANDARDS.md) · layering + dependency direction → [architecture](../architecture/STANDARDS.md) · file + directory naming → [directory](../directory/STANDARDS.md) · pipeline stages → [cicd](../cicd/STANDARDS.md) · budgets + profiling method → [performance](../performance/STANDARDS.md) · log levels + structured fields → [observability](../observability/STANDARDS.md)
+**Load with** [architecture](../architecture/STANDARDS.md) · [code_writing](../code_writing/STANDARDS.md) · [error_handling](../error_handling/STANDARDS.md) · [testing](../testing/STANDARDS.md) · [dependencies](../dependencies/STANDARDS.md)
 
 ---
 
 ## Table of Contents
 
-1. [Package Design](#1-package-design)
-2. [Interface Design](#2-interface-design)
-3. [Error Handling](#3-error-handling)
+1. [Baseline & Toolchain](#1-baseline--toolchain)
+2. [Package Design](#2-package-design)
+3. [Interfaces](#3-interfaces)
 4. [Naming](#4-naming)
-5. [Struct Design](#5-struct-design)
-6. [Concurrency](#6-concurrency)
-7. [Context](#7-context)
-8. [Module Structure](#8-module-structure)
-9. [Code Organization](#9-code-organization)
-10. [Testing](#10-testing)
-11. [Tooling](#11-tooling)
-12. [Performance](#12-performance)
-13. [Go-Specific Anti-Patterns](#13-go-specific-anti-patterns)
-14. [Checklist](#14-checklist)
+5. [Errors](#5-errors)
+6. [Structs & Constructors](#6-structs--constructors)
+7. [Concurrency](#7-concurrency)
+8. [Context](#8-context)
+9. [Modules](#9-modules)
+10. [Project Layout](#10-project-layout)
+11. [Testing Tools](#11-testing-tools)
+12. [Lint & Vet](#12-lint--vet)
+13. [Performance Idioms](#13-performance-idioms)
+14. [Anti-Patterns](#14-anti-patterns)
+15. [Checklist](#15-checklist)
 
 ---
 
-## 1. Package Design
+## 1. Baseline & Toolchain
 
-Package = unit of compilation, distribution, and encapsulation. See `architecture/STANDARDS.md §5` for module boundary rules.
+Baseline **Go 1.24**, declared in `go.mod`. Generics are available (1.18+); loop variables are per-iteration (1.22+) — the classic closure-capture bug is gone, but ✗ rely on it in code that must build under an older toolchain.
 
-### Naming Rules
-
-| Rule | Example | Violation |
+| Job | Tool | Note |
 |---|---|---|
-| Short, lowercase, single word | `http`, `json`, `auth` | `httpUtils`, `json_parser` |
-| ✗ underscores, hyphens, mixedCaps | `userstore` | `user_store`, `userStore` |
-| ✗ generic names | `auth`, `metric` | `util`, `common`, `helpers`, `misc` |
-| Package name = last path segment | `import "app/internal/auth"` → `auth.` | — |
-| ✗ stutter: type repeats package name | `auth.Client` | `auth.AuthClient` |
-
-### Package Granularity
-
-```go
-// ✓ Package by feature — each feature = self-contained package
-internal/
-  auth/        // authentication + authorization
-  billing/     // payment, invoicing
-  notify/      // email, push, SMS
-
-// ✗ Package by layer — splits related code across packages
-models/
-  user.go
-  billing.go
-controllers/
-  user.go
-  billing.go
-```
-
-### internal/ Packages
-
-- `internal/` prevents external imports — compiler-enforced boundary
-- Place domain logic in `internal/` by default; promote to public only when reuse is proven
-- Each `internal/` sub-package follows same naming rules
+| Format | `gofmt` (`gofumpt` optional) | Non-negotiable — zero formatting debate |
+| Static analysis | `go vet` | CI gate |
+| Meta-lint | `golangci-lint` | CI gate |
+| Vulnerabilities | `govulncheck ./...` | CI gate + scheduled |
+| Test | `go test -race -count=1 ./...` | `-race` always in CI |
+| Structured logging | `log/slog` | ✗ `log` · ✗ third-party loggers in new code |
+| Collections | `slices` · `maps` · `cmp` | ✗ hand-rolled sort/contains helpers |
+| Randomness | `math/rand/v2` | ✗ `math/rand` · ✗ `rand.Seed` |
+| Dev tooling | `tool` directive in `go.mod` (1.24+) | ✗ `tools.go` with blank imports |
 
 ---
 
-## 2. Interface Design
+## 2. Package Design
 
-Go interfaces enable implicit satisfaction — define consumers, not providers. See `architecture/STANDARDS.md §9` (contract-first).
+A package is the unit of compilation, encapsulation, and distribution.
 
-### Core Rules
-
-| Rule | Rationale |
-|---|---|
-| Small interfaces: 1–3 methods | Composable, easy to implement + mock |
-| Define interface at consumer, not provider | Consumer knows what it needs |
-| Accept interfaces, return concrete structs | Caller decides abstraction level |
-| ✗ preemptive interfaces | Only extract when ≥2 implementations exist or testing demands it |
-
-### Interface Naming
-
-| Method Count | Convention | Example |
+| Rule | Example | ✗ |
 |---|---|---|
-| 1 method | `-er` suffix from method name | `Reader`, `Stringer`, `Closer` |
-| 2–3 methods | Descriptive noun | `ReadCloser`, `Store`, `Cache` |
-| >3 methods | Likely too large — split | — |
+| Short, lowercase, one word | `auth` · `http` · `userstore` | `authUtils` · `user_store` · `userStore` |
+| ✗ underscores, hyphens, mixedCaps | `userstore` | `user_store` |
+| ✗ catch-all names | `auth` · `billing` | `util` · `common` · `helpers` · `misc` · `base` |
+| ✗ stutter | `auth.Client` | `auth.AuthClient` |
+| Package name = last path segment | `internal/auth` → `auth.New()` | — |
 
-### Pattern: Accept Interface, Return Struct
+Package by **feature**, not by layer: `internal/auth/`, `internal/billing/` — ✗ `models/`, `controllers/`, `services/`, which spread one change across every directory.
 
-```go
-// ✓ Consumer defines what it needs
-type UserStore interface {
-    GetUser(ctx context.Context, id string) (*User, error)
-}
-
-// ✓ Provider returns concrete type
-func NewPostgresStore(db *sql.DB) *PostgresStore {
-    return &PostgresStore{db: db}
-}
-
-// ✗ Provider returns interface — hides concrete type, prevents extension
-func NewPostgresStore(db *sql.DB) UserStore {
-    return &PostgresStore{db: db}
-}
-```
+`internal/` is a compiler-enforced boundary — nothing outside the module can import it. Domain code starts in `internal/` and is promoted to `pkg/` only when an external consumer actually exists.
 
 ---
 
-## 3. Error Handling
+## 3. Interfaces
 
-Go errors are values — handle explicitly. Implements `architecture/STANDARDS.md §7` + `error_handling/STANDARDS.md` in Go idiom.
-
-### Rules
+Interfaces are satisfied implicitly. Declare them where they are **consumed**, not where they are implemented.
 
 | Rule | Detail |
 |---|---|
-| Always check returned errors | ✗ `_ = f()` when `f` returns error |
-| Return `error` as last return value | Convention: `(result, error)` |
-| ✗ `panic` for expected failures | `panic` = programmer bug only (index OOB, nil deref, impossible state) |
-| Wrap with context at each boundary | `fmt.Errorf("fetch user %s: %w", id, err)` |
-| Handle error OR return it — ✗ both | Log-and-return = duplicate noise |
+| 1–3 methods | >3 → the interface is doing too much; split it |
+| Defined at the consumer | The caller states what it needs; the provider does not guess |
+| Accept interfaces, return concrete structs | The caller chooses the abstraction level |
+| ✗ preemptive interfaces | Extract only when a second implementation exists or a test demands a double |
+| One method → `-er` name | `Reader` · `Closer` · `Stringer` |
+| Two or three → descriptive noun | `Store` · `Cache` · `ReadCloser` |
+| ✗ `I`-prefix | `IReader` is not Go |
 
 ```go
-// ✓ Add context, preserve chain
-user, err := store.GetUser(ctx, id)
-if err != nil {
-    return fmt.Errorf("resolve billing for user %s: %w", id, err)
+type UserStore interface {                                  // ✓ declared by the consumer
+    GetUser(ctx context.Context, id string) (*User, error)
 }
 
-// ✗ Bare return — no context          // ✗ Log AND return — duplicate
-if err != nil { return err }            if err != nil { log.Error(err); return err }
-```
-
-### Error Decision Matrix
-
-| Situation | Action |
-|---|---|
-| Caller can retry/recover | Return error with context |
-| Error is expected (not found, conflict) | Return typed/sentinel error |
-| Programmer bug (impossible state) | `panic` with explanation |
-| Goroutine boundary | Recover at top, convert to error, send via channel/errgroup |
-| HTTP/gRPC boundary | Map to status code, log once at boundary |
-
-### Sentinel Errors + Custom Types
-
-```go
-// Sentinel: package-level, exported, ErrX naming
-var (
-    ErrNotFound     = errors.New("not found")
-    ErrUnauthorized = errors.New("unauthorized")
-)
-
-// Custom type: carry structured context
-type ValidationError struct {
-    Field   string
-    Message string
-}
-func (e *ValidationError) Error() string {
-    return fmt.Sprintf("validation: %s — %s", e.Field, e.Message)
-}
-```
-
-### Checking Errors
-
-| Function | Use Case | Checks Through Wrapping |
-|---|---|---|
-| `errors.Is(err, target)` | Sentinel comparison | Yes |
-| `errors.As(err, &target)` | Type extraction | Yes |
-| `err == ErrX` | ✗ Breaks on wrapping | No |
-| `_, ok := err.(*T)` | ✗ Breaks on wrapping | No |
-
-```go
-if errors.Is(err, ErrNotFound) { return http.StatusNotFound }
-
-var ve *ValidationError
-if errors.As(err, &ve) { return http.StatusBadRequest }
+func NewPostgresStore(db *sql.DB) *PostgresStore { ... }    // ✓ returns the concrete type
+func NewPostgresStore(db *sql.DB) UserStore      { ... }    // ✗ hides the type from callers
 ```
 
 ---
 
 ## 4. Naming
 
-Go naming is intentionally terse. Exported = `PascalCase`. Unexported = `camelCase`. See `code_writing/STANDARDS.md` for general naming principles.
+Exported = `PascalCase`. Unexported = `camelCase`. Go names are short — length scales with scope, not with importance.
 
-### Identifier Rules
-
-| Category | Convention | Example | Violation |
-|---|---|---|---|
-| Exported type/func/var | `PascalCase` | `HTTPClient`, `NewServer` | `Http_Client` |
-| Unexported type/func/var | `camelCase` | `parseHeader`, `connPool` | `parse_header` |
-| Acronyms | All caps when exported | `HTTPClient`, `ID`, `URL` | `HttpClient`, `Id` |
-| Local variables | Short, contextual | `r`, `w`, `ctx`, `err` | `requestObject` |
-| Loop variables | Single letter when body small | `i`, `k`, `v` | `index`, `element` |
-| Receiver | 1–2 letter abbreviation of type | `func (s *Server)` | `func (self *Server)`, `func (this *Server)` |
-| Test helpers | `testX` or `newTestX` | `newTestServer()` | `createHelperServerForTesting()` |
-
-### Function Naming
-
-| Pattern | Convention | Example |
+| Category | Convention | ✗ |
 |---|---|---|
-| Constructor | `NewX` returns `*X` | `NewServer(cfg Config) *Server` |
-| Constructor with error | `NewX` returns `(*X, error)` | `NewClient(addr string) (*Client, error)` |
-| Getter | Field name, ✗ `Get` prefix | `s.Name()` not `s.GetName()` |
-| Setter | `SetX` | `s.SetName(n string)` |
-| Boolean query | `IsX`, `HasX`, `CanX` | `IsValid()`, `HasChildren()` |
-| Conversion | `ToX`, `String`, `Bytes` | `String() string`, `ToJSON() []byte` |
-
-### Interface Naming
-
-```go
-// Single-method → -er suffix
-type Reader interface { Read(p []byte) (n int, err error) }
-type Stringer interface { String() string }
-type Handler interface { Handle(ctx context.Context, req Request) error }
-
-// ✗ I-prefix (Java style)
-type IReader interface{}  // wrong
-```
+| Acronyms | All one case — `HTTPClient` · `ID` · `URL` | `HttpClient` · `Id` · `Url` |
+| Local variable | Short and contextual — `r`, `w`, `ctx`, `err` | `requestObject` |
+| Loop variable | `i`, `k`, `v` in a short body | `index`, `element` |
+| Receiver | 1–2 letters from the type — `func (s *Server)` | `self` · `this` · `me` |
+| Constructor | `NewX` → `*X` or `(*X, error)` | `CreateNewServerInstance` |
+| Getter | The field name — `s.Name()` | `s.GetName()` |
+| Setter | `SetX` | — |
+| Boolean query | `IsX` · `HasX` · `CanX` | — |
+| Conversion | `String()` · `ToJSON()` | — |
+| Sentinel error | `ErrX` | `NotFoundError` as a value |
+| Error type | `XError` | — |
 
 ---
 
-## 5. Struct Design
+## 5. Errors
 
-### Field Ordering
+Errors are values, returned as the last result and handled explicitly. Taxonomy and boundary placement → [error_handling](../error_handling/STANDARDS.md).
 
-Order fields by alignment to minimize padding. Group logically.
+| Rule | Detail |
+|---|---|
+| Every returned error is checked | ✗ `_ = f()` when `f` returns an error — `errcheck` enforces |
+| Wrap with context at each boundary | `fmt.Errorf("fetch user %s: %w", id, err)` — `%w` preserves the chain, `%v` destroys it |
+| Message states the operation, lowercase, no punctuation | `"open config: %w"` — ✗ `"Error: Failed to open config!"` |
+| Handle **or** return — never both | Log-and-return duplicates the same failure at every frame |
+| `errors.Is` for sentinels · `errors.As` for types | ✗ `err == ErrX` · ✗ `err.(*T)` — both break through wrapping |
+| `panic` only for programmer bugs | Impossible state, nil deref, index out of range. ✗ for expected failure |
+| Recover at goroutine and process boundaries only | Convert to an error and return it |
+| Sentinels for expected conditions | `ErrNotFound` · `ErrConflict` |
+| Typed errors when the caller needs fields | `*ValidationError{Field, Message}` |
 
 ```go
-// ✓ Grouped by purpose, larger types first
+user, err := store.GetUser(ctx, id)
+if err != nil {
+    return fmt.Errorf("resolve billing for user %s: %w", id, err)   // ✓ context + chain
+}
+
+if err != nil { return err }                        // ✗ no context — a bare chain of nothing
+if err != nil { log.Error(err); return err }        // ✗ logged twice, three frames up as well
+```
+
+```go
+var ErrNotFound = errors.New("not found")
+
+if errors.Is(err, ErrNotFound) { return http.StatusNotFound }
+
+var ve *ValidationError
+if errors.As(err, &ve) { return http.StatusBadRequest }
+```
+
+Join independent failures with `errors.Join(err1, err2)` — ✗ concatenate error strings.
+
+---
+
+## 6. Structs & Constructors
+
+```go
 type Server struct {
-    // Configuration
-    addr    string
+    addr    string          // configuration
     timeout time.Duration
 
-    // Dependencies
-    store  Store
+    store  Store            // dependencies
     logger *slog.Logger
 
-    // State
-    mu      sync.Mutex
+    mu      sync.Mutex      // state — guarded fields directly below the mutex
     started bool
 }
 ```
 
-### Embedding Rules
-
 | Rule | Detail |
 |---|---|
-| Embed for behavior, ✗ for data reuse | Embedding = "is-a", not "has-a" |
-| ✗ embed exported type in exported struct | Leaks methods to public API unintentionally |
-| Embed `sync.Mutex` as unexported | `mu sync.Mutex` field preferred over embedding |
-| Embed interfaces for partial implementation | Useful in test doubles |
-
-### Constructor + Functional Options
+| Group fields: config → dependencies → state | Guarded fields sit directly under the mutex that protects them |
+| Order by size within a group | Minimizes padding |
+| `mu sync.Mutex` as a named field | ✗ embed it — embedding exports `Lock`/`Unlock` onto the type's API |
+| Embed for behavior, not for data reuse | Embedding means "is-a" |
+| ✗ embed an exported type in an exported struct | Its methods silently join your public API |
+| Constructor validates and returns `(*T, error)` | ✗ a half-constructed struct escaping to the caller |
+| Zero value usable, or construction mandatory | Pick one and document it |
+| Functional options for optional config | ✗ a constructor with six positional parameters |
 
 ```go
 type Option func(*Server)
 
 func WithTimeout(d time.Duration) Option { return func(s *Server) { s.timeout = d } }
-func WithLogger(l *slog.Logger) Option   { return func(s *Server) { s.logger = l } }
 
-// NewX — validate inputs, apply options, return ready-to-use struct
 func NewServer(addr string, opts ...Option) (*Server, error) {
     if addr == "" {
         return nil, errors.New("addr required")
     }
-    s := &Server{addr: addr}
-    for _, opt := range opts { opt(s) }
+    s := &Server{addr: addr, logger: slog.Default()}
+    for _, opt := range opts {
+        opt(s)
+    }
     return s, nil
 }
 ```
 
 ---
 
-## 6. Concurrency
-
-Go concurrency = goroutines + channels + sync primitives. See `architecture/STANDARDS.md §9` for concurrency architecture principles.
-
-### Core Rules
+## 7. Concurrency
 
 | Rule | Detail |
 |---|---|
-| ✗ start goroutine without knowing how it stops | Every goroutine must have clear shutdown path |
-| Caller owns goroutine lifecycle | Function that starts goroutine provides stop mechanism |
-| Share by communicating, ✗ communicate by sharing | Prefer channels over shared memory + mutex |
-| ✗ goroutine leaks | Unbuffered channel + no reader = permanent leak |
-| Always pass `context.Context` for cancellation | Goroutines respect context done signal |
+| ! ✗ start a goroutine without knowing how it stops | Every goroutine has an owner and a shutdown path |
+| The starter owns the lifecycle | The function that spawns it provides the stop mechanism |
+| Share by communicating | Prefer channels; use a mutex to protect state inside one type |
+| ✗ goroutine leaks | A send with no receiver, or a receive with no sender, blocks forever |
+| Every long-running loop selects on `ctx.Done()` | Otherwise cancellation is ignored |
+| `errgroup.Group` when errors matter | Over `sync.WaitGroup`, which discards them |
+| Bounded worker pools | ✗ one goroutine per request item without a limit |
 
-### Goroutine Lifecycle Pattern
-
-```go
-func (s *Server) Start(ctx context.Context) error {
-    g, ctx := errgroup.WithContext(ctx)
-
-    g.Go(func() error {
-        return s.listenHTTP(ctx)
-    })
-    g.Go(func() error {
-        return s.processQueue(ctx)
-    })
-
-    return g.Wait()  // blocks until all goroutines exit
-}
-```
-
-### Channel Patterns
-
-| Pattern | When | Example |
+| Primitive | Use | ✗ Misuse |
 |---|---|---|
-| Unbuffered `chan` | Synchronization, handoff | `done := make(chan struct{})` |
-| Buffered `chan` | Decouple producer/consumer | `jobs := make(chan Job, 100)` |
-| `chan struct{}` | Signal-only, no data | `quit := make(chan struct{})` |
-| `select` with `ctx.Done()` | Cancelable operations | See below |
+| `sync.Mutex` | Protect fields inside one struct | Cross-goroutine coordination → use a channel |
+| `sync.RWMutex` | Read-heavy, write-rare | Write-heavy — the read lock's bookkeeping costs more than it saves |
+| `sync.Once` | One-time init that cannot fail | Lazy init that can fail — no error return |
+| `sync.WaitGroup` | Wait for N goroutines | When any of them can fail → `errgroup` |
+| `sync.Map` | High-contention, stable key set | A general map replacement — it is slower for the common case |
+| `atomic.*` | Counters, flags | Multi-word invariants |
+
+`defer mu.Unlock()` on the line after `mu.Lock()`. ✗ hold a lock across I/O or across a call into code you do not control.
 
 ```go
-// ✓ Cancelable loop with select
+func (s *Server) Run(ctx context.Context) error {
+    g, ctx := errgroup.WithContext(ctx)
+    g.Go(func() error { return s.listenHTTP(ctx) })
+    g.Go(func() error { return s.processQueue(ctx) })
+    return g.Wait()                        // ✓ blocks until all exit; first error cancels the rest
+}
+
 for {
     select {
     case <-ctx.Done():
-        return ctx.Err()
+        return ctx.Err()                   // ✓ cancellable — ✗ a bare `for range jobs` cannot stop
     case job := <-jobs:
         if err := process(job); err != nil {
             return fmt.Errorf("process job %s: %w", job.ID, err)
@@ -329,168 +237,93 @@ for {
 }
 ```
 
-### Sync Primitives
-
-| Primitive | Use Case | ✗ Misuse |
-|---|---|---|
-| `sync.Mutex` | Protect shared state in struct | Protecting cross-goroutine coordination (use channel) |
-| `sync.RWMutex` | Read-heavy, write-rare | Write-heavy workloads (contention) |
-| `sync.Once` | One-time initialization | Lazy init that can fail (no error return) |
-| `sync.WaitGroup` | Wait for N goroutines | Prefer `errgroup.Group` when errors matter |
-| `sync.Map` | High-contention, key-stable maps | General-purpose map replacement |
-
-### Mutex Discipline
-
-- `defer mu.Unlock()` immediately after `mu.Lock()` — ✗ lock held across I/O
-- Lock scope = minimal. Read lock + write lock = `sync.RWMutex`
-- ✗ hold lock while calling external function (deadlock risk)
-
 ---
 
-## 7. Context
+## 8. Context
 
-`context.Context` = cancellation + deadline + request-scoped values. First parameter of every function that does I/O or takes time.
-
-### Rules
+`context.Context` carries cancellation, deadline, and request-scoped metadata. Nothing else.
 
 | Rule | Detail |
 |---|---|
 | First parameter, named `ctx` | `func Do(ctx context.Context, ...)` |
-| ✗ store context in struct | Pass explicitly per-call |
-| ✗ pass `nil` context | Use `context.TODO()` if unsure |
-| Propagate to all downstream calls | DB, HTTP, gRPC, file I/O |
-| Set timeouts at entry points | HTTP handler, CLI command, cron job |
-| Check `ctx.Err()` in long loops | Early exit on cancellation |
-
-### Timeout Propagation
-
-```go
-// ✓ Set timeout at entry, propagates through entire call chain
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-    defer cancel()
-
-    user, err := h.store.GetUser(ctx, r.URL.Query().Get("id"))
-    // ...
-}
-```
-
-### Context Values — Minimal Use
+| ✗ store a context in a struct field | Pass it per call — a stored context outlives its request |
+| ✗ pass `nil` | `context.TODO()` when genuinely undecided |
+| Propagate to every downstream call | DB · HTTP · gRPC · file I/O |
+| Set the timeout at the entry point | HTTP handler · CLI command · cron job — and `defer cancel()` immediately |
+| ✗ ignore the `cancel` func | Not calling it leaks the timer and the parent's child list |
+| Values = request-scoped metadata only | Trace ID · request ID · auth claims. ✗ dependencies, config, or business data |
+| Key is an unexported struct type | `type ctxKey struct{}` — ✗ a string key (cross-package collision) |
 
 ```go
-// ✓ Request-scoped metadata only: trace ID, request ID, auth claims
-type ctxKey struct{}
-
-func WithTraceID(ctx context.Context, id string) context.Context {
-    return context.WithValue(ctx, ctxKey{}, id)
-}
-
-// ✗ Passing dependencies, config, or business data through context
-ctx = context.WithValue(ctx, "db", database)  // wrong
+ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+defer cancel()
+user, err := h.store.GetUser(ctx, id)
 ```
 
 ---
 
-## 8. Module Structure
-
-### go.mod Rules
+## 9. Modules
 
 | Rule | Detail |
 |---|---|
 | Module path = repository path | `module github.com/org/project` |
-| Pin Go version to minimum required | `go 1.22` |
-| ✗ commit vendor/ unless required for hermetic builds | Use module proxy |
-| Run `go mod tidy` before every commit | Removes unused, adds missing |
-| ✗ replace directives in libraries | Only permitted in final binaries |
+| `go` directive = minimum supported version | Not "whatever is installed" |
+| `go.sum` always committed | Integrity verification — ✗ hand-edit it |
+| `go mod tidy` before every commit | Adds missing, removes unused |
+| ✗ `replace` directives in a library | Permitted only in a final binary |
+| ✗ commit `vendor/` | Unless the build must be hermetic and offline |
+| Checksum mismatch → investigate | ✗ delete `go.sum` and re-tidy to "fix" it |
 
-### Version Management
-
-| Action | Command |
-|---|---|
-| Add dependency | `go get pkg@version` |
-| Update specific | `go get pkg@latest` |
-| Update all | `go get -u ./...` then `go mod tidy` |
-| Check for vulnerabilities | `govulncheck ./...` |
-| Verify checksums | `go mod verify` |
-
-### go.sum
-
-- Always commit `go.sum` — provides integrity verification
-- ✗ manually edit `go.sum`
-- If checksum mismatch occurs, investigate before running `go mod tidy`
+`go get pkg@version` to add · `go get -u ./... && go mod tidy` to update · `go mod verify` to check · `govulncheck ./...` to scan. Version-selection and supply-chain policy → [dependencies](../dependencies/STANDARDS.md).
 
 ---
 
-## 9. Code Organization
+## 10. Project Layout
 
-Maps to `architecture/STANDARDS.md §2` tier model. See `directory/STANDARDS.md` for general layout rules.
-
-### Standard Project Layout
-
-```
+```text
 project/
-├── cmd/
-│   └── server/
-│       └── main.go          // Tier 3: entry point, wiring
+├── cmd/server/main.go     ← entry point: parse flags, wire, run
 ├── internal/
-│   ├── auth/                 // Tier 1–2: domain packages
-│   │   ├── auth.go
-│   │   ├── token.go
-│   │   └── auth_test.go
+│   ├── auth/              ← domain package (auth.go · token.go · auth_test.go)
 │   ├── billing/
-│   └── platform/             // Tier 0: shared types, utilities
-│       ├── errors.go
-│       └── config.go
-├── pkg/                      // Public API (use sparingly)
-│   └── client/
-├── go.mod
-├── go.sum
+│   └── platform/          ← shared types, config, errors
+├── pkg/client/            ← public API — only when an external consumer exists
+├── go.mod · go.sum
 └── Makefile
 ```
 
-### Directory Rules
-
-| Directory | Purpose | Visibility |
+| Directory | Contains | Importable |
 |---|---|---|
-| `cmd/` | Binary entry points. One `main.go` per binary | — |
-| `internal/` | Private packages. Compiler-enforced | ✗ importable outside module |
-| `pkg/` | Public library code. Use only when external consumers exist | Importable by anyone |
-| Root `.go` files | Only if module is single-package library | — |
-
-### File Organization Within Package
+| `cmd/` | One `main.go` per binary. Wiring only, ✗ logic | — |
+| `internal/` | Domain packages. Compiler-enforced privacy | ✗ outside the module |
+| `pkg/` | Public library code. Use sparingly | By anyone — permanent contract |
 
 | Rule | Detail |
 |---|---|
-| One primary type per file | `server.go` contains `type Server struct` |
-| File name = primary type, lowercase | `server.go`, `client.go`, `handler.go` |
-| `doc.go` for package documentation | `// Package auth provides...` |
-| `_test.go` suffix for tests | Same package or `_test` package |
-| Keep files under 500 lines | Split by sub-concern if larger |
+| One primary type per file, file named after it | `server.go` holds `type Server` |
+| `doc.go` for package docs | `// Package auth provides ...` |
+| Files ≤ 500 lines | Split by sub-concern beyond that |
+| `x_test.go` beside `x.go` | Same package = white box; `x_test` package = black box |
 
-### Tier Mapping to Go Packages
-
-| Tier | Go Location | Contains |
-|---|---|---|
-| 0 (Kernel) | `internal/platform/` or `internal/types/` | Types, constants, pure utilities |
-| 1 (Engine) | `internal/{domain}/` | Business logic, validation, transforms |
-| 2 (Service) | `internal/{domain}/service.go` or `internal/service/` | Orchestration, workflows |
-| 3 (Interface) | `cmd/`, `internal/api/`, `internal/handler/` | HTTP, gRPC, CLI, DB adapters |
+Layering and dependency direction → [architecture](../architecture/STANDARDS.md); directory naming → [directory](../directory/STANDARDS.md).
 
 ---
 
-## 10. Testing
+## 11. Testing Tools
 
-### Core Rules
+Pyramid, coverage thresholds, and mocking policy → [testing](../testing/STANDARDS.md). Go tooling below.
 
 | Rule | Detail |
 |---|---|
-| Table-driven tests by default | Reduces boilerplate, covers edge cases |
-| Test file = `x_test.go` next to `x.go` | Same package for white-box, `_test` package for black-box |
-| Test function = `TestXxx` | `TestServer_Start`, `TestParseConfig_InvalidYAML` |
-| ✗ test against implementation details | Test behavior through public API |
-| Test helpers return values, ✗ `*testing.T` assertions | Except `t.Helper()` marked functions |
-
-### Table-Driven Tests
+| Table-driven by default | Named cases, one body |
+| `t.Run(tt.name, ...)` subtests | Failures name the case; `-run` targets one |
+| `t.Helper()` in every helper | Failure reports the caller's line |
+| `t.Cleanup()` for teardown | ✗ manual `defer` chains inside the test body |
+| `httptest` for HTTP | ✗ bind a real port |
+| `testing/synctest` for concurrent code (1.25+) | Deterministic virtual clock — ✗ `time.Sleep` to "wait" |
+| Build tags separate slow tests | `//go:build integration` · `//go:build e2e` |
+| `-race` in CI, always | A data race that never fires locally will fire in production |
+| ✗ assert on unexported internals | Test behavior through the exported API |
 
 ```go
 func TestParseSize(t *testing.T) {
@@ -502,11 +335,8 @@ func TestParseSize(t *testing.T) {
     }{
         {name: "bytes", input: "1024", want: 1024},
         {name: "kilobytes", input: "1KB", want: 1024},
-        {name: "megabytes", input: "1MB", want: 1048576},
         {name: "invalid", input: "abc", wantErr: true},
-        {name: "empty", input: "", wantErr: true},
     }
-
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
             got, err := ParseSize(tt.input)
@@ -519,252 +349,120 @@ func TestParseSize(t *testing.T) {
         })
     }
 }
-```
 
-### Test Helpers + HTTP Testing
-
-```go
-// t.Helper() — failures report caller's line, not helper's
-func newTestServer(t *testing.T) *Server {
-    t.Helper()
-    s, err := NewServer("localhost:0", WithLogger(slog.Default()))
-    require.NoError(t, err)
-    t.Cleanup(func() { s.Close() })
-    return s
-}
-
-// httptest for HTTP handlers
-func TestHealthEndpoint(t *testing.T) {
-    srv := newTestServer(t)
-    req := httptest.NewRequest(http.MethodGet, "/health", nil)
-    rec := httptest.NewRecorder()
-    srv.ServeHTTP(rec, req)
-    assert.Equal(t, http.StatusOK, rec.Code)
-}
-
-// Benchmarks: b.ResetTimer() after setup, b.ReportAllocs() for allocation tracking
 func BenchmarkParse(b *testing.B) {
     input := loadTestData(b)
-    b.ResetTimer()
-    for b.Loop() { _ = Parse(input) }
+    for b.Loop() {            // ✓ Go 1.24+ — setup outside the loop is not timed
+        _ = Parse(input)
+    }
 }
 ```
 
-### Test Categories
+---
 
-| Tag | Command | Use |
-|---|---|---|
-| No tag | `go test ./...` | Unit tests — fast, no I/O |
-| `//go:build integration` | `go test -tags=integration ./...` | DB, network, file system |
-| `//go:build e2e` | `go test -tags=e2e ./...` | Full system tests |
-| `-short` flag | `go test -short ./...` | Skip slow tests via `testing.Short()` |
+## 12. Lint & Vet
+
+| Gate | Command |
+|---|---|
+| Format | `gofmt -l .` — output must be empty |
+| Vet | `go vet ./...` |
+| Lint | `golangci-lint run ./...` |
+| Test | `go test -race -count=1 ./...` |
+| Vulnerabilities | `govulncheck ./...` |
+| Tidy | `go mod tidy && go mod verify` — ✗ diff after running |
+
+Minimum enabled linters: `errcheck` · `govet` · `staticcheck` · `unused` · `ineffassign` · `gocritic` · `revive` · `errorlint` · `errname` · `prealloc` · `bodyclose` · `contextcheck` · `nilerr`.
+
+Every gate is a Makefile target and runs identically in CI. ✗ a lint suppression without a comment naming the reason. Pipeline stages → [cicd](../cicd/STANDARDS.md).
 
 ---
 
-## 11. Tooling
+## 13. Performance Idioms
 
-### Required Tools
+Budgets and profiling methodology → [performance](../performance/STANDARDS.md). Go specifics:
 
-| Tool | Purpose | Enforcement |
-|---|---|---|
-| `gofmt` | Format code | ✗ commit unformatted code. CI rejects |
-| `go vet` | Static analysis (compiler-adjacent) | CI gate |
-| `golangci-lint` | Meta-linter (aggregates 50+ linters) | CI gate |
-| `staticcheck` | Advanced static analysis | Included in golangci-lint |
-| `govulncheck` | Vulnerability scanning | CI gate, weekly |
-
-### golangci-lint — Minimum Enabled Linters
-
-`errcheck` · `govet` · `staticcheck` · `unused` · `gosimple` · `ineffassign` · `typecheck` · `gocritic` · `revive` · `errname` · `errorlint` · `prealloc`
-
-### Standard Makefile Targets
-
-| Target | Command |
+| Rule | Detail |
 |---|---|
-| `make lint` | `golangci-lint run ./...` |
-| `make test` | `go test -race -count=1 ./...` |
-| `make build` | `go build -o bin/ ./cmd/...` |
-| `make vet` | `go vet ./...` |
-| `make tidy` | `go mod tidy && go mod verify` |
-
----
-
-## 12. Performance
-
-See `performance/STANDARDS.md` for general profiling strategy. Go-specific optimizations below.
-
-### Allocation Reduction
-
-| Technique | Example |
-|---|---|
-| Pre-allocate slices when size known | `make([]T, 0, expectedLen)` |
-| Reuse buffers with `sync.Pool` | See below |
-| Avoid `fmt.Sprintf` in hot paths | Use `strconv` or string concatenation |
-| Pass large structs by pointer | `func process(s *LargeStruct)` not `func process(s LargeStruct)` |
-| Use `strings.Builder` for concatenation | ✗ `+=` in loops |
-| Return slices, ✗ append to parameter | Caller controls allocation |
-
-### sync.Pool
+| ✗ optimize without a benchmark | Write `BenchmarkX`, measure, then change. Compare with `benchstat` |
+| `b.ReportAllocs()` · `-benchmem` | Allocations per op is the number that matters |
+| `make([]T, 0, n)` when `n` is known | ✗ grow a slice by repeated append |
+| `strings.Builder` for concatenation | ✗ `+=` in a loop — O(n²) copies |
+| ✗ `fmt.Sprintf` in a hot path | `strconv.Itoa` · `strconv.FormatInt` |
+| Large structs by pointer | ✗ copy a 200-byte struct per call |
+| `sync.Pool` for short-lived reusable buffers | Reset on `Put`; ✗ pool anything holding a reference to request data |
+| ✗ `any` / `interface{}` in a hot path | Type assertion + boxing allocation |
+| ✗ `reflect` in a hot path | 10–100x slower |
+| Profile with pprof | CPU · heap · block · mutex · trace |
 
 ```go
 var bufPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
-func process(data []byte) string {
-    buf := bufPool.Get().(*bytes.Buffer)
-    defer func() { buf.Reset(); bufPool.Put(buf) }()
-    // use buf...
-    return buf.String()
-}
+buf := bufPool.Get().(*bytes.Buffer)
+defer func() { buf.Reset(); bufPool.Put(buf) }()
 ```
 
-### Profiling (pprof)
-
-- Import `_ "net/http/pprof"` + start debug server on `localhost:6060`
-- CPU: `go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30`
-- Heap: `go tool pprof http://localhost:6060/debug/pprof/heap`
-- Trace: `go tool trace http://localhost:6060/debug/pprof/trace?seconds=5`
-
-### Benchmark-Driven Optimization
-
-| Rule | Detail |
-|---|---|
-| ✗ optimize without benchmark proof | Write `BenchmarkX` first, measure, then optimize |
-| Use `b.ReportAllocs()` | Track allocations per operation |
-| Compare with `benchstat` | `benchstat old.txt new.txt` for statistical comparison |
-| `-benchmem` flag | `go test -bench=. -benchmem` |
-
-### Hot Path Rules
-
-| Rule | Detail |
-|---|---|
-| ✗ `interface{}` / `any` in hot paths | Type assertions have cost |
-| ✗ reflection in hot paths | `reflect` = 10–100x slower |
-| Minimize allocations per request | Target zero-alloc for critical paths |
-| Use `[]byte` over `string` when mutating | Avoid copy on conversion |
+Beware slice aliasing: `append` may mutate a shared backing array. Copy before handing a sub-slice to code that will retain or modify it.
 
 ---
 
-## 13. Go-Specific Anti-Patterns
+## 14. Anti-Patterns
 
-| Anti-Pattern | Problem | Fix |
+| Anti-pattern | Failure | Fix |
 |---|---|---|
-| Nil pointer without check | Panic at runtime | Check `if x == nil` before dereference |
-| Unclosed resources | Leak: file descriptors, connections, goroutines | `defer f.Close()` immediately after open; check close error on writes |
-| `init()` overuse | Hidden execution order, hard to test | Explicit initialization in `main()` or constructors |
-| Goroutine fire-and-forget | Leak, lost errors, no shutdown | Use `errgroup`, track lifecycle, pass `context.Context` |
-| Naked return in long functions | Unreadable — unclear what's returned | Named returns only when function ≤ 10 lines |
-| Interface pollution | Premature abstraction, unused interfaces | Extract interface only when needed by consumer |
-| `panic` for control flow | Crashes production, unrecoverable | Return `error` — `panic` only for programmer bugs |
-| Empty error wrapping | Lost context — debugging nightmare | Always wrap: `fmt.Errorf("context: %w", err)` |
-| Package-level mutable state | Race conditions, test pollution | Pass dependencies explicitly, ✗ global `var` |
-| `select{}` without `ctx.Done()` | Goroutine blocks forever if context canceled | Always include `case <-ctx.Done():` |
-| String keyed context values | Collision risk across packages | Use unexported struct type as key |
-| Ignoring `Close()` errors | Data loss on buffered writers | `if err := w.Close(); err != nil { ... }` |
-| Slice append without understanding | Shared backing array mutation | Copy slice before modifying if shared |
-| `time.Sleep` for synchronization | Flaky, slow | Use channels, `sync.WaitGroup`, or `sync.Cond` |
-
-### Resource Cleanup Pattern
+| Fire-and-forget `go f()` | Leaks; the error vanishes; shutdown never completes | `errgroup` + `context` |
+| `select {}` without `ctx.Done()` | Blocks forever on cancellation | Always add `case <-ctx.Done():` |
+| `time.Sleep` for synchronization | Flaky and slow | Channels · `sync.WaitGroup` · `testing/synctest` |
+| Unclosed resources | Leaked file descriptors and connections | `defer f.Close()` at open; check `Close()` error on writers |
+| Ignoring `Close()` on a writer | Buffered data silently lost | Capture it into the named return |
+| `init()` doing real work | Hidden ordering, untestable, unfailable | Explicit init in `main()` or a constructor |
+| Package-level mutable state | Data races, test pollution | Pass dependencies explicitly |
+| Interface pollution | Abstraction with one implementor | Extract when the consumer needs it |
+| `panic` as control flow | Crashes production | Return an error |
+| `%v` instead of `%w` when wrapping | `errors.Is`/`As` stop working | `%w` |
+| Naked returns in a long function | The reader cannot tell what is returned | Named returns only when the function is ≤10 lines |
+| String-keyed context values | Cross-package key collision | Unexported struct key type |
+| Nil map write | Panic — a nil map reads fine but cannot be written | `make(map[K]V)` before writing |
 
 ```go
-f, err := os.Create(path)
-if err != nil {
-    return fmt.Errorf("create %s: %w", path, err)
-}
-defer func() {
-    if cerr := f.Close(); cerr != nil && err == nil {
-        err = fmt.Errorf("close %s: %w", path, cerr)
+func write(path string) (err error) {
+    f, err := os.Create(path)
+    if err != nil {
+        return fmt.Errorf("create %s: %w", path, err)
     }
-}()
+    defer func() {
+        if cerr := f.Close(); cerr != nil && err == nil {
+            err = fmt.Errorf("close %s: %w", path, cerr)   // ✓ close error not lost
+        }
+    }()
+    ...
+}
 ```
 
 ---
 
-## 14. Checklist
+## 15. Checklist
 
-### Package & Module
-
-- [ ] Package names: short, lowercase, no underscores
-- [ ] ✗ stutter (`auth.AuthClient` → `auth.Client`)
-- [ ] Domain logic in `internal/`
-- [ ] `go mod tidy` run, `go.sum` committed
-- [ ] ✗ `replace` directives in library modules
-
-### Interfaces
-
-- [ ] Interfaces ≤ 3 methods
-- [ ] Defined at consumer, not provider
-- [ ] Functions accept interfaces, return concrete structs
-
-### Errors
-
-- [ ] All returned errors checked
-- [ ] Errors wrapped with context at boundaries: `fmt.Errorf("...: %w", err)`
-- [ ] Sentinel errors use `ErrX` naming, checked with `errors.Is`
-- [ ] Custom error types checked with `errors.As`
-- [ ] ✗ `panic` for expected failures
-- [ ] ✗ log-and-return (choose one)
-
-### Naming
-
-- [ ] Exported = `PascalCase`, unexported = `camelCase`
-- [ ] Acronyms all-caps (`HTTP`, `ID`, `URL`)
-- [ ] Receivers = 1–2 letter abbreviation
-- [ ] Constructors = `NewX` pattern
-- [ ] Getters = field name, ✗ `Get` prefix
-
-### Structs
-
-- [ ] Fields ordered by alignment, grouped by purpose
-- [ ] ✗ exported type embedded in exported struct
-- [ ] Constructors validate inputs, return `(*T, error)`
-- [ ] Functional options for complex configuration
-
-### Concurrency
-
-- [ ] Every goroutine has known shutdown path
-- [ ] `context.Context` passed and respected
-- [ ] Mutex scope minimized — ✗ lock held during I/O
-- [ ] `errgroup` used when goroutine errors matter
-- [ ] ✗ goroutine leaks (unbuffered chan with no reader)
-
-### Context
-
-- [ ] First parameter, named `ctx`
-- [ ] ✗ stored in struct fields
-- [ ] Timeouts set at entry points
-- [ ] `ctx.Err()` checked in long loops
-- [ ] Context values = request-scoped metadata only
-
-### Testing
-
-- [ ] Table-driven tests with named cases
-- [ ] `t.Helper()` on test helper functions
-- [ ] `t.Cleanup()` for resource teardown
-- [ ] `httptest` for HTTP testing
-- [ ] Build tags separate integration/e2e tests
-- [ ] Benchmarks use `b.ReportAllocs()`
-
-### Tooling
-
-- [ ] `gofmt` applied (zero tolerance)
-- [ ] `go vet` passes
-- [ ] `golangci-lint` configured and passing
-- [ ] `govulncheck` run periodically
-- [ ] `-race` flag in test CI
-
-### Performance
-
-- [ ] Slices pre-allocated when size known
-- [ ] `sync.Pool` for frequently allocated buffers
-- [ ] ✗ reflection/`any` in hot paths
-- [ ] ✗ optimization without benchmark proof
-- [ ] `strings.Builder` for string concatenation
-
-### Anti-Patterns Avoided
-
-- [ ] ✗ nil pointer dereference without check
-- [ ] ✗ unclosed resources
-- [ ] ✗ `init()` for complex initialization
-- [ ] ✗ fire-and-forget goroutines
-- [ ] ✗ package-level mutable state
-- [ ] ✗ `time.Sleep` for synchronization
+- [ ] `go.mod` declares the minimum supported Go version; `go.sum` committed
+- [ ] `go mod tidy` produces no diff
+- [ ] ✗ `replace` directives in a library module
+- [ ] Package names short, lowercase, single word — ✗ `util` / `common` / `helpers`
+- [ ] ✗ stutter — `auth.Client`, not `auth.AuthClient`
+- [ ] Domain code lives in `internal/`; `pkg/` only where an external consumer exists
+- [ ] Interfaces ≤3 methods, declared at the consumer
+- [ ] Functions accept interfaces and return concrete types
+- [ ] Every returned error is checked
+- [ ] Errors wrapped with `%w` and an operation-naming message
+- [ ] Errors compared with `errors.Is` / `errors.As` — ✗ `==` or a type assertion
+- [ ] ✗ log-and-return the same error
+- [ ] ✗ `panic` for an expected failure
+- [ ] `ctx context.Context` is the first parameter; ✗ stored in a struct
+- [ ] Every `context.WithTimeout`/`WithCancel` has a matching `defer cancel()`
+- [ ] Every goroutine has a known shutdown path; `errgroup` used when errors matter
+- [ ] Every long-running loop selects on `ctx.Done()`
+- [ ] Mutex scope minimal — ✗ a lock held across I/O
+- [ ] Structured logging via `log/slog`
+- [ ] Tests are table-driven with named subtests; helpers call `t.Helper()`
+- [ ] `gofmt -l .` is empty; `go vet ./...` and `golangci-lint run ./...` pass
+- [ ] `go test -race -count=1 ./...` passes
+- [ ] `govulncheck ./...` reports no known vulnerabilities
+- [ ] ✗ package-level mutable state; ✗ `init()` doing real work

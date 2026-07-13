@@ -1,477 +1,326 @@
-# Agent Context Engineering Standards
+# Agent Context Standards
 
-Rules for writing CLAUDE.md, AGENTS.md, system prompts, and other
-context files that guide AI coding agents. Defines how to structure,
-compress, and maintain agent instruction files for maximum context
-efficiency and behavioral accuracy.
+> Rules for authoring the context files that steer AI coding agents — CLAUDE.md, AGENTS.md, and system prompts — for maximum behavioral accuracy at minimum token cost.
+
+**ID** `agent` · **Tier** Domain · **Version** 1.0
+**Owns** agent context file types · caveman density rules · high-density engineering · token budget · context file structure · role/persona · project-context selection · restriction format · investigation protocol · context maintenance
+**Defers to** prose docs · API docs · ADRs · runbooks → [documentation](../documentation/STANDARDS.md) · repo file structure + header schema → [TEMPLATE.md](../TEMPLATE.md) · catalog + routing → [ROUTER.md](../ROUTER.md) · layer model + dependency direction → [architecture](../architecture/STANDARDS.md) · comparator model + quality dimensions → [expectation](../expectation/STANDARDS.md) · MCP tool serving → [local_mcp](../local_mcp/STANDARDS.md)
+**Load with** [documentation](../documentation/STANDARDS.md) · [expectation](../expectation/STANDARDS.md)
 
 ---
 
 ## Table of Contents
 
-1. [File Types](#1-file-types)
-2. [Density Principles](#2-density-principles)
-3. [High-Density Engineering](#3-high-density-engineering)
-4. [Context Budget](#4-context-budget)
-5. [File Structure](#5-file-structure)
-6. [Role & Persona](#6-role--persona)
-7. [Project Context](#7-project-context)
-8. [Rules & Restrictions](#8-rules--restrictions)
-9. [Investigation Protocol](#9-investigation-protocol)
-10. [Writing Discipline](#10-writing-discipline)
-11. [Anti-Patterns](#11-anti-patterns)
-12. [Checklist](#12-checklist)
+1. [Principles](#1-principles)
+2. [File Types](#2-file-types)
+3. [Density Rules](#3-density-rules)
+4. [High-Density Engineering](#4-high-density-engineering)
+5. [Layered Context](#5-layered-context)
+6. [Token Budget](#6-token-budget)
+7. [File Structure](#7-file-structure)
+8. [Role and Persona](#8-role-and-persona)
+9. [Project Context](#9-project-context)
+10. [Rules and Restrictions](#10-rules-and-restrictions)
+11. [Investigation Protocol](#11-investigation-protocol)
+12. [Maintenance](#12-maintenance)
+13. [Anti-Patterns](#13-anti-patterns)
+14. [Checklist](#14-checklist)
 
 ---
 
-## 1. File Types
+## 1. Principles
+
+A context file is a **behavioral instrument**, not documentation. Every line either constrains agent behavior or supplies context the agent cannot derive from the code.
+
+| Principle | Rule |
+|---|---|
+| Maximum information per token | Density is the objective — an agent weights a dense file higher and loses less of it |
+| Every line earns its place | Remove a line → if agent behavior is unchanged, the line was noise. Delete it |
+| Reference, ✗ restate | Point at the owning standard; ✗ copy its rules into the context file (§5) |
+| Constrain, ✗ describe | State the rule the agent must follow, ✗ explain the technology it already knows |
+| Front-load the critical | Long sessions truncate context — top-of-file rules survive longest (§7) |
+| Testable rules only | Every rule is verifiable against code. ✗ "write clean code" |
+
+This standard governs agent **instruction** files. Human-facing prose, API docs, ADRs, and runbooks are owned by [documentation](../documentation/STANDARDS.md) — ✗ restate its rules here.
+
+---
+
+## 2. File Types
 
 | File | Purpose | Scope |
 |---|---|---|
 | `CLAUDE.md` | Project-level agent instructions | Loaded automatically per project |
-| `AGENTS.md` | Multi-agent coordination rules | Agent roles, handoff protocols |
-| System prompt | Session-level behavioral rules | Loaded at conversation start |
-| `.cursorrules` | Cursor IDE agent context | Editor-specific rules |
-| `.github/copilot-instructions.md` | Copilot context | GitHub Copilot rules |
+| `AGENTS.md` | Multi-agent coordination | Agent roles · handoff protocols |
+| System prompt | Session behavioral rules | Loaded at conversation start |
+| `.cursorrules` | Cursor IDE agent context | Editor-specific |
+| `.github/copilot-instructions.md` | Copilot context | Copilot-specific |
 
-All files follow the same density and structure principles below.
+All follow the same density (§3) and structure (§7) rules.
 
 ---
 
-## 2. Density Principles
+## 3. Density Rules
 
-### Caveman Writing
+### Caveman writing
 
-Maximum information per token. Zero meaning lost.
+Maximum information per token, zero meaning lost.
 
-**Strip:**
-- Articles: `a` · `an` · `the`
-- Weak modals: `should` · `would` · `may` · `might`
-- Scaffolding: `make sure to` · `always remember to` · `be careful to`
-- Meta: `note that` · `keep in mind` · `it is important`
-- Hedging: `generally` · `typically` · `usually` · `often`
-- Obvious subjects and restatements
-
-**Operators:**
+Strip: articles (`a` · `an` · `the`) · weak modals (`should` · `would` · `may` · `might`) · scaffolding (`make sure to` · `always remember to` · `be careful to`) · meta (`note that` · `keep in mind` · `it is important`) · hedging (`generally` · `typically` · `usually` · `often`) · obvious subjects · restatements.
 
 | Operator | Meaning |
 |---|---|
-| `→` | Leads to, use instead, results in |
-| `·` | Co-required, and, with |
-| `\|` | Alternative, or |
-| `✗` | Never, forbidden, do not |
-| `;` | Except, unless |
-| `!` | Critical, must |
+| `→` | Leads to · use instead · results in |
+| `·` | Co-required · and · with |
+| `\|` | Alternative · or |
+| `✗` | Never · forbidden · do not |
+| `;` | Except · unless |
+| `!` | Critical · must |
 
-**Structure over prose:**
-- Comparisons → tables
-- Condition + action → `X → Y`
-- Workflow → `A → B → C`
-- Related bullets → one merged line
+Structure over prose: comparisons → tables · condition + action → `X → Y` · workflow → `A → B → C` · related bullets → one merged line.
 
-**Never compress (load-bearing):**
-- Negations (`never` · `not` · `no`) — stripping inverts meaning
-- Hard thresholds and numbers
-- Exception clauses
-- Code blocks and technical names
-- Ordered sequences
+### ✗ compress — load-bearing
 
-### Density Test
+! Compressing these inverts or breaks the rule:
 
-Read each sentence. If removing it changes zero agent behavior → delete it.
-Every line must either constrain behavior or provide actionable context.
+- Negations (`never` · `not` · `no`) — stripping the negation reverses the instruction.
+- Hard thresholds and numbers.
+- Exception clauses.
+- Technical names and code identifiers.
+- Ordered sequences.
+
+### Density test
+
+Read each line. If deleting it changes zero agent behavior → delete it. Every surviving line constrains behavior or supplies non-derivable context.
 
 ---
 
-## 3. High-Density Engineering
+## 4. High-Density Engineering
 
-Caveman writing (§2) removes filler. High-density engineering packs
-more meaning into fewer tokens using vocabulary, notation, compression,
-and prompt architecture techniques.
+Caveman writing (§3) removes filler. High-density engineering packs more meaning per token through vocabulary, notation, and compression.
 
-### Vocabulary Engineering
+### Vocabulary engineering
 
-Define project-specific terms that replace long phrases. One defined
-term replaces a sentence every time it's used afterward.
+One defined term replaces a phrase on every later use.
 
-| Technique | Before (tokens wasted) | After (tokens saved) |
+| Technique | Before | After |
 |---|---|---|
-| Named concept | "functions that take data in and return data out without side effects" | "pure function" (defined once) |
-| Acronym with definition | "Architecture Decision Record" repeated 12 times | "ADR" (defined once, used 12x) |
-| Domain shorthand | "the module that handles CLI, API, MCP, file I/O" | "Tier 3" (defined in architecture) |
-| Compound term | "validate input at the system boundary then trust internally" | "validation boundary" |
+| Named concept | "functions that take data in and return data out with no side effects" | "pure function" (defined once) |
+| Acronym | "Architecture Decision Record" ×12 | "ADR" (defined once, used 12×) |
+| Domain shorthand | "the module handling CLI, API, MCP, file I/O" | "Tier 3" (defined in architecture) |
+| Compound term | "validate input at the boundary then trust it internally" | "validation boundary" |
 
-Rules:
-- Define every custom term on first use — never assume agent knows project vocabulary
-- Build a vocabulary section at file top if project has 5+ custom terms
-- Reuse terms from referenced standards — `Tier 0–3` from architecture, not re-explained
-- ✗ invent terms that collide with established technical meanings
+Rules: define every custom term on first use · build a vocabulary block at the top when a project has ≥ 5 custom terms · reuse terms from referenced standards rather than re-explaining · ✗ invent terms that collide with established technical meanings.
 
-### Notation Systems
+### Notation systems
 
-Create rule encodings that pack boolean logic into scannable format.
+Pack boolean logic into a scannable line instead of prose. Four proven encodings:
 
-**Constraint notation:**
-```
-fn: 1 required arg · rest defaulted · single return · verb-first name
-```
-Encodes 4 rules in 1 line. Equivalent prose = 4 sentences.
-
-**Path notation:**
-```
-New Rust → rust/crates/ | rust/services/
-Schemas → shared/schemas.rs
-Config → shared/config/
-Tests → tests/ (mirror source structure)
-```
-Encodes file placement rules as lookup table, not paragraphs.
-
-**Dependency notation:**
-```
-shared → third-party only
-kernel → shared · trace_io · inference_bridge
-services/* → all internal crates
-```
-Encodes architecture boundaries in 3 lines. Equivalent prose = full paragraph per layer.
-
-**Status notation:**
-```
-✗ unwrap() | expect() in production → use ?
-✗ println!() → use tracing::{info,warn,error}!()
-✗ .await holding std::sync::Mutex → deadlock
-```
-Each line = rule + reason in one scannable row.
-
-### Compression Techniques
-
-**Reference compression** — point to existing definitions, don't repeat:
-```
-Follow architecture/STANDARDS.md (all sections)
-Override: line length 120 · max function params 4
-```
-Two lines replaces copying 500+ lines of architecture rules.
-
-**Inheritance** — layer project context on shared standards:
-```
-Base: architecture/ · code_writing/ · testing/ · git/
-Lang: python/
-Domain: data_pipeline/ · cli/
-Project-specific overrides below.
-```
-Three lines declare which standards apply. Agent loads them.
-
-**Conditional compression** — encode branching rules as tables:
-```
-| Condition | Action |
-| bug fix | read → trace → root-cause → fix → test |
-| new feature | design → implement → test → document |
-| refactor | test first → change → verify tests pass |
-```
-Three rows replace three paragraphs of workflow prose.
-
-**Grouped constraints** — stack related rules vertically:
-```
-Every public function:
-  typed return · doc comment · ≥1 test · in __all__
-Every file:
-  ≤400 lines · one concept · standard section order
-```
-Two groups, 8 rules, 4 lines total.
-
-### Prompt Engineering Techniques
-
-**Behavioral anchoring** — state identity/role first, rules follow:
-```
-Senior systems engineer. Rust · PostgreSQL · distributed systems.
-All code production-grade. No shortcuts.
-```
-Anchors all subsequent behavior to this identity.
-
-**Negative examples** — ✗ rules are more precise than positive rules:
-```
-✗ guess-and-check debugging → read first, understand, then fix
-✗ "works on my machine" → test in CI environment
-```
-Agent avoids specific failure mode, not just "be careful."
-
-**Pattern priming** — show the structure you want the agent to follow:
-```
-Commit format: type(scope): description
-  feat(auth): add JWT refresh token rotation
-  fix(db): prevent N+1 in user query
-  refactor(api): extract validation middleware
-```
-Three examples prime the pattern. Agent generalizes.
-
-**Constraint stacking** — layer multiple constraints in single rule:
-```
-Functions: ≤30 lines · ≤3 params · ≤3 nesting · single return type · verb-first name
-```
-Five constraints, one scannable line.
-
-**Escalation triggers** — define when agent stops and asks:
-```
-🛑 before: schema change · public API removal · new service · force-push
-```
-Prevents costly autonomous mistakes.
-
-### Layered Context Architecture
-
-Structure context in layers. Each layer has different lifetime and scope.
-
-```
-Layer 0: Standards (shared, rarely changes)
-  → architecture/STANDARDS.md, code_writing/STANDARDS.md, etc.
-  → Referenced, not inlined. Agent loads as needed.
-
-Layer 1: Project CLAUDE.md (project-specific, changes per project)
-  → Tech stack, boundaries, path rules, restrictions
-  → 100–200 lines. Core project identity.
-
-Layer 2: Session context (ephemeral, changes per conversation)
-  → Current task, recent changes, active branch
-  → Injected by the agent runtime or user. Not in files.
-```
-
-Rules:
-- ✗ inline Layer 0 content into Layer 1 — reference only
-- Layer 1 states only what Layer 0 does not cover or what overrides Layer 0
-- Layer 2 is conversation state, not file content
-- Total loaded context (Layer 0 refs + Layer 1) should not exceed ~2000 lines
-  to prevent context dilution in long sessions
-
-### Density Measurement
-
-| Metric | Target | How to measure |
+| Notation | Encodes | Replaces |
 |---|---|---|
-| Rules per line | ≥ 0.5 | Count actionable rules ÷ total lines |
-| Tokens per rule | ≤ 30 | Average tokens per actionable constraint |
-| Filler ratio | ≤ 10% | Lines with zero behavioral impact ÷ total |
-| Reference ratio | ≥ 30% | Rules via reference ÷ total rules (for Layer 1) |
+| Constraint line | `fn: 1 required arg · rest defaulted · single return · verb-first name` | Four sentences of function rules |
+| Path lookup | `New Rust → rust/crates/` · `Schemas → shared/schemas.rs` · `Tests → tests/ (mirror source)` | A paragraph of file-placement rules |
+| Dependency arrows | `shared → third-party only` · `kernel → shared · trace_io` · `services/* → all internal` | A paragraph per architecture layer |
+| Status line | `✗ unwrap()/expect() in prod → use ?` · `✗ println!() → use tracing::…` | Rule + reason per scannable row |
+
+### Compression techniques
+
+| Technique | Mechanism |
+|---|---|
+| Reference compression | Point at an existing definition: `Follow architecture/STANDARDS.md` + `Override: line length 120 · max params 4`. Two lines replace 500 |
+| Inheritance | Declare which standards apply as a stack: `Base: architecture · testing · git` / `Lang: python` / `Domain: data_pipeline · cli`. Three lines, agent loads them |
+| Conditional compression | Branching rules as a table: `bug fix → read → trace → root-cause → fix → test`; `new feature → design → implement → test → document` |
+| Grouped constraints | Stack related rules under one subject: "Every public function: typed return · doc comment · ≥1 test." Eight rules, four lines |
+
+### Prompt techniques
+
+| Technique | Rule |
+|---|---|
+| Behavioral anchoring | State identity first; rules follow and inherit it: "Senior systems engineer. Rust · PostgreSQL. All code production-grade" |
+| Negative examples | A `✗` rule is more precise than a positive one: `✗ guess-and-check debugging → read first` beats "debug carefully" |
+| Pattern priming | Show 2–3 examples of the desired form (commit format, naming); the agent generalizes |
+| Constraint stacking | Layer constraints in one line: `Functions: ≤30 lines · ≤3 params · ≤3 nesting · verb-first name` |
+| Escalation triggers | Name where the agent stops and asks: `🛑 before: schema change · public API removal · force-push` |
+
+### Density measurement
+
+| Metric | Target |
+|---|---|
+| Rules per line | ≥ 0.5 |
+| Tokens per rule | ≤ 30 |
+| Filler ratio (zero-behavior lines) | ≤ 10% |
+| Reference ratio (rules via reference, Layer 1) | ≥ 30% |
 
 ---
 
-## 4. Context Budget
+## 5. Layered Context
 
-### Size Targets
+Structure context in layers by lifetime and scope. ✗ collapse the layers into one file.
 
-| File type | Target | Hard cap | Rationale |
+| Layer | Content | Lifetime | Placement |
 |---|---|---|---|
-| CLAUDE.md (small project) | 50–100 lines | 150 | Fits fully in context |
-| CLAUDE.md (large project) | 100–200 lines | 300 | Retained across turns |
-| AGENTS.md | 50–100 lines | 150 | Per-agent role definitions |
-| System prompt | 20–50 lines | 100 | Loaded every turn |
+| 0 — Standards | architecture · code_writing · testing · etc. | Rarely changes | Referenced, ✗ inlined — agent loads as needed |
+| 1 — Project CLAUDE.md | Tech stack · boundaries · path rules · restrictions | Per project | 100–200 lines |
+| 2 — Session | Current task · recent changes · active branch | Per conversation | Injected by runtime or user, ✗ in files |
 
-### Context Rot Prevention
+Rules:
 
-- Shorter files retain better across long conversations
-- Front-load critical rules — agents weight earlier content higher
-- Group related rules — scattered rules get lost
-- ✗ duplicate information already in code (types, schemas) — reference it
-- Review quarterly: delete rules the agent consistently follows without prompting
+- ✗ inline Layer 0 content into Layer 1 — reference only. Duplicated standard rules drift out of sync.
+- Layer 1 states only what Layer 0 does not cover, or what it deliberately overrides.
+- Layer 2 is conversation state, never file content.
+- Total loaded context (Layer 0 references + Layer 1) ≤ ~2000 lines — beyond that, context dilutes in long sessions.
 
 ---
 
-## 5. File Structure
+## 6. Token Budget
 
-Every agent context file follows this order:
+| File | Target | Hard cap |
+|---|---|---|
+| CLAUDE.md, small project | 50–100 lines | 150 |
+| CLAUDE.md, large project | 100–200 lines | 300 |
+| AGENTS.md | 50–100 lines | 150 |
+| System prompt | 20–50 lines | 100 |
+
+Context-rot prevention:
+
+- Shorter files retain better across long conversations.
+- Front-load critical rules — the agent weights earlier content higher.
+- Group related rules — scattered rules get lost.
+- ✗ duplicate information already in code (types, schemas) — reference it.
+- Review quarterly: delete rules the agent already follows without prompting.
+
+---
+
+## 7. File Structure
 
 | Order | Section | Required |
 |---|---|---|
-| 1 | Role & persona (1–2 lines) | For AGENTS.md |
+| 1 | Role / persona (1–2 lines) | AGENTS.md |
 | 2 | Core principles (behavioral rules) | Yes |
-| 3 | Project context (structure, tech stack) | Yes |
-| 4 | Architecture boundaries (what depends on what) | If applicable |
-| 5 | Code quality rules (style, patterns) | Yes |
-| 6 | Restrictions (✗ never do) | Yes |
-| 7 | Workflow rules (investigation, testing) | If applicable |
+| 3 | Project context (structure, stack) | Yes |
+| 4 | Architecture boundaries (dependency table) | If applicable |
+| 5 | Code quality rules (only non-obvious) | Yes |
+| 6 | Restrictions (`✗ never`) | Yes |
+| 7 | Workflow (investigation, testing) | If applicable |
 | 8 | File/path conventions | If applicable |
 
-### Ordering Principle
-
-Most critical rules first. Agent context may be truncated in long
-sessions — rules at the top survive longest. Structure:
-
-```
-Critical behavioral rules     ← always retained
-Project structure / tech      ← usually retained
-Detailed conventions          ← may be compressed
-Nice-to-have preferences      ← first to be lost
-```
+Ordering principle: most critical first. Long sessions truncate context, so the top survives longest. The gradient: critical behavioral rules (always retained) → project structure and stack (usually retained) → detailed conventions (may be compressed) → nice-to-have preferences (first lost).
 
 ---
 
-## 6. Role & Persona
+## 8. Role and Persona
 
-Define in 1–3 lines. Include: specialization, key technologies,
-primary task domain.
+Define in 1–3 lines: specialization · key technologies · primary task domain. Form: `[Role] specializing in [technologies] for [domain]`.
 
-Format: `[Role] specializing in [technologies] for [domain].`
-
-Rules:
-- One role per agent file. ✗ conflicting personas.
-- Role constrains scope — agent declines out-of-scope requests
-- Technology list = what the agent reaches for first
-- ✗ personality traits · ✗ tone instructions · ✗ "be helpful" — agents already are
+| Rule | Detail |
+|---|---|
+| One role per file | ✗ conflicting personas |
+| Role constrains scope | The agent declines out-of-scope requests |
+| Tech list is the reach-for-first set | What the agent chooses by default |
+| ✗ personality | ✗ tone instructions · ✗ "be helpful" — agents already are; these waste tokens with no behavioral effect |
 
 ---
 
-## 7. Project Context
+## 9. Project Context
 
-### What to Include
+| Include | Format |
+|---|---|
+| Directory structure | Tree or key paths |
+| Tech stack | Flat list — `Rust: Tokio · Axum · sqlx` |
+| Architecture boundaries | Dependency table — `shared → third-party only` |
+| Key file paths | Path rules — `Schemas → shared/schemas.rs` |
+| Build / run commands | Command list |
 
-| Include | Format | Example |
+Exclude: anything derivable from code (function signatures, type definitions) · history or changelog (git owns it) · technology tutorials · anything the agent discovers by reading a file.
+
+Staleness rule: every fact must be hard to derive from code alone. If the agent can `grep` or read to find it → remove it. Context files record constraints and decisions, ✗ discoverable facts.
+
+---
+
+## 10. Rules and Restrictions
+
+| Rule | Detail |
+|---|---|
+| One rule per line | Scannable, ✗ paragraph-form |
+| Positive before negative | State `do X`, then `✗ Y` |
+| Testable | Verifiable against code — ✗ "write clean code" |
+| ✗ redundant with tooling | If a linter enforces it, ✗ write it |
+
+Restrictions use the `✗` prefix, grouped by severity — critical (data loss, security) first, then operational, then style. Example severity ladder: critical → `✗ hardcoded secrets — env vars only` · `✗ force-push to main`; operational → `✗ print in production — structured logging` · `✗ unwrap() in production — use ?`; style → `✗ wildcard imports` · `✗ abbreviated names ; i, k, v in short loops`.
+
+Stop-and-ask: name the actions requiring human confirmation before proceeding — modifying migrations or schema · removing public API functions · adding a top-level module · a major dependency upgrade · force-push. Mark them `🛑`.
+
+---
+
+## 11. Investigation Protocol
+
+Guides problem-solving; prevents surface fixes. Recommended sequence:
+
+read (all relevant source, logs, errors) → trace (data flow end-to-end across boundaries) → cross-check (shared types, schemas, config for drift) → root cause (fix the cause, ✗ patch the downstream symptom) → verify (confirm the fix is not already elsewhere; grep the pattern).
+
+| Rule | Detail |
+|---|---|
+| Applies before any bug-fix change | Read and understand first |
+| ✗ guess-and-check | Read → understand → then change |
+| ✗ shotgun debugging | Changing many things hoping one works |
+
+---
+
+## 12. Maintenance
+
+Context files themselves follow incremental-write discipline: ✗ write the full file in one call (breaks on timeout) · header + first sections, then edit/append · each write ≤ 150 lines · verify after each write.
+
+| Rule | Detail |
+|---|---|
+| Update on convention change | Keep the file matching actual project practice |
+| Prune tooling-enforced rules | Once a linter or CI enforces a rule, delete it from the file |
+| ✗ drift | A file describing an out-of-date practice actively misleads the agent |
+| Onboarding test | If a new team member needs more context than the file gives, the file is incomplete |
+
+Composability with a shared standards library:
+
+- Reference standards: `Follow architecture/STANDARDS.md`. ✗ duplicate their rules into CLAUDE.md.
+- State project overrides explicitly: `Override: line length 120 (not 100)`.
+- List which standards apply; they compose.
+
+---
+
+## 13. Anti-Patterns
+
+| Anti-pattern | Problem | Fix |
 |---|---|---|
-| Directory structure | Tree diagram | `src/` layout, key paths |
-| Tech stack | Flat list | `Rust: Tokio · Axum · sqlx` |
-| Architecture boundaries | Dependency table | `shared → third-party only` |
-| Key file paths | Path rules | `Schemas → shared/schemas.rs` |
-| Build / run commands | Command list | `cargo build`, `uv run pytest` |
-
-### What to Exclude
-
-- Information derivable from code (function signatures, type definitions)
-- History or changelog (use git)
-- Tutorials or explanations of technologies
-- Anything the agent can discover by reading files
-
-### Staleness Rule
-
-Every fact in the context file must be hard to derive from code alone.
-If the agent can `grep` or `read` to find it → remove it from context.
-Context files document constraints and decisions, not discoverable facts.
+| Novel-length CLAUDE.md | Context rot; rules lost in noise | Compress to < 200 lines (§6) |
+| Restating language docs | Tokens spent on known information | Reference, ✗ restate (§1) |
+| Personality instructions | "Be friendly" — no behavioral effect | Delete; state constraints (§8) |
+| Vague rules | "Write good code" is unverifiable | Make specific and testable (§10) |
+| Stale rules | Rule about a removed feature | Review quarterly, delete (§12) |
+| Duplicate with linter | CI already enforces it | Let tooling own it (§10) |
+| Tutorial content | Explaining how async works | The agent knows — state only the rule (§1) |
+| Scattered restrictions | `✗` rules buried in prose | Group all `✗` rules together (§10) |
+| Missing path conventions | Agent creates files in the wrong place | Add explicit path rules (§9) |
+| No investigation protocol | Agent patches symptoms | Add read → trace → root-cause (§11) |
+| Inlined Layer 0 standards | Duplicated rules drift out of sync | Reference Layer 0 (§5) |
 
 ---
 
-## 8. Rules & Restrictions
+## 14. Checklist
 
-### Writing Rules
-
-- One rule per line. Scannable, not paragraph-form.
-- Positive rules first (`do X`), then restrictions (`✗ Y`)
-- Each rule testable: can you look at code and verify compliance?
-- ✗ vague rules: `write clean code` — unverifiable
-- ✗ redundant rules: if a linter enforces it, don't write it
-
-### Restriction Format
-
-Use `✗` prefix for forbidden actions. Group by severity:
-
-```
-! Critical (data loss, security):
-✗ hardcoded secrets — env vars only
-✗ force-push to main
-
-Operational:
-✗ println/print in production — use structured logging
-✗ unwrap() in production — use ? operator
-
-Style:
-✗ wildcard imports
-✗ abbreviated variable names ; except i, k, v in short loops
-```
-
-### Stop-and-Ask Rules
-
-Define actions that require human confirmation before proceeding:
-
-```
-🛑 Stop and ask before:
-- Modifying migrations or schema
-- Removing public API functions
-- Adding new top-level modules
-- Major dependency upgrades
-```
-
----
-
-## 9. Investigation Protocol
-
-Guide the agent's problem-solving approach. Prevents surface-level fixes.
-
-Recommended protocol:
-
-```
-1. Read — all relevant source files, logs, error messages
-2. Trace — follow data flow end-to-end across boundaries
-3. Cross-check — shared types, schemas, config for drift
-4. Root cause — fix actual cause, ✗ patch downstream symptoms
-5. Verify — confirm fix doesn't exist elsewhere, grep patterns
-```
-
-Rules:
-- Protocol applies before any code change for bug fixes
-- ✗ guess-and-check — read first, understand, then fix
-- ✗ shotgun debugging — changing multiple things hoping one works
-
----
-
-## 10. Writing Discipline
-
-### Incremental Writing
-
-Agent context files themselves follow incremental write rules:
-
-- ✗ write full file in single tool call — breaks on timeout
-- Write header + first sections → edit/append remaining
-- Each write call ≤ 150 lines of new content
-- Verify after each write before continuing
-
-### Maintenance
-
-- Update context file when project conventions change
-- Remove rules that become enforced by tooling (linters, CI)
-- ✗ let context file drift from actual project practices
-- Review when onboarding new team member — if they need more context, file is incomplete
-
-### Composability
-
-When a project uses standards from a shared library (like this repo):
-
-- CLAUDE.md references standards: `Follow architecture/STANDARDS.md`
-- ✗ duplicate standard rules into CLAUDE.md — reference only
-- Project-specific overrides stated explicitly: `Override: line length 120 (not 100)`
-- Standards compose: list which standards apply to this project
-
----
-
-## 11. Anti-Patterns
-
-| Anti-Pattern | Problem | Fix |
-|---|---|---|
-| Novel-length CLAUDE.md | Context rot, rules lost in noise | Compress to < 200 lines |
-| Restating language docs | Wastes tokens on known information | Reference, don't restate |
-| Personality instructions | "Be friendly" wastes tokens, no effect | Delete — focus on constraints |
-| Vague rules | "Write good code" — unverifiable | Make specific and testable |
-| Stale rules | Rule about removed feature | Review quarterly, delete stale |
-| Duplicate with linter | Rule that CI already enforces | Let tooling handle it |
-| Tutorial content | Explaining how async works | Agent already knows — state the rule only |
-| Scattered restrictions | ✗ rules mixed into prose paragraphs | Group all ✗ rules together |
-| Missing path conventions | Agent creates files in wrong locations | Add explicit path rules |
-| No investigation protocol | Agent patches symptoms | Add read → trace → root-cause protocol |
-
----
-
-## 12. Checklist
-
-### New CLAUDE.md
-
-- [ ] Role defined in ≤ 3 lines (if needed)
-- [ ] Core principles stated (behavioral rules)
-- [ ] Project structure documented (tree or key paths)
-- [ ] Tech stack listed
-- [ ] Architecture boundaries defined (dependency table)
-- [ ] Code quality rules stated (only non-obvious ones)
-- [ ] Restrictions grouped with ✗ prefix
-- [ ] Stop-and-ask actions defined
-- [ ] Total file ≤ 200 lines
-- [ ] Every line changes agent behavior — no filler
-
-### Review Existing CLAUDE.md
-
-- [ ] Remove rules now enforced by CI/linter
-- [ ] Remove discoverable facts (agent can read code to find them)
-- [ ] Remove stale rules referencing deleted features
-- [ ] Verify restrictions still apply
-- [ ] Check density — can any sentence be compressed further?
-- [ ] Front-loaded — most critical rules at top?
+- [ ] Every line constrains behavior or supplies non-derivable context
+- [ ] Density rules applied — no articles, weak modals, scaffolding, or hedging
+- [ ] Negations, thresholds, exceptions, technical names, and sequences left uncompressed
+- [ ] Custom terms defined on first use; vocabulary block present when ≥ 5 terms
+- [ ] Standards referenced, never restated (Layer 0 not inlined)
+- [ ] Project overrides of a standard stated explicitly
+- [ ] Role defined in ≤ 3 lines when a role is needed; no personality instructions
+- [ ] Core behavioral principles stated
+- [ ] Project structure and tech stack documented
+- [ ] Architecture boundaries given as a dependency table where applicable
+- [ ] Only non-obvious, testable code-quality rules included
+- [ ] No rule duplicated with a linter or CI check
+- [ ] Restrictions grouped under `✗`, ordered by severity
+- [ ] Stop-and-ask actions marked with `🛑`
+- [ ] Investigation protocol present (read → trace → root-cause → verify)
+- [ ] No discoverable facts the agent could grep or read to find
+- [ ] Critical rules front-loaded; nice-to-haves last
+- [ ] File within its token budget for its type
+- [ ] Human-facing documentation rules deferred to documentation/, not restated
+- [ ] File reviewed against actual current project practice

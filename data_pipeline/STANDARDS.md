@@ -1,743 +1,496 @@
 # Data Pipeline Standards
 
-Rules for building data pipelines — ingestion, validation, transformation,
-quality enforcement, and output. Language-agnostic. Applies to batch,
-streaming, and hybrid pipelines at any scale.
+> Rules for pipelines that move and reshape data — ingestion, schema-on-write validation, transformation, batch orchestration, replay, and delivery.
 
-Derived from: MapReduce, Apache Beam model, Kappa/Lambda architectures,
-dbt contracts, Great Expectations, Schema Registry (Confluent), Airflow DAG
-model, event sourcing, ACID transactions, Unix pipes, copy-on-write semantics.
-
-Composable with: architecture/STANDARDS.md · error_handling/STANDARDS.md ·
-observability/STANDARDS.md · database/STANDARDS.md · configuration/STANDARDS.md
+**ID** `data_pipeline` · **Tier** Domain · **Version** 1.0
+**Owns** ETL/ELT selection · pipeline DAG · stage contracts · ingestion · pipeline schema enforcement + schema registry · data quality · dead-letter queues · idempotent + replayable batches · watermarks + late data · backfill safety · batch orchestration · pipeline output
+**Defers to** input validation classes · injection · secrets → [security](../security/STANDARDS.md) · error taxonomy · boundaries · retry semantics → [error_handling](../error_handling/STANDARDS.md) · log format · metric plumbing · traces · alert routing → [observability](../observability/STANDARDS.md) · table schema · indexes · migrations → [database](../database/STANDARDS.md) · query style → [sql](../sql/STANDARDS.md) · test pyramid · coverage → [testing](../testing/STANDARDS.md) · CI stages → [cicd](../cicd/STANDARDS.md) · experiment tracking · data versioning · model registry · drift → [ml](../ml/STANDARDS.md) · layering · dependency direction → [architecture](../architecture/STANDARDS.md)
+**Load with** [architecture](../architecture/STANDARDS.md) · [observability](../observability/STANDARDS.md) · [database](../database/STANDARDS.md)
 
 ---
 
 ## Table of Contents
 
-1. [Pipeline Architecture](#1-pipeline-architecture)
-2. [Data Ingestion](#2-data-ingestion)
-3. [Data Validation](#3-data-validation)
-4. [Data Transformation](#4-data-transformation)
-5. [Data Quality](#5-data-quality)
+1. [Principles](#1-principles)
+2. [Pipeline Architecture](#2-pipeline-architecture)
+3. [Ingestion](#3-ingestion)
+4. [Validation](#4-validation)
+5. [Transformation](#5-transformation)
 6. [Schema Management](#6-schema-management)
-7. [Batch Processing](#7-batch-processing)
-8. [Streaming vs Batch](#8-streaming-vs-batch)
-9. [Idempotency](#9-idempotency)
-10. [Error Recovery](#10-error-recovery)
-11. [Orchestration](#11-orchestration)
-12. [Output & Export](#12-output--export)
-13. [Monitoring](#13-monitoring)
-14. [Scale Matrix](#14-scale-matrix)
-15. [Checklist](#15-checklist)
+7. [Data Quality](#7-data-quality)
+8. [Batch Processing](#8-batch-processing)
+9. [Streaming and Late Data](#9-streaming-and-late-data)
+10. [Idempotency and Replay](#10-idempotency-and-replay)
+11. [Error Recovery](#11-error-recovery)
+12. [Orchestration and Backfill](#12-orchestration-and-backfill)
+13. [Output](#13-output)
+14. [Monitoring](#14-monitoring)
+15. [Anti-Patterns](#15-anti-patterns)
+16. [Scale Matrix](#16-scale-matrix)
+17. [Checklist](#17-checklist)
 
 ---
 
-## 1. Pipeline Architecture
+## 1. Principles
 
-### ETL vs ELT Selection
+| Principle | Rule |
+|---|---|
+| Schema-on-write | Data is validated against a declared schema **before** it lands. An unvalidated write is a defect |
+| Rows are conserved | `rows_in = rows_out + rows_rejected` at every stage. A row that disappears is a bug, not a filter |
+| Idempotent | Re-running a stage or a whole run with identical input yields identical output |
+| Replayable | Any window of history can be reprocessed with production code, without hand edits |
+| Immutable intermediates | A produced dataset is never mutated; a change produces a new dataset |
+| Fail loud, fail early | Bad data halts at the boundary it violates. ✗ propagate downstream and reconcile later |
+| No silent drops | Every rejected row lands in a dead letter with its reason |
+| Pure transforms | Transform stages have no I/O. Side effects live only in sources and sinks |
 
-| Factor | ETL (transform before load) | ELT (load then transform) |
-|---|---|---|
-| Destination has compute | ✗ | Preferred |
-| Complex pre-validation needed | Preferred | Possible with staging |
-| Source data untrusted | Preferred — validate early | Validate in staging layer |
-| Destination is data warehouse | Overhead | Preferred |
-| Resource-constrained environment | Preferred — reduce load volume | Avoid |
-| Audit trail required | Transform logs explicit | Transform in SQL — auditable |
+Boundary with [ml](../ml/STANDARDS.md): pipelines own batch orchestration, ingestion, and data quality. ML owns dataset versioning, experiment tracking, model registry, and drift. A feature pipeline feeding a model is a pipeline and follows this standard.
 
-Default: ELT when destination supports compute (warehouse, database with CTEs). ETL when destination is flat storage or when pre-load validation is mandatory.
+---
+
+## 2. Pipeline Architecture
+
+### ETL vs ELT
+
+| Choose | When |
+|---|---|
+| ELT — load then transform | Destination has compute (warehouse, DB with CTEs) · transform auditable as SQL |
+| ETL — transform before load | Destination is flat storage · pre-load validation mandatory · source untrusted · runner resource-constrained |
+
+Default ELT when the destination has compute; ETL otherwise. The choice is recorded, ✗ implicit.
 
 ### Pipeline as DAG
 
-Every pipeline is a directed acyclic graph (DAG) of stages. Each stage:
+Every pipeline is a directed acyclic graph of stages. Cycles are rejected at registration — if B depends on A, neither A nor any ancestor of A may depend on B.
 
-| Property | Rule |
-|---|---|
-| Single responsibility | One logical operation per stage |
-| Explicit inputs/outputs | Declared schema at entry and exit |
-| No side channels | Data flows through stage interfaces, not shared state |
-| Idempotent | Re-running stage with same input → same output |
-| Observable | Emits metrics: rows in, rows out, rows rejected, duration |
+Every stage: single responsibility · declared schema at entry and exit · no side channels (data moves through interfaces, ✗ shared state) · idempotent · emits rows in · rows out · rows rejected · duration.
 
-Cycles in the DAG are forbidden. If stage B depends on stage A, A must never depend on B or any descendant of B.
-
-See architecture/STANDARDS.md §1 — principles #1 (single in/out), #25 (unidirectional data flow).
-
-### Stage Classification
-
-| Stage Type | Purpose | Examples |
+| Stage type | Role | I/O |
 |---|---|---|
-| Source | Reads external data into pipeline | File reader, API poller, DB extractor |
-| Validator | Enforces schema + constraints | Type checker, constraint validator |
-| Transformer | Reshapes, enriches, aggregates | Join, pivot, normalize, denormalize |
-| Quality Gate | Blocks pipeline on quality failure | Null rate check, distribution check |
-| Sink | Writes data to destination | DB writer, file exporter, API pusher |
+| Source | Reads external data in | Yes |
+| Validator | Enforces schema + constraints | ✗ |
+| Transformer | Reshapes · enriches · aggregates | ✗ |
+| Quality gate | Halts on quality breach | ✗ |
+| Sink | Writes to destination | Yes |
 
-Every pipeline has at minimum: Source → Validator → Sink. Skipping validation is a defect.
+Minimum viable pipeline: Source → Validator → Sink. Skipping the validator is a defect, ✗ a shortcut.
 
-### Data Contracts Between Stages
-
-Each stage-to-stage boundary has an explicit contract:
-
-- Schema: field names, types, nullability
-- Cardinality: expected row count range (min/max or ratio to input)
-- Invariants: uniqueness constraints, referential integrity, sort order
-
-Contract violations halt the pipeline at the boundary — ✗ propagate bad data downstream.
+Every stage boundary declares field names + types + nullability · expected row-count range or ratio to input · invariants (uniqueness, referential integrity, sort order). Contract violation halts the pipeline **at that boundary**.
 
 ---
 
-## 2. Data Ingestion
+## 3. Ingestion
 
-### Source Validation
-
-Before reading data, validate source accessibility and basic properties:
+### Source preflight
 
 | Check | Rule |
 |---|---|
-| Existence | Source file/endpoint/table must exist before read attempt |
-| Permissions | Verify read access before starting extraction |
-| Size sanity | Compare source size to expected range — reject anomalous sizes |
-| Freshness | Verify source timestamp is within expected window |
-| Format detection | Confirm format matches expectation (file magic bytes, content-type header) |
+| Existence | Source must exist before a read is attempted |
+| Permission | Read access verified before extraction starts |
+| Size sanity | Deviation > 2× from the historical average halts the run ; explicit override |
+| Freshness | Source timestamp within the expected window |
+| Format | Confirmed by magic bytes or content-type, ✗ by file extension |
 
-✗ Silently skip missing sources. ✗ Proceed if source size deviates >2× from historical average without explicit override.
+✗ silently skip a missing source. A missing source is a failure with an alert, not a no-op run.
 
-### Encoding Handling
+### Encoding
 
-| Rule | Detail |
-|---|---|
-| Declare encoding explicitly | ✗ rely on platform default encoding |
-| UTF-8 default | Unless source contract specifies otherwise |
-| Detect and fail on mismatch | If declared encoding fails to decode, reject — ✗ replace with ? |
-| BOM handling | Strip BOM if present, log its detection |
+Declared explicitly per source — ✗ platform default. UTF-8 unless the contract says otherwise. Undecodable bytes → reject the record; ✗ substitute replacement characters. BOM stripped if present, detection logged.
 
-### Bulk Input Patterns
+### Extraction patterns
 
-| Pattern | When |
-|---|---|
-| Full extract | Source has no change tracking; small enough for full read |
-| Incremental extract | Source supports timestamps/sequence numbers; large datasets |
-| Change data capture (CDC) | Source provides change log/stream |
-| Snapshot + diff | Full extract with comparison to previous snapshot |
-
-Track high-water marks for incremental extracts. Persist marks only after successful downstream processing.
-
-### File Format Rules
-
-| Format | Validation | Watch for |
+| Pattern | When | Watermark |
 |---|---|---|
-| CSV/TSV | Header row match, delimiter consistency, quote handling | Embedded newlines, mixed delimiters, encoding |
-| JSON/JSONL | Schema validation per record, UTF-8 enforcement | Nested nulls, inconsistent field presence |
-| Parquet/ORC | Schema in file header — validate against contract | Column type drift between partitions |
-| XML | XSD validation if schema available | Namespace conflicts, encoding declaration mismatch |
-| Fixed-width | Field position map required; validate record length | Trailing spaces, truncated records |
+| Full extract | No change tracking; small enough to read whole | None |
+| Incremental extract | Source exposes timestamps or sequence numbers | Required |
+| Change data capture | Source emits a change log or stream | Log offset |
+| Snapshot + diff | Full read compared against the previous snapshot | Snapshot id |
+
+! Watermarks advance **only after** the downstream write has committed. Advancing on read loses data on any crash between read and write.
+
+### Format rules
+
+| Format | Validate | Watch for |
+|---|---|---|
+| CSV/TSV | Header match · delimiter consistency · quoting | Embedded newlines · mixed delimiters · encoding drift |
+| JSON/JSONL | Per-record schema · UTF-8 | Nested nulls · inconsistent field presence |
+| Parquet/ORC | File-header schema against the contract | Column type drift between partitions |
+| XML | Schema validation when available | Namespace conflicts · encoding declaration mismatch |
+| Fixed-width | Field position map · record length | Trailing spaces · truncated records |
 
 ---
 
-## 3. Data Validation
+## 4. Validation
 
-### Validation Layers
-
-Validation operates at three layers, each mandatory:
+### Three layers, in order
 
 | Layer | Scope | Fails on |
 |---|---|---|
-| Schema | Field names, types, nullability | Missing/extra fields, type mismatch |
-| Constraint | Value ranges, patterns, referential integrity | Out-of-range, format violation, broken FK |
-| Semantic | Business rules, cross-field logic | Inconsistent field combinations, impossible values |
+| Schema | Field names · types · nullability | Missing or extra field · type mismatch |
+| Constraint | Value ranges · patterns · referential integrity | Out of range · format violation · broken key |
+| Semantic | Business rules · cross-field logic | Impossible combinations |
 
-Execute in order: schema → constraint → semantic. If schema validation fails, skip constraint and semantic — they depend on valid schema.
+Schema failure short-circuits: constraint and semantic checks presuppose a valid schema. Generic input-validation theory and injection classes → [security](../security/STANDARDS.md); this section governs pipeline data only.
 
-### Row-Level vs Batch-Level Validation
+### Scope
 
-| Scope | Use when | Behavior on failure |
-|---|---|---|
-| Row-level | Independent row constraints | Reject row, continue batch, accumulate errors |
-| Batch-level | Aggregate constraints (totals, counts, distributions) | Reject entire batch |
+Row-level (independent per-row constraints) → reject the row · continue the batch · accumulate errors. Batch-level (aggregates: totals, counts, distributions) → reject the whole batch · halt.
 
-Row-level failures accumulate into a rejection report. Batch-level failures halt pipeline immediately.
-
-### Rejection Handling
+### Rejection
 
 | Rule | Detail |
 |---|---|
-| Rejected rows → dead letter output | Separate output with original data + rejection reason |
-| Rejection threshold | Pipeline fails if rejection rate exceeds configured threshold (default: 5%) |
-| Rejection is data | Dead letter output has same retention and schema as primary output |
-| No silent drops | Every input row must appear in output OR dead letter — ✗ disappear rows |
-
-Row accounting: `rows_in = rows_out + rows_rejected`. Verify this identity at every stage.
-
-See error_handling/STANDARDS.md — partial failure accumulation patterns.
+| Dead letter destination | Every rejected row is written with its original payload + reason + stage + run id |
+| Rejection threshold | Run fails when the rejection rate exceeds the configured threshold; default 5% |
+| Rejections are data | Same retention, schema discipline, and monitoring as primary output |
+| ✗ silent drops | ! Every input row appears in the output or in the dead letter. Never neither |
+| Row accounting | `rows_in = rows_out + rows_rejected` asserted at every stage — mismatch halts the run |
 
 ---
 
-## 4. Data Transformation
-
-### Pure Transform Rule
-
-Every transformation stage is a pure function: input data → output data. No database writes, no API calls, no file mutations inside transforms. Side effects belong in Source and Sink stages only.
-
-See architecture/STANDARDS.md §1 — principle #2 (I/O or logic, never both).
-
-### Immutable Intermediates
-
-Intermediate data between stages is immutable once produced. Downstream stages read it; ✗ modify it. If a stage needs modified data, produce a new intermediate.
-
-See architecture/STANDARDS.md §6 — copy-on-write, immutability default.
-
-### Stage Isolation Rules
+## 5. Transformation
 
 | Rule | Detail |
 |---|---|
-| No shared mutable state | Stages communicate via declared outputs only |
-| No implicit ordering | Stage reads only declared inputs — ✗ assume execution order beyond DAG |
-| No cross-stage globals | Configuration injected per-stage, not via global variables |
-| Deterministic output | Same input + same config → identical output every run |
+| Pure | Transform stages perform no I/O — ✗ DB write · ✗ API call · ✗ file mutation |
+| Deterministic | Same input + same config → identical output, every run |
+| Immutable intermediates | Downstream reads an intermediate, ✗ modifies it — a change produces a new intermediate |
+| Isolated | Stages communicate via declared outputs only — ✗ shared mutable state · ✗ globals · ✗ assumed execution order beyond the DAG. Config injected per stage |
 
-### Common Transform Patterns
+### Patterns and cardinality
 
-| Pattern | Description | Constraint |
-|---|---|---|
-| Map | 1:1 row transformation | Output row count = input row count |
-| Filter | Remove rows matching predicate | Output ≤ input; log filter count |
-| Flatten | Unnest nested structures | Output ≥ input; preserve parent keys |
-| Aggregate | Reduce rows to summary | Output < input; declare grouping keys |
-| Join | Combine two inputs on key | Declare join type; log match/miss rates |
-| Pivot/Unpivot | Reshape columns ↔ rows | Declare axis columns explicitly |
-| Enrich | Add fields from lookup source | Declare lookup source; handle missing keys |
-
-Every transform declares expected cardinality change (1:1, 1:N, N:1, N:M). Pipeline validates actual cardinality against declaration.
-
-### Transformation Ordering
-
-Within a pipeline, transformations follow this order:
-
-1. **Clean** — fix encoding, trim whitespace, normalize case
-2. **Validate** — apply constraints after cleaning
-3. **Enrich** — add derived/lookup fields
-4. **Reshape** — pivot, flatten, aggregate
-5. **Filter** — remove rows (after enrichment to preserve audit trail)
-
-Deviations from this order require documented justification.
-
----
-
-## 5. Data Quality
-
-### Quality Dimensions
-
-| Dimension | Metric | Threshold |
-|---|---|---|
-| Completeness | % of non-null values per required field | Per-field threshold in contract |
-| Uniqueness | Duplicate rate on declared unique keys | 0% for primary keys; configurable for others |
-| Freshness | Time since source last updated | SLA-defined per pipeline |
-| Accuracy | % of values passing format/range checks | Per-field threshold in contract |
-| Consistency | Cross-field rule pass rate | 100% for hard rules; configurable for soft |
-| Volume | Row count vs expected range | ±configured % of historical average |
-
-### Data Profiling
-
-Run profiling on first ingestion and periodically thereafter:
-
-| Profile Metric | Purpose |
+| Pattern | Cardinality constraint |
 |---|---|
-| Cardinality per column | Detect low-entropy or constant columns |
-| Null rate per column | Baseline for completeness monitoring |
-| Min/max/mean/stddev for numerics | Baseline for anomaly detection |
-| Top-N value frequencies | Detect distribution shifts |
-| String length distribution | Detect truncation or padding issues |
-| Pattern frequency (dates, IDs) | Detect format drift |
+| Map | Output rows = input rows |
+| Filter | Output ≤ input; filtered count logged |
+| Flatten | Output ≥ input; parent keys preserved |
+| Aggregate | Output < input; grouping keys declared |
+| Join | Join type declared; match and miss rates logged |
+| Pivot / unpivot | Axis columns declared explicitly |
+| Enrich | Lookup source declared; missing-key behavior declared |
 
-Store profiles as versioned artifacts. Compare current run profile against baseline — alert on drift beyond configured thresholds.
+Every transform declares its expected cardinality change (1:1 · 1:N · N:1 · N:M). Actual cardinality is asserted against the declaration.
 
-### Anomaly Detection Rules
+### Ordering
 
-| Rule | Detail |
-|---|---|
-| Volume spike/drop | Row count deviates >configured % from rolling average → alert |
-| Schema drift | New/missing/retyped columns vs registered schema → halt |
-| Null spike | Null rate for any field increases >configured % above baseline → alert |
-| Distribution shift | Numeric field mean/stddev deviates >configured σ from baseline → alert |
-| Late arrival | Data arrives after SLA window → alert |
+Clean → validate → enrich → reshape → filter.
 
-Anomaly thresholds are configuration, not hardcoded. Different pipelines have different tolerances.
-
-### Data Contracts
-
-A data contract defines the agreement between producer and consumer:
-
-| Element | Required |
-|---|---|
-| Schema (fields, types, nullability) | Yes |
-| Freshness SLA | Yes |
-| Quality thresholds per dimension | Yes |
-| Owner (team/person) | Yes |
-| Notification channels | Yes |
-| Versioning policy | Yes |
-| Breaking change process | Yes |
-
-Contracts are versioned artifacts stored alongside pipeline definitions. Contract changes follow schema evolution rules (§6).
+Filtering runs last so that enrichment and audit trail exist for the rows that get dropped. Deviation requires a recorded reason.
 
 ---
 
 ## 6. Schema Management
 
-### Schema Registry
+Every pipeline registers its input and output schemas. The registry provides version history · automated compatibility check before registration · lookup by name and version · lineage from schema to producing and consuming pipelines.
 
-Every pipeline registers input and output schemas in a central registry. The registry provides:
+### Evolution
 
-| Capability | Rule |
-|---|---|
-| Version history | Every schema change creates new version |
-| Compatibility check | Automated check before registration |
-| Discovery | Any consumer can look up schema by name + version |
-| Lineage | Track which pipelines produce/consume each schema |
-
-### Schema Evolution Rules
-
-| Change Type | Backward Compatible | Forward Compatible | Action |
+| Change | Backward compatible | Forward compatible | Action |
 |---|---|---|---|
-| Add optional field | Yes | Yes | Register new version |
-| Add required field | ✗ | Yes | Major version bump; coordinate consumers |
-| Remove field | Yes (if optional) | ✗ | Deprecate first; remove after consumer migration |
-| Rename field | ✗ | ✗ | Treat as remove + add; alias during migration |
-| Change type (widening) | Yes (int→long) | ✗ | Register new version |
-| Change type (narrowing) | ✗ | ✗ | Major version bump; validate data fits |
-| Change nullability (required→optional) | Yes | ✗ | Register new version |
-| Change nullability (optional→required) | ✗ | Yes | Major version bump; backfill nulls first |
+| Add optional field | Yes | Yes | New version |
+| Add required field | ✗ | Yes | Major bump · coordinate consumers |
+| Remove field | Yes, if optional | ✗ | Deprecate → migrate consumers → remove |
+| Rename field | ✗ | ✗ | Remove + add; alias during migration |
+| Widen type (int → long) | Yes | ✗ | New version |
+| Narrow type | ✗ | ✗ | Major bump · validate every existing value fits |
+| Required → optional | Yes | ✗ | New version |
+| Optional → required | ✗ | Yes | Major bump · backfill nulls first |
 
-### Compatibility Modes
+### Compatibility modes
 
-| Mode | Rule | Use when |
+Backward (new schema reads old data) → consumers upgrade first · Forward (old schema reads new data) → producers upgrade first · Full (both) → producer and consumer deploy independently · None → coordinated breaking cutover only.
+
+Default backward. Shared data platforms: full.
+
+Schema version = monotonic integer, ✗ semver. Producer and consumer each declare a min + max compatible version; the pipeline refuses to start when the ranges do not overlap. ! An unregistered column, a missing column, or a retyped column halts the run — ✗ auto-adapt.
+
+Physical table schema, indexes, and DB migrations → [database](../database/STANDARDS.md).
+
+---
+
+## 7. Data Quality
+
+### Dimensions
+
+| Dimension | Metric | Threshold |
 |---|---|---|
-| Backward | New schema reads old data | Consumers upgrade before producers |
-| Forward | Old schema reads new data | Producers upgrade before consumers |
-| Full | Both backward and forward | Independent deployment of producer/consumer |
-| None | No compatibility guaranteed | Breaking migration with coordinated cutover |
+| Completeness | Non-null rate per required field | Per-field, in the contract |
+| Uniqueness | Duplicate rate on declared keys | 0% for primary keys; configurable otherwise |
+| Freshness | Age of the newest source record in the output | Per-pipeline SLA |
+| Accuracy | Rate passing format and range checks | Per-field, in the contract |
+| Consistency | Cross-field rule pass rate | 100% for hard rules |
+| Volume | Row count vs expected range | ± configured % of the rolling average |
 
-Default: backward compatible. Full compatibility required for shared data platforms.
+### Profiling
 
-### Schema Versioning
+Profile on first ingestion and every run thereafter: cardinality per column · null rate per column · min/max/mean/stddev for numerics · top-N value frequencies · string length distribution · pattern frequency for dates and ids. Profiles are versioned artifacts stored with the run; each run is compared against the baseline.
 
-- Schema version = monotonically increasing integer (not semver)
-- Producer declares minimum and maximum compatible schema versions
-- Consumer declares minimum and maximum compatible schema versions
-- Pipeline refuses to run if producer/consumer version ranges don't overlap
+### Anomaly rules
 
-See database/STANDARDS.md — schema design, migration patterns.
+Alert on: volume spike or drop beyond the configured band · null-rate rise beyond the configured band for any field · numeric mean or stddev beyond the configured σ from baseline · arrival after the SLA window.
+! Halt on: schema drift vs the registered schema.
+
+Thresholds are configuration, ✗ hardcoded — tolerances differ per pipeline.
+
+### Data contract
+
+A contract binds producer and consumer. Required elements: schema · freshness SLA · quality threshold per dimension · owner · notification channel · versioning policy · breaking-change process. Contracts are versioned artifacts stored beside the pipeline definition and enforced in CI ([cicd](../cicd/STANDARDS.md)).
 
 ---
 
-## 7. Batch Processing
+## 8. Batch Processing
 
-### Chunking Strategy
+### Chunking
 
 | Rule | Detail |
 |---|---|
-| Never load full dataset into memory | Process in bounded chunks |
-| Chunk size = configuration | Default: 10,000 rows; tunable per pipeline |
-| Chunk boundaries respect record integrity | ✗ split mid-record (multi-line JSON, nested structures) |
-| Each chunk is independently processable | No state carried between chunks except explicit accumulators |
+| ✗ load the full dataset into memory | Process in bounded chunks |
+| Chunk size is configuration | Default 10,000 rows; tuned per pipeline |
+| Respect record integrity | ✗ split mid-record — multi-line JSON, nested structures |
+| Chunks are independent | No state carried between chunks except declared accumulators |
 
-### Memory Management
+### Memory
 
-| Pattern | When |
-|---|---|
-| Streaming read (row-by-row) | Source is unbounded or larger than available memory |
-| Chunk-and-flush | Intermediate results fit in memory per chunk; flush after each |
-| Memory-mapped files | Random access needed on large files; OS manages paging |
-| Spill-to-disk | Accumulator (sort, group-by) exceeds memory budget |
+Streaming read → source unbounded or larger than memory · chunk-and-flush → per-chunk results fit in memory · memory-mapped read → random access over a large file · spill-to-disk → sort/group-by accumulator exceeds its budget.
 
-Declare memory budget per stage. If stage exceeds budget → spill to disk or fail, ✗ crash with OOM.
+Every stage declares a memory budget. Exceeding it → spill or fail with a clear error. ✗ die of OOM.
 
-See architecture/STANDARDS.md §1 — principle #29 (explicit resource budgets).
-
-### Progress Reporting
+### Progress and partial failure
 
 | Rule | Detail |
 |---|---|
-| Report progress per chunk | Emit: chunks completed, total chunks (if known), rows processed |
-| Estimated time remaining | After first chunk, extrapolate; update each chunk |
-| Machine-readable format | Structured log/event, not free text |
-| No progress → stall detection | If no progress event in configured timeout → alert |
+| Progress per chunk | Structured event: chunks done · chunks total · rows processed · ETA after the first chunk |
+| Stall detection | No progress event within the configured timeout → alert |
+| Row fails validation | Dead letter · continue |
+| Chunk fails, transient | Retry with backoff · max 3 attempts |
+| Chunk fails, persistent | Chunk rows → dead letter · continue remaining chunks |
+| Stage fails | Halt · recover per §11 |
 
-### Partial Failure Handling
-
-| Failure Scope | Response |
-|---|---|
-| Single row fails validation | Route to dead letter; continue processing |
-| Chunk fails (transient) | Retry chunk with backoff; max 3 attempts |
-| Chunk fails (persistent) | Route failed chunk rows to dead letter; continue remaining chunks |
-| Stage fails entirely | Halt pipeline; trigger recovery (§10) |
-
-Rejection threshold applies across chunks: if cumulative rejection rate exceeds threshold, halt pipeline even if individual chunks succeed.
+The rejection threshold is cumulative across chunks: exceeding it halts the run even when every individual chunk succeeded.
 
 ---
 
-## 8. Streaming vs Batch
+## 9. Streaming and Late Data
 
-### Selection Criteria
+| Factor | Batch | Streaming |
+|---|---|---|
+| Latency SLA | Minutes–hours | Seconds–minutes |
+| Volume | Bounded, known | Unbounded, continuous |
+| Complexity | Complex joins and aggregations | Simple transforms and filters |
+| Ordering | Natural | Enforced via watermarks |
+| Reprocessing | Full rerun | Replay from offset |
 
-| Factor | Batch | Streaming | Hybrid |
-|---|---|---|---|
-| Latency requirement | Minutes–hours acceptable | Seconds–minutes required | Mixed SLAs |
-| Data volume | Bounded, known size | Unbounded, continuous | Both patterns present |
-| Processing complexity | Complex joins/aggregations | Simple transforms/filters | Complex on batch; simple on stream |
-| Resource availability | Can burst; off-peak scheduling | Constant resource allocation | Tiered allocation |
-| Ordering guarantees | Natural (file order) | Must be enforced (watermarks) | Per-path |
-| Reprocessing need | Full rerun | Replay from offset | Batch backfill + stream forward |
+Default to batch. Batch is simpler to test, debug, and recover. Adopt streaming only when a latency SLA demands it.
 
-Default to batch unless latency SLA demands streaming. Batch is simpler to debug, test, and recover.
+Hybrids: **Lambda** — batch layer for accuracy + speed layer for freshness, merged at query time · **Kappa** — stream only, batch = replay from the beginning · **stream-to-batch landing** — stream writes micro-batches, batch reads them on schedule.
 
-### Hybrid Patterns
+### Windows and watermarks
 
-| Pattern | Description |
+Windows: tumbling (non-overlapping fixed intervals) · sliding (overlapping — moving averages) · session (grouped by activity gaps) · global (lifetime accumulators).
+
+Every windowed operation declares window size · allowed lateness · trigger policy (on-time · early · late).
+
+| Late data | Rule |
 |---|---|
-| Lambda | Batch layer for accuracy + speed layer for freshness; merge at query time |
-| Kappa | Stream-only; batch = replay of stream from beginning |
-| Batch-triggered stream | Batch pipeline triggers streaming enrichment for near-real-time consumers |
-| Stream-to-batch landing | Stream writes micro-batches to storage; batch pipeline reads on schedule |
-
-### Windowing (Streaming)
-
-| Window Type | Use when |
-|---|---|
-| Tumbling (fixed) | Non-overlapping fixed intervals (e.g., 5-minute aggregations) |
-| Sliding (hopping) | Overlapping windows for moving averages |
-| Session | Group events by activity gaps (e.g., user sessions) |
-| Global | Accumulate across entire stream lifetime (counters, running totals) |
-
-Every windowed operation declares: window size, allowed lateness, trigger policy (on-time, early, late).
-
-Late data policy: accept with configured lateness threshold → update result; beyond threshold → route to dead letter.
+| Within allowed lateness | Accepted → window result updated |
+| Beyond allowed lateness | Dead letter, ✗ silent discard |
+| Watermark | Advances monotonically; ✗ move backward to admit late data |
+| Out-of-order tolerance | Declared per stream, not assumed to be zero |
 
 ---
 
-## 9. Idempotency
+## 10. Idempotency and Replay
 
-### Core Rule
-
-Every pipeline stage, and the pipeline as a whole, produces identical output when run multiple times with identical input. This enables safe retries, backfill, and crash recovery.
-
-See architecture/STANDARDS.md §1 — principle #16 (idempotency).
-
-### Idempotency Patterns
+Every stage, and the run as a whole, produces identical output when re-run on identical input. This is what makes retries, backfills, and crash recovery safe.
 
 | Pattern | Mechanism | Best for |
 |---|---|---|
-| Overwrite | Write output to deterministic location; re-run overwrites | File-based sinks |
-| Upsert | Insert or update on natural key | Database sinks |
-| Deduplication key | Assign deterministic ID to each record; reject duplicates | Streaming sinks |
-| Transactional write | Write output + checkpoint in same transaction | Database-backed pipelines |
-| Partition swap | Write to staging partition; atomic swap into target | Partitioned data stores |
+| Overwrite | Deterministic output location; re-run overwrites | File sinks |
+| Upsert | Insert-or-update on a natural key | Database sinks |
+| Dedup key | Deterministic record id; duplicates rejected at the sink | Streaming sinks |
+| Transactional write | Output + checkpoint committed in one transaction | Database-backed pipelines |
+| Partition swap | Write a staging partition → atomic swap | Partitioned stores |
 
-### Deduplication Rules
+Record id is derived from the business key — ✗ random UUID, it defeats deduplication. The sink rejects duplicate writes. At-least-once + dedup = exactly-once; prefer it over an exactly-once delivery protocol. Streaming sinks declare a dedup window.
 
-| Rule | Detail |
-|---|---|
-| Deterministic record ID | Derive from business key (✗ random UUID) |
-| Deduplicate at sink | Sink is responsible for rejecting duplicate writes |
-| Idempotency window | Define time window for duplicate detection (streaming) |
-| At-least-once + dedup = exactly-once | Prefer this over complex exactly-once protocols |
-
-### Non-Idempotent Operations
-
-Some operations are inherently non-idempotent (sending email, external API calls). Isolate them:
-
-- Gate behind a "processed" flag checked before execution
-- Record completion in durable state before proceeding
-- If flag check and execution are not atomic, accept and handle duplicates downstream
+Inherently non-idempotent effects (email, payment, external API call) are isolated: gate behind a durable "processed" marker checked before execution, record completion durably before continuing, and — when the check and the effect cannot be atomic — make the downstream consumer duplicate-tolerant.
 
 ---
 
-## 10. Error Recovery
+## 11. Error Recovery
 
-### Checkpoint/Restart
+### Checkpoints
 
-| Rule | Detail |
-|---|---|
-| Checkpoint after each stage | Persist intermediate state at stage boundaries |
-| Checkpoint after each chunk | Within a stage, persist progress per chunk |
-| Checkpoint = input offset + stage state | Enough to resume without re-reading processed data |
-| Checkpoint storage is durable | ✗ in-memory only; use file system or database |
-| Resume = skip completed chunks | On restart, read checkpoint, skip processed chunks, continue |
+Persisted at stage boundaries and at chunk boundaries within a stage. Content = input offset + stage state — enough to resume without re-reading processed data. Storage is durable (file system or database), ✗ in-memory only. On restart the run reads the checkpoint and skips completed chunks.
 
-See architecture/STANDARDS.md §6 — WAL (write-ahead log), crash recovery.
-
-### Dead Letter Queues
+### Dead-letter queues
 
 | Property | Rule |
 |---|---|
-| Every pipeline has a dead letter destination | Matching the output format of the failing stage |
-| Dead letter records include | Original data · error message · stage name · timestamp · pipeline run ID |
-| Dead letter data is replayable | Can feed dead letter output back into pipeline as input |
-| Dead letter has same retention as primary output | ✗ auto-delete dead letter data before primary |
+| Present | Every pipeline has a dead-letter destination |
+| Record | Original payload · error message · stage · timestamp · run id · schema version |
+| Replayable | ! Dead-letter output can be fed back in as pipeline input without transformation |
+| Retention | Equal to primary output. ✗ expire dead letters first |
+| Monitored | Dead-letter growth rate is an alerting signal, not a silent sink |
 
-### Retry Strategy
+### Retry and poison pills
 
-| Failure Type | Strategy |
+| Failure | Strategy |
 |---|---|
-| Transient (network timeout, temp file lock) | Retry with exponential backoff; max 3 attempts; jitter |
-| Persistent (schema mismatch, corrupt data) | Route to dead letter immediately; ✗ retry |
-| Ambiguous (unknown error code) | Retry once; if same error, treat as persistent |
-| Resource exhaustion (OOM, disk full) | Halt pipeline; alert operator; ✗ retry without intervention |
+| Transient — network timeout, lock contention | Exponential backoff + jitter · max 3 attempts |
+| Persistent — schema mismatch, corrupt record | Dead letter immediately. ✗ retry |
+| Ambiguous | Retry once; same error → treat as persistent |
+| Resource exhaustion — OOM, disk full | Halt · alert. ✗ retry without intervention |
 
-### Poison Pill Handling
+A poison pill crashes the stage rather than failing validation. On a chunk crash: bisect the chunk to isolate the offending record(s) → quarantine to the dead letter with crash details → resume the remaining records → alert the owner.
 
-A poison pill is a record that crashes the processing stage (not just fails validation).
+✗ let one bad record halt a pipeline permanently. ✗ skip a poison record without recording it.
 
-| Rule | Detail |
-|---|---|
-| Isolate on detection | If a chunk fails, binary-search to identify failing record(s) |
-| Quarantine | Move poison record(s) to dead letter with crash details |
-| Continue | Resume processing remaining records after quarantine |
-| Alert | Poison pill detection → immediate alert to pipeline owner |
-
-✗ Let a single bad record halt an entire pipeline permanently. ✗ Silently skip poison records without logging.
+Retry semantics, backoff theory, and error class taxonomy → [error_handling](../error_handling/STANDARDS.md).
 
 ---
 
-## 11. Orchestration
-
-### DAG Execution Rules
+## 12. Orchestration and Backfill
 
 | Rule | Detail |
 |---|---|
-| Declare all dependencies explicitly | ✗ implicit ordering based on definition order |
-| Parallelize independent stages | Stages with no dependency relationship run concurrently |
-| Fail-fast on critical path | If a stage on the critical path fails, halt dependent stages immediately |
-| Allow partial DAG success | Independent branches continue even if sibling branch fails |
-| Execution is deterministic | Same DAG + same input + same config → same execution plan |
+| Explicit dependencies | Declared, ✗ inferred from definition order |
+| Parallel by default | Stages with no dependency relation run concurrently |
+| Fail fast on the critical path | A critical-path failure halts dependent stages immediately |
+| Partial success allowed | Independent branches continue when a sibling branch fails |
+| Deterministic plan | Same DAG + config → same execution plan |
+| Cycles rejected | At registration, not at runtime |
+| Overlap policy | A scheduled run whose predecessor is still running skips or queues — declared per pipeline. ✗ overlap |
+| External dependency | Health-checked before the run starts, ✗ discovered by failing mid-run |
 
-### Dependency Resolution
+Trigger: cron/interval for predictable sources · event for low-latency sources · upstream-completion for chained pipelines · manual for backfill and debugging.
 
-| Dependency Type | Behavior |
-|---|---|
-| Data dependency | Stage B reads output of stage A → B waits for A |
-| Resource dependency | Stage B needs same resource as A (exclusive lock) → serialize |
-| Time dependency | Stage B runs after wall-clock time → schedule, ✗ poll |
-| External dependency | Stage depends on external system availability → health check before start |
-
-Circular dependencies are a build-time error. Orchestrator rejects DAG registration if cycle detected.
-
-### Scheduling
-
-| Pattern | Use when |
-|---|---|
-| Cron/interval | Fixed schedule (daily, hourly); source updates predictably |
-| Event-triggered | Source emits event on new data; low-latency requirement |
-| Dependency-triggered | Upstream pipeline completes → downstream starts |
-| Manual/ad-hoc | Backfill, debugging, one-off analysis |
-
-Every scheduled pipeline has a defined execution window. If previous run hasn't completed by next scheduled start → skip or queue (configurable), ✗ overlap.
-
-### Backfill
+### Backfill safety
 
 | Rule | Detail |
 |---|---|
-| Backfill = re-run pipeline over historical range | Uses same pipeline code as production |
-| Parameterize by time range | Pipeline accepts start/end bounds; processes only that window |
-| Backfill isolation | Backfill writes to staging; promote to production after validation |
-| Rate limiting | Backfill runs at lower priority than production; ✗ starve live pipeline |
-| Idempotent backfill | Re-running backfill for same range produces identical output |
+| Same code | Backfill runs production pipeline code. ✗ a one-off script |
+| Parameterized | Pipeline accepts a start/end bound and processes only that window |
+| Staged | Backfill writes to a staging location → validated → promoted. ✗ write straight over live output |
+| Rate limited | Runs at lower priority than live pipelines; ✗ starve them |
+| Idempotent | Re-running the same range produces identical output |
+| Bounded | Range is explicit and finite; an unbounded backfill is rejected |
+| Recorded | Backfill runs are tagged and distinguishable from scheduled runs in metrics |
 
 ---
 
-## 12. Output & Export
+## 13. Output
 
-### Format Selection
-
-| Output Target | Preferred Format | Rationale |
-|---|---|---|
-| Data warehouse | Parquet/native load format | Columnar; schema embedded; compressed |
-| Data lake | Parquet with partitioning | Schema-on-read; splittable; efficient |
-| API consumers | JSON/JSONL | Human-readable; widely supported |
-| Spreadsheet users | CSV with explicit encoding/header | Universal compatibility |
-| Downstream pipeline | Parquet or native format | Schema preserved; no parsing overhead |
-| Archive/compliance | Parquet + schema file | Self-describing; compact; immutable |
+Format: warehouse · lake · downstream pipeline · archive → columnar (Parquet) or the destination's native load format — schema embedded, splittable, compressed. API consumers → JSON/JSONL. Spreadsheet users → CSV with explicit encoding + header row.
 
 ### Partitioning
 
-| Rule | Detail |
-|---|---|
-| Partition by time (default) | Year/month/day hierarchy for time-series data |
-| Partition by key | When queries filter by a high-cardinality dimension |
-| Partition size target | 128MB–1GB per partition file (compressed) |
-| ✗ over-partition | Too many small files degrade read performance |
-| Partition scheme in contract | Consumer depends on partition layout; changing it is a breaking change |
+Default key = time (year/month/day). Alternative = a high-cardinality dimension consumers filter on. Target 128 MB–1 GB compressed per partition file. ✗ over-partition — many small files destroy read performance. The partition layout is part of the contract: changing it is a breaking change.
 
-### Atomic Writes
+### Atomic write and verification
 
 | Rule | Detail |
 |---|---|
-| Write to temp location first | ✗ write directly to final destination |
-| Rename/move atomically | After write completes, atomic rename to final path |
-| Database: use transactions | Wrap sink writes in transaction; commit on success, rollback on failure |
-| Verify after write | Read back sample/checksum of written data; compare to expected |
-| No partial output visible | Consumers see either complete output or previous version — ✗ partial |
-
-See architecture/STANDARDS.md §1 — principle #17 (copy-on-write, write new then switch).
-
-### Output Validation
-
-| Check | Rule |
-|---|---|
-| Row count | Output row count matches expected (from transform accounting) |
-| Schema | Output matches declared output schema exactly |
-| Checksum | Compute checksum of output; store alongside for consumer verification |
-| Sample inspection | Automated spot-check of N random rows against constraints |
-| Empty output guard | Output with 0 rows → fail unless pipeline explicitly allows empty output |
+| Temp then rename | Write to a temp location → atomic rename. ✗ write directly to the final path |
+| Transactional sinks | Wrap sink writes in a transaction; commit on success, roll back on failure |
+| ! No partial output visible | A consumer sees the previous complete version or the new complete version. Never a half-written one |
+| Row count | Output count matches the transform accounting |
+| Schema | Output matches the declared output schema exactly |
+| Checksum | Computed and stored beside the output for consumer verification |
+| Empty output | 0 rows → fail, unless the pipeline explicitly declares empty output legal |
 
 ---
 
-## 13. Monitoring
+## 14. Monitoring
 
-### Pipeline Health Metrics
+Log format, metric plumbing, tracing, and alert routing → [observability](../observability/STANDARDS.md). This section names only the **pipeline-specific signals** that must exist.
 
-| Metric | Purpose |
+| Signal | Emitted per |
 |---|---|
-| Run status (success/failure/partial) | Basic health indicator |
-| Duration (total + per-stage) | Performance tracking; SLA compliance |
-| Rows processed (in/out/rejected per stage) | Data accounting |
-| Error count by type | Failure pattern detection |
-| Resource usage (memory peak, CPU, I/O) | Capacity planning |
-| Checkpoint lag | How far behind is the pipeline from source |
-
-### Data Freshness
+| Run status: success · failure · partial | Run |
+| Duration | Run and stage |
+| Rows in · rows out · rows rejected | Stage |
+| Rejection rate vs threshold | Stage |
+| Dead-letter volume and growth rate | Run |
+| Data freshness = now − newest source timestamp **in the output** | Output dataset |
+| Watermark / checkpoint lag | Stream or incremental source |
+| Quality dimension scores (§7) | Run |
+| Peak memory · spill events | Stage |
 
 | Rule | Detail |
 |---|---|
-| Define freshness SLA per pipeline | e.g., "output reflects source data no older than 4 hours" |
-| Measure freshness = now - max(source_timestamp in output) | Not pipeline run time; actual data age |
-| Alert on freshness violation | Before SLA breach if possible (warn at 80% of SLA window) |
-| Dashboard freshness per output table/file | Consumers check freshness before using data |
-
-### SLA Tracking
-
-| SLA Type | Metric |
-|---|---|
-| Freshness | Data age in output ≤ threshold |
-| Completeness | Row count ≥ expected minimum |
-| Quality | Quality dimension scores ≥ thresholds (§5) |
-| Availability | Pipeline success rate over rolling window ≥ target |
-| Latency | Pipeline duration ≤ threshold |
-
-SLA violations → alert immediately. Repeated violations → escalate. Track SLA compliance percentage over 7/30/90-day windows.
-
-### Alerting Rules
-
-| Rule | Detail |
-|---|---|
-| Alert on failure | Every pipeline failure → alert |
-| Alert on SLA breach | Freshness, quality, latency thresholds exceeded |
-| Alert on anomaly | Data profiling anomalies (§5) |
-| ✗ Alert fatigue | Tune thresholds; group related alerts; suppress duplicates within window |
-| Actionable alerts only | Every alert includes: what failed, which pipeline/stage, run ID, link to logs |
-| Escalation path | Alert → owner → team → on-call; defined per pipeline |
-
-See observability/STANDARDS.md — structured logging, metrics, health checks.
+| Freshness measures data age | ✗ measure pipeline run time and call it freshness. Warn at 80% of the SLA window |
+| Alert content | What failed · pipeline · stage · run id · link to logs · dead-letter location |
+| Actionable only | Tune thresholds, group related alerts, suppress duplicates within a window |
+| SLA tracking | Freshness · completeness · quality · success rate · latency, over 7/30/90-day windows |
 
 ---
 
-## 14. Scale Matrix
+## 15. Anti-Patterns
 
-| Dimension | Small | Medium | Large | Enterprise |
-|---|---|---|---|---|
-| **Data volume** | <1GB/run | 1–100GB/run | 100GB–10TB/run | >10TB/run |
-| **Pipeline count** | 1–5 | 5–50 | 50–500 | >500 |
-| **Stages per pipeline** | 3–5 | 5–15 | 15–30 | 30+ |
-| **Scheduling** | Cron/manual | Orchestrator (basic) | Orchestrator (full DAG) | Multi-orchestrator federation |
-| **Schema registry** | File-based (JSON/YAML) | Central registry (single instance) | Registry with versioning + CI | Federated registry with governance |
-| **Validation** | Schema + basic constraints | Full 3-layer validation | Data contracts with SLAs | Automated contract testing in CI |
-| **Quality monitoring** | Row counts + null checks | Profiling + anomaly alerts | Quality dashboards + trend tracking | Quality gates blocking deployment |
-| **Error recovery** | Manual rerun | Checkpoint/restart | Dead letter + auto-retry | Self-healing with backfill |
-| **Idempotency** | Overwrite output | Upsert on key | Transactional checkpoint | Exactly-once with dedup across systems |
-| **Monitoring** | Log inspection | Metrics + basic alerting | SLA tracking + dashboards | Cross-pipeline lineage + impact analysis |
-| **Team** | 1 engineer | 2–5 engineers | Team with data platform | Multiple teams with platform team |
-
-Grow incrementally. Start at the column matching current scale. Move right only when current column constraints are met.
+| Anti-pattern | Failure | Fix |
+|---|---|---|
+| Watermark advanced on read | Crash between read and write loses data | Advance after the write commits (§3) |
+| Rows filtered without accounting | Silent data loss discovered months later | `rows_in = rows_out + rows_rejected` (§4) |
+| Rejected rows logged and dropped | Unreplayable loss | Dead letter with payload + reason (§4, §11) |
+| Transform that writes to a DB | Untestable, non-idempotent, unreplayable | Side effects only in sinks (§5) |
+| Auto-adapting to schema drift | Corrupt data lands with no signal | Drift halts the run (§6) |
+| Random UUID as record id | Deduplication impossible; replay duplicates everything | Deterministic business key (§10) |
+| Backfill via a one-off script | Backfilled data differs from live data | Parameterized production code (§12) |
+| Backfill written over live output | Corrupt output with no rollback | Staging → validate → promote (§12) |
+| Write straight to the final path | Consumers read a half-written file | Temp → atomic rename (§13) |
+| Full dataset loaded to memory | OOM at the first volume spike | Bounded chunks (§8) |
+| Freshness measured as run time | A pipeline that runs on stale data looks healthy | Measure data age (§14) |
+| Retrying a corrupt record forever | Pipeline wedged on one row | Persistent failure → dead letter (§11) |
 
 ---
 
-## 15. Checklist
+## 16. Scale Matrix
 
-### Pipeline Setup
+| Dimension | Prototype | Production | Scale |
+|---|---|---|---|
+| Volume per run | < 1 GB | 1 GB–1 TB | > 1 TB |
+| Scheduling | Cron or manual | Orchestrator with a full DAG | Federated orchestration, cross-pipeline lineage |
+| Schema registry | Versioned file in the repo | Central registry + CI compatibility check | Federated registry with governance + contract tests in CI |
+| Validation | Schema + basic constraints | Full three-layer validation | Contracts with SLAs, enforced in CI |
+| Quality | Row counts + null checks | Profiling + anomaly alerts | Quality gates blocking promotion |
+| Recovery | Manual rerun | Checkpoint/restart + dead letter + auto-retry | Self-healing with automated backfill |
+| Idempotency | Overwrite output | Upsert on key | Transactional checkpoint + dedup across systems |
+| Monitoring | Log inspection | Metrics + SLA alerting | SLA dashboards + lineage + impact analysis |
 
-- [ ] Pipeline modeled as DAG with explicit stage dependencies
-- [ ] ETL vs ELT decision documented with rationale
-- [ ] Each stage has single responsibility
-- [ ] Data contracts defined between every stage pair
+Move right only when the current column's rules are fully met.
 
-### Ingestion
+---
 
-- [ ] Source validation (existence, permissions, size, freshness) before read
-- [ ] Encoding declared explicitly; UTF-8 default
-- [ ] Incremental extraction uses persisted high-water marks
-- [ ] File format validation matches contract
+## 17. Checklist
 
-### Validation
-
-- [ ] Three-layer validation: schema → constraint → semantic
-- [ ] Rejected rows route to dead letter with rejection reason
-- [ ] Rejection threshold configured and enforced
-- [ ] Row accounting verified: rows_in = rows_out + rows_rejected
-
-### Transformation
-
-- [ ] All transforms are pure functions (no side effects)
-- [ ] Intermediate data is immutable
-- [ ] Cardinality expectation declared and verified per transform
-- [ ] Transform ordering follows clean → validate → enrich → reshape → filter
-
-### Data Quality
-
-- [ ] Quality dimensions defined per field (completeness, uniqueness, accuracy)
-- [ ] Baseline profiles established and versioned
-- [ ] Anomaly detection thresholds configured
-- [ ] Data contracts include freshness SLA and quality thresholds
-
-### Schema Management
-
-- [ ] All schemas registered in registry
-- [ ] Schema evolution follows compatibility rules
-- [ ] Producer/consumer version ranges declared and validated
-- [ ] Breaking changes follow documented migration process
-
-### Processing
-
-- [ ] Chunk size configured; full dataset never loaded into memory at once
-- [ ] Memory budget declared per stage
-- [ ] Progress reporting emits structured events per chunk
-- [ ] Partial failure accumulates to dead letter; threshold enforced
-
-### Idempotency & Recovery
-
-- [ ] Pipeline produces identical output on re-run with same input
-- [ ] Deduplication uses deterministic business key (not random ID)
-- [ ] Checkpoints persisted at stage and chunk boundaries
-- [ ] Dead letter includes original data + error context + run ID
-- [ ] Retry strategy defined per failure type
-
-### Orchestration
-
-- [ ] Dependencies declared explicitly; no implicit ordering
-- [ ] Schedule defined with overlap policy
-- [ ] Backfill parameterized by time range; writes to staging first
-- [ ] Circular dependencies rejected at registration
-
-### Output
-
-- [ ] Output format matches consumer contract
-- [ ] Writes are atomic (temp → rename pattern)
-- [ ] Output validated (row count, schema, checksum)
-- [ ] Empty output explicitly handled (fail or allow)
-
-### Monitoring
-
-- [ ] Pipeline health metrics collected (status, duration, rows, errors)
-- [ ] Freshness SLA defined and monitored
-- [ ] Alerts configured for failure, SLA breach, anomaly
-- [ ] Alerts are actionable with pipeline/stage/run-ID context
+- [ ] ETL vs ELT choice recorded with its reason
+- [ ] Pipeline is an acyclic DAG with explicitly declared stage dependencies
+- [ ] Every stage declares input and output schema, and expected cardinality change
+- [ ] Pipeline contains at least Source → Validator → Sink
+- [ ] Source preflight checks existence, permission, size, freshness, and format
+- [ ] Encoding declared explicitly; undecodable bytes rejected, never substituted
+- [ ] Watermarks advance only after the downstream write commits
+- [ ] Validation runs schema → constraint → semantic, in that order
+- [ ] Rejected rows land in a dead letter with payload, reason, stage, and run id
+- [ ] `rows_in = rows_out + rows_rejected` asserted at every stage
+- [ ] Rejection-rate threshold configured and enforced cumulatively across chunks
+- [ ] Transform stages are pure — zero I/O, deterministic, no shared mutable state
+- [ ] Transform order is clean → validate → enrich → reshape → filter
+- [ ] All schemas registered; compatibility checked before registration
+- [ ] Schema drift halts the run; ✗ auto-adaptation
+- [ ] Quality thresholds configured not hardcoded; baseline profile compared each run
+- [ ] Full dataset never loaded into memory; chunk size and memory budget declared per stage
+- [ ] Windowed operations declare window size, allowed lateness, and trigger policy
+- [ ] Late data beyond allowed lateness goes to the dead letter, never dropped
+- [ ] Re-running with identical input produces identical output
+- [ ] Deduplication uses a deterministic business key, never a random id
+- [ ] Checkpoints persisted at stage and chunk boundaries, durably
+- [ ] Dead-letter output is replayable as pipeline input and retained as long as primary output
+- [ ] Poison pills are isolated, quarantined, and alerted; the pipeline continues
+- [ ] Backfill uses production code, is range-parameterized, and writes to staging first
+- [ ] Scheduled runs declare an overlap policy; overlapping runs never occur
+- [ ] Writes are atomic (temp → rename); no partial output is ever visible
+- [ ] Output validated: row count, schema, checksum; empty output explicitly handled
+- [ ] Freshness measured as data age, not run time, and alerted at 80% of the SLA window
+- [ ] Alerts carry pipeline, stage, run id, and dead-letter location

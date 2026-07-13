@@ -1,60 +1,60 @@
 # Design Standards
 
-Rules for software design decisions: pattern selection, coupling management,
-interface contracts, composition, abstraction, module design, state machines,
-and data flow. Language-agnostic — applies to all projects, all languages.
+> Rules for shaping modules, interfaces, abstractions, and patterns inside the structure architecture defines.
 
-Built on: architecture/STANDARDS.md foundation (tier model, core principles,
-function contracts). Complements code_writing/STANDARDS.md (implementation-level
-rules) and testing/STANDARDS.md (verification strategy).
+**ID** `design` · **Tier** Foundation · **Version** 1.0
+**Owns** SOLID · coupling · cohesion · design pattern selection · interface contracts · composition · abstraction rules · module design · state machines · data flow patterns
+**Defers to** layer model · dependency direction · CQS · idempotency · extension registry · interface versioning → [architecture](../architecture/STANDARDS.md) · function body style · parameter count · identifier naming → [code_writing](../code_writing/STANDARDS.md) · file + directory layout → [directory](../directory/STANDARDS.md) · error taxonomy · result types · retry policy → [error_handling](../error_handling/STANDARDS.md) · public API versioning · wire contracts → [api](../api/STANDARDS.md) · test doubles · seams → [testing](../testing/STANDARDS.md)
+**Load with** [architecture](../architecture/STANDARDS.md) · [code_writing](../code_writing/STANDARDS.md)
 
 ---
 
 ## Table of Contents
 
-1. [SOLID Principles](#1-solid-principles)
+1. [Principles](#1-principles)
 2. [Coupling and Cohesion](#2-coupling-and-cohesion)
-3. [Design Pattern Selection](#3-design-pattern-selection)
+3. [Pattern Selection](#3-pattern-selection)
 4. [Interface Design](#4-interface-design)
-5. [Composition Patterns](#5-composition-patterns)
-6. [Abstraction Levels](#6-abstraction-levels)
+5. [Composition](#5-composition)
+6. [Abstraction Rules](#6-abstraction-rules)
 7. [Module Design](#7-module-design)
-8. [State Machine Patterns](#8-state-machine-patterns)
+8. [State Machines](#8-state-machines)
 9. [Data Flow Patterns](#9-data-flow-patterns)
-10. [Scale Matrix](#10-scale-matrix)
-11. [Design Checklist](#11-design-checklist)
+10. [Anti-Patterns](#10-anti-patterns)
+11. [Scale Matrix](#11-scale-matrix)
+12. [Checklist](#12-checklist)
 
 ---
 
-## 1. SOLID Principles
+## 1. Principles
 
-Language-agnostic formulation. Each principle = one enforceable rule.
+SOLID, language-agnostic. Each = one enforceable rule.
 
 | Principle | Rule |
 |---|---|
-| Single Responsibility (SRP) | Every module/class/function has exactly one reason to change — one owner, one purpose, one axis of change |
-| Open-Closed (OCP) | Extend behavior by adding new code (new module, new handler, new variant) — ✗ modifying existing working code |
-| Liskov Substitution (LSP) | Every implementation of an interface is usable wherever that interface is expected — ✗ special-case checks on concrete type |
-| Interface Segregation (ISP) | Consumers depend only on methods they call — split fat interfaces into focused ones; See §4 |
-| Dependency Inversion (DIP) | High-level modules depend on abstractions, not concrete implementations — low-level modules implement those abstractions; See architecture/STANDARDS.md §3 |
+| Single Responsibility | Every module has exactly one reason to change — one owner, one purpose, one axis of change |
+| Open-Closed | Extend by adding code (new module · new handler · new variant) · ✗ by modifying working code |
+| Liskov Substitution | Every implementation of an interface is usable wherever that interface is expected · ✗ special-case checks on concrete type |
+| Interface Segregation | Consumers depend only on the methods they call — split fat interfaces (§4) |
+| Dependency Inversion | High-level modules depend on abstractions; low-level modules implement them. Direction enforcement → [architecture](../architecture/STANDARDS.md) |
 
 ### SRP Violation Signals
 
-| Signal | Indicates |
+| Signal | Diagnosis |
 |---|---|
 | Module imported by unrelated features | Responsibility too broad |
 | Change in feature A forces change in module B | Shared responsibility |
-| Module has multiple "sections" with different concerns | Multiple responsibilities merged |
-| Module name contains "and" or "manager" or "utils" | Catch-all bucket — split it |
+| Module has multiple "sections" with different concerns | Responsibilities merged |
+| Module name contains "and", "manager", or "utils" | Catch-all bucket → split |
 
-### OCP Implementation Strategies
+### Open-Closed Strategies
 
 | Strategy | Mechanism |
 |---|---|
-| Registry pattern | New capability registers itself — zero changes to dispatcher; See architecture/STANDARDS.md §10 |
-| Strategy/policy injection | Caller provides behavior as argument — engine unchanged |
-| Plugin interface | New module implements known interface — host discovers automatically |
-| Event/hook system | New handler subscribes to existing event — emitter unchanged |
+| Registry | New capability registers itself — dispatcher unchanged. See [architecture](../architecture/STANDARDS.md) §9 |
+| Strategy injection | Caller supplies behavior as argument — engine unchanged |
+| Plugin interface | New module implements a known interface — host discovers it |
+| Event / hook | New handler subscribes to an existing event — emitter unchanged |
 
 ---
 
@@ -62,510 +62,418 @@ Language-agnostic formulation. Each principle = one enforceable rule.
 
 ### Coupling Spectrum
 
-From acceptable (top) to prohibited (bottom):
+Acceptable at the top, prohibited at the bottom.
 
-| Level | Type | Description | Verdict |
+| Level | Type | Meaning | Verdict |
 |---|---|---|---|
-| 1 | Data coupling | Modules share only primitive data via function arguments | Preferred |
-| 2 | Stamp coupling | Modules share structured data (records, structs) via arguments | Acceptable |
-| 3 | Control coupling | Caller passes flag/enum that alters callee behavior | Minimize — prefer separate functions |
-| 4 | External coupling | Modules share external format, protocol, or interface | Acceptable at Tier 3 boundaries |
-| 5 | Common coupling | Modules share global/module-level mutable state | Prohibited; See architecture/STANDARDS.md §6 |
-| 6 | Content coupling | Module reaches into another's internals | Prohibited — always |
+| 1 | Data | Modules share primitive data via arguments | Preferred |
+| 2 | Stamp | Modules share structured data (records · structs) via arguments | Acceptable |
+| 3 | Control | Caller passes a flag/enum that alters callee behavior | Minimize → separate functions |
+| 4 | External | Modules share an external format, protocol, or interface | Acceptable at the outermost layer only |
+| 5 | Common | Modules share global or module-level mutable state | ✗ prohibited |
+| 6 | Content | Module reaches into another's internals | ✗ prohibited always |
 
-### Coupling Measurement
+### Coupling Thresholds
 
 | Metric | Healthy | Warning | Violation |
 |---|---|---|---|
-| Import count per module | ≤ 5 direct imports | 6–10 | > 10 — module knows too much |
-| Fan-out (outgoing dependencies) | ≤ 7 | 8–12 | > 12 — decompose |
-| Fan-in (incoming dependents) | Any | Watch for change amplification | If change breaks > 3 dependents → stabilize interface |
-| Depth of dependency chain | ≤ 4 hops | 5–6 | > 6 — flatten or introduce facade |
-| Circular dependencies | 0 | 0 | Any cycle = architecture violation; See architecture/STANDARDS.md §3 |
+| Direct imports per module | ≤ 5 | 6–10 | > 10 — module knows too much |
+| Fan-out (outgoing deps) | ≤ 7 | 8–12 | > 12 — decompose |
+| Fan-in (incoming dependents) | Any | Watch for change amplification | Change breaks > 3 dependents → stabilize the interface |
+| Dependency chain depth | ≤ 4 hops | 5–6 | > 6 — flatten or add a facade |
+| Circular dependencies | 0 | 0 | Any cycle = architecture violation |
 
 ### Cohesion Spectrum
 
-From strongest (top) to weakest (bottom):
+Strongest at the top.
 
-| Level | Type | Description | Target |
+| Level | Type | Meaning | Target |
 |---|---|---|---|
-| 1 | Functional | Every element contributes to a single well-defined task | Required for Tier 0–1 |
-| 2 | Sequential | Output of one element feeds input of next (pipeline) | Acceptable |
-| 3 | Communicational | Elements operate on same data | Acceptable in data transforms |
-| 4 | Temporal | Elements execute at same time (init, cleanup) | Acceptable only for lifecycle |
-| 5 | Logical | Elements do similar things selected by flag | Refactor into separate functions |
-| 6 | Coincidental | Elements grouped arbitrarily ("utils", "helpers") | Prohibited — redistribute |
+| 1 | Functional | Every element serves one well-defined task | Required for inner layers |
+| 2 | Sequential | Output of one element feeds the next | Acceptable |
+| 3 | Communicational | Elements operate on the same data | Acceptable in data transforms |
+| 4 | Temporal | Elements run at the same time (init · cleanup) | Acceptable for lifecycle only |
+| 5 | Logical | Elements do similar things, selected by a flag | Refactor into separate functions |
+| 6 | Coincidental | Elements grouped arbitrarily ("utils" · "helpers") | ✗ prohibited — redistribute |
 
-### Cohesion Rules
+### Rules
 
 - Every module targets functional or sequential cohesion.
-- `utils` / `helpers` / `common` modules = cohesion failure. Redistribute each function to its domain module.
-- If two functions in a module never change together and serve different callers → split module.
-- If a function is called by every module → candidate for Tier 0 kernel.
+- `utils` · `helpers` · `common` · `misc` modules = cohesion failure. Redistribute each function to its domain module.
+- Two functions in a module that never change together and serve different callers → split the module.
+- A function called by every module → candidate for the innermost layer.
 
 ---
 
-## 3. Design Pattern Selection
+## 3. Pattern Selection
 
-✗ apply patterns preemptively. Each pattern solves a specific structural problem — use only when that problem exists.
+✗ apply patterns preemptively. Each pattern solves one structural problem — use it only when that problem exists.
 
-### Creational Patterns
+### Catalog
 
-| Pattern | Use When | ✗ Use When | Tier |
-|---|---|---|---|
-| Factory function | Construction requires decisions (type selection, config-dependent assembly) | Simple constructor suffices | 1–2 |
-| Builder | Object requires many optional parameters; construction is multi-step | ≤ 3 parameters — use direct construction | 1–2 |
-| Prototype / Clone | Creating variants of complex pre-configured objects | Object is simple to construct from scratch | 0–1 |
+| Kind | Pattern | Use when | ✗ Use when | Layer |
+|---|---|---|---|---|
+| Creational | Factory function | Construction requires a decision (type selection · config-dependent assembly) | A plain constructor suffices | engine · service |
+| Creational | Builder | Many optional parameters · multi-step construction | ≤ 3 parameters → direct construction | engine · service |
+| Creational | Prototype / Clone | Producing variants of a complex pre-configured object | Object is cheap to construct from scratch | kernel · engine |
+| Structural | Adapter | External library's interface ✗ match the internal contract | You control both sides — change the source | interface |
+| Structural | Facade | Complex subsystem needs one entry point | Subsystem has ≤ 2 public functions | service |
+| Structural | Decorator | Adding logging · caching · retry without modifying the original | Behavior is core to the function — put it inside | service · interface |
+| Structural | Composite | Tree structures where leaf and branch share an interface | Structure is a flat list → iterate | engine |
+| Behavioral | Strategy | Algorithm varies by context; caller selects at runtime | Only one algorithm exists — YAGNI | engine · service |
+| Behavioral | Observer / Pub-Sub | Multiple independent consumers react to one event | One consumer → call it directly | service · interface |
+| Behavioral | State machine | ≥ 3 states with constrained transitions (§8) | ≤ 2 states → boolean + branch | engine · service |
+| Behavioral | Command | Operations must be queued, undone, logged, or replayed | Fire-and-forget with no undo | service |
+| Behavioral | Iterator | Custom traversal without exposing internals | Built-in iteration suffices | kernel · engine |
+| Behavioral | Chain of responsibility | First matching handler in an ordered chain processes the request | Exact handler known at call time | service |
 
-### Structural Patterns
+### Selection Table
 
-| Pattern | Use When | ✗ Use When | Tier |
-|---|---|---|---|
-| Adapter | Integrating external library whose interface doesn't match internal contract | You control both sides — change the source | 3 |
-| Facade | Simplifying complex subsystem into single entry point | Subsystem has ≤ 2 public functions | 2 |
-| Decorator | Adding behavior (logging, caching, retry) without modifying original | Behavior is core to the function — put it inside | 2–3 |
-| Composite | Tree structures where leaf and branch share same interface | Structure is flat list — use iteration | 1 |
-
-### Behavioral Patterns
-
-| Pattern | Use When | ✗ Use When | Tier |
-|---|---|---|---|
-| Strategy | Algorithm varies by context; caller selects behavior at runtime | Only one algorithm exists — YAGNI | 1–2 |
-| Observer / Pub-Sub | Multiple independent consumers react to same event; decoupled notification | Only one consumer — call it directly | 2–3 |
-| State machine | Object has distinct states with defined transitions; behavior changes per state; See §8 | ≤ 2 states — use boolean + if/else | 1–2 |
-| Command | Operations must be queued, undone, logged, or replayed | Fire-and-forget with no undo | 2 |
-| Iterator | Custom traversal over collection without exposing internals | Language's built-in iteration suffices | 0–1 |
-| Chain of responsibility | Request processed by first matching handler in ordered chain | Exact handler known at compile/call time | 2 |
-
-### Pattern Selection Decision Table
-
-| Problem | First Choice | Alternative |
+| Problem | First choice | Alternative |
 |---|---|---|
-| "Which concrete type to create?" | Factory function | Builder (if multi-step) |
-| "External interface doesn't match mine" | Adapter | Facade (if simplifying entire subsystem) |
-| "Need to add cross-cutting behavior" | Decorator | Middleware chain (for request/response pipelines) |
-| "Behavior varies by context" | Strategy (passed as argument) | Registry lookup (if open-ended) |
-| "Multiple reactions to one event" | Observer / Pub-Sub | Event bus (if crossing module boundaries) |
-| "Object has lifecycle states" | State machine (§8) | Enum + match/switch (if transitions are simple) |
-| "Complex construction with many options" | Builder | Config struct (if all options known upfront) |
-| "Need undo/replay" | Command | Event sourcing (if full history required) |
-
-### Anti-Pattern Signals
-
-| Signal | Problem | Fix |
-|---|---|---|
-| Pattern wraps single concrete type with no variants | Over-abstraction | Remove pattern, use concrete type directly |
-| Factory creates exactly one type | Unnecessary indirection | Direct construction |
-| Observer has exactly one subscriber | Over-engineering | Direct function call |
-| Strategy has exactly one implementation | Premature generalization | Inline the algorithm |
-| Decorator chain > 3 deep | Complexity exceeds benefit | Merge decorators or redesign |
-| Pattern chosen "for future flexibility" with no current need | YAGNI violation | Remove until needed |
+| Which concrete type to create? | Factory function | Builder (multi-step) |
+| External interface ✗ match mine | Adapter | Facade (simplifying a whole subsystem) |
+| Add cross-cutting behavior | Decorator | Middleware chain (request/response pipelines) |
+| Behavior varies by context | Strategy passed as argument | Registry lookup (open-ended set) |
+| Multiple reactions to one event | Observer / Pub-Sub | Event bus (crossing module boundaries) |
+| Object has lifecycle states | State machine (§8) | Enum + exhaustive match (simple transitions) |
+| Complex construction, many options | Builder | Config struct (all options known upfront) |
+| Need undo / replay | Command | Event sourcing (full history required) |
 
 ---
 
 ## 4. Interface Design
 
-An interface = the contract between caller and callee. Applies to module public APIs, abstract interfaces, trait/protocol definitions, and function signatures.
+Interface = the contract between caller and callee: module public APIs, abstract interfaces, traits, protocols.
 
 ### Contract Rules
 
-| Rule | Description |
+| Rule | Detail |
 |---|---|
-| Explicit over implicit | Every requirement, constraint, and side effect visible in signature or type |
-| Minimal surface | Expose fewest functions/methods needed — internal helpers stay private |
-| Stable contracts | Interface changes less frequently than implementation; stability = number of dependents |
-| Consumer-driven | Interface shaped by what callers need, not what implementation can offer |
-| No leaking internals | Return types, parameter types, and errors reveal nothing about implementation mechanism |
+| Explicit over implicit | Every requirement, constraint, and side effect visible in the signature or type |
+| Minimal surface | Expose the fewest operations callers need — helpers stay private |
+| Stable contracts | The interface changes less often than the implementation. Stability requirement scales with dependent count |
+| Consumer-driven | Shaped by what callers need · ✗ by what the implementation can offer |
+| ✗ leaking internals | Parameter types, return types, and errors reveal nothing about the implementation mechanism |
 
-### Interface Segregation
+### Segregation
 
-| Rule | Rationale |
+| Rule | Detail |
 |---|---|
-| Split by consumer role | If consumer A uses methods 1–3, consumer B uses methods 4–5 → two interfaces |
-| Maximum 5 methods per interface | Larger → split by cohesion; exception: lifecycle interfaces (init/run/stop/cleanup) |
-| ✗ marker interfaces with zero methods | Use type tags or enums instead |
-| ✗ "god interfaces" consumed by all | Decompose into focused role interfaces |
+| Split by consumer role | Consumer A uses methods 1–3, consumer B uses 4–5 → two interfaces |
+| Max 5 methods per interface | Larger → split by cohesion. **Exception:** lifecycle interfaces (init · run · stop · cleanup) |
+| ✗ marker interfaces with zero methods | Use type tags or enums |
+| ✗ god interfaces consumed by all | Decompose into focused role interfaces |
 
-### Dependency Inversion Application
+### Shape
 
-| Layer | Depends On | Implemented By |
-|---|---|---|
-| Tier 2 (Service) | Abstract interface defined in Tier 1 | Tier 3 adapter |
-| Tier 1 (Engine) | Types/contracts from Tier 0 | Tier 1 concrete logic |
-| Tier 3 (Interface) | Nothing above it depends on Tier 3 | Implements abstractions defined lower |
-
-Flow: High-level code defines what it needs (interface in Tier 1–2). Low-level code (Tier 3) provides concrete implementation. Dependency points inward; implementation detail stays outer. See architecture/STANDARDS.md §3.
-
-### Parameter Design
-
-| Rule | Details |
+| Rule | Detail |
 |---|---|
-| Positional arguments: max 1 | See architecture/STANDARDS.md §4 |
-| Configuration: use config struct | Group related options into typed struct — ✗ boolean flag explosion |
-| Optional parameters: sensible defaults | Caller omits what they don't care about |
-| ✗ boolean parameters | Replace with enum or named options — `mode=STRICT` not `strict=true` |
-| ✗ stringly-typed parameters | Use enums, types, constants — ✗ raw strings for known-set values |
-
-### Return Type Design
-
-| Rule | Details |
-|---|---|
-| Typed return | Structured type for complex results; See architecture/STANDARDS.md §4 |
-| Result type for fallible operations | Return success-or-error union — ✗ null returns for failure |
+| Typed return | Structured type for complex results · ✗ raw collections |
 | Consistent shape | All functions in a module family return compatible types |
-| ✗ mixed return types | Function returns type A or type B based on input → split into two functions |
+| ✗ mixed return types | Function returns type A or type B depending on input → split into two functions |
+| Fallible operations | Return a success-or-error union · ✗ null for failure. Taxonomy → [error_handling](../error_handling/STANDARDS.md) |
+| Parameter ergonomics | Count limits · ✗ boolean parameters · ✗ stringly-typed parameters → [code_writing](../code_writing/STANDARDS.md) |
 
-### Evolution Rules
+### Evolution
 
-| Rule | Details |
+| Rule | Detail |
 |---|---|
 | Additive changes only | New optional fields/methods added without breaking callers |
-| ✗ removing or renaming without deprecation | One release cycle with deprecation warning; See architecture/STANDARDS.md §11 |
-| Version interface if breaking | `v2` interface coexists with `v1` during migration |
-| Default values for new fields | Existing callers work without changes |
+| New fields carry defaults | Existing callers work unchanged |
+| ✗ remove or rename without deprecation | Deprecation windows → [architecture](../architecture/STANDARDS.md) §10 |
+| Breaking change → version the interface | `v2` coexists with `v1` through the migration window |
 
 ---
 
-## 5. Composition Patterns
+## 5. Composition
 
-Composition = building complex behavior from simple, independent pieces. Default mechanism for code reuse — ✗ inheritance. See architecture/STANDARDS.md §5 (Principle 5: compose features, don't inherit).
+Default mechanism for reuse. ✗ inheritance.
 
-### Composition vs Inheritance Decision
+### Composition vs Inheritance
 
 | Criterion | Composition | Inheritance |
 |---|---|---|
-| Relationship | "has-a" or "uses-a" | "is-a" (strict taxonomic) |
-| Coupling | Loose — components swappable | Tight — child coupled to parent internals |
-| Flexibility | Mix any combination of behaviors | Single chain, combinatorial explosion for variants |
-| Testability | Each component testable in isolation | Must test through hierarchy |
-| Default choice | Yes | Only for true type hierarchies (≤ 2 levels) |
+| Relationship | "has-a" · "uses-a" | "is-a", strictly taxonomic |
+| Coupling | Loose — components swappable | Tight — child bound to parent internals |
+| Flexibility | Any combination of behaviors | Single chain · combinatorial explosion |
+| Testability | Each component tested in isolation | Must test through the hierarchy |
+| Default | Yes | Only for true type hierarchies, ≤ 2 levels deep |
 
-### Composition Mechanisms
+### Mechanisms
 
-| Mechanism | How It Works | Best For |
+| Mechanism | How | Best for |
 |---|---|---|
-| Function composition | Output of f → input of g; pipeline chaining | Data transforms, Tier 0–1 |
-| Delegation | Object holds reference to collaborator; forwards calls | Behavior reuse without inheritance |
-| Mixins / Traits | Attach behavior bundles to types | Cross-cutting capabilities (serializable, comparable) |
-| Higher-order functions | Function accepts function as argument | Strategy injection, callbacks, middleware |
-| Config struct injection | Pass behavior-controlling config as data | Parameterized modules |
+| Function composition | Output of f → input of g | Data transforms in inner layers |
+| Delegation | Holder forwards calls to a collaborator | Behavior reuse without inheritance |
+| Mixins / traits | Attach behavior bundles to a type | Cross-cutting capabilities (serializable · comparable) |
+| Higher-order functions | Function takes a function | Strategy injection · callbacks · middleware |
+| Config struct injection | Behavior-controlling config passed as data | Parameterized modules |
 
-### Composition Rules
+### Rules
 
-| Rule | Description |
+| Rule | Detail |
 |---|---|
-| Max 2 levels of inheritance | Deeper hierarchies → refactor to composition |
-| Prefer functions over method hierarchies | Free functions composable across types; methods locked to one type |
-| ✗ diamond inheritance | If language allows, still avoid — use trait/interface composition instead |
-| Each composed piece independently testable | If piece can't be tested alone → coupling too tight |
-| Compose at construction time | Wire components together in factory/init — ✗ runtime dynamic re-wiring unless explicitly designed for plugin systems |
+| Max 2 inheritance levels | Deeper → refactor to composition |
+| ✗ diamond inheritance | Use trait/interface composition even where the language permits it |
+| Free functions over method hierarchies | Free functions compose across types; methods lock to one type |
+| Each composed piece independently testable | Piece untestable alone → coupling too tight |
+| Compose at construction time | Wire components in factory/init · ✗ runtime re-wiring unless the system is an explicit plugin host |
 
-### Delegation Pattern
+### Delegation
 
-Use delegation when one module needs behavior from another without coupling to its type hierarchy:
-
-| Rule | Description |
+| Rule | Detail |
 |---|---|
-| Delegator holds interface reference, not concrete type | Enables swapping implementations |
-| Delegator's public API differs from delegate's | Delegator adds, filters, or transforms — ✗ pass-through-only delegation (pointless wrapper) |
-| One delegate per concern | ✗ single delegate handling multiple unrelated concerns |
+| Hold an interface reference · ✗ a concrete type | Enables swapping implementations |
+| Delegator's public API differs from the delegate's | It adds, filters, or transforms · ✗ pass-through-only wrapper |
+| One delegate per concern | ✗ a single delegate covering unrelated concerns |
 
-### Middleware / Pipeline Composition
+### Middleware / Pipeline
 
-For request-response or data-transform pipelines:
-
-| Rule | Description |
+| Rule | Detail |
 |---|---|
-| Each middleware = one concern | Logging, auth, validation, rate-limiting — each separate |
-| Middleware order explicit | Declared in configuration or registration, not implicit |
-| Each middleware receives input, returns output (or passes to next) | Same function signature for all stages |
-| ✗ middleware that skips stages silently | Short-circuit must be explicit with clear signal |
+| One concern per middleware | Logging · auth · validation · rate-limiting each stand alone |
+| Order declared explicitly | In configuration or registration · ✗ implicit through import order |
+| Uniform signature | Every stage takes input → returns output or passes to next |
+| ✗ silent stage skipping | Short-circuit is explicit with a clear signal |
 
 ---
 
-## 6. Abstraction Levels
+## 6. Abstraction Rules
 
-Abstraction = hiding implementation detail behind a stable interface. Under-abstraction causes duplication. Over-abstraction causes indirection without value.
+Under-abstraction → duplication. Over-abstraction → indirection without value.
 
 ### Rule of Three
 
-✗ abstract on first occurrence. ✗ abstract on second occurrence. Abstract on third occurrence — when the pattern is proven and the shape is clear. Before three occurrences, you don't know the real abstraction boundary.
+✗ abstract on the first occurrence. ✗ abstract on the second. Abstract on the third — the pattern is proven and the shape is known.
 
-Exception: abstractions mandated by architecture (tier boundaries, I/O adapters) are created on first need.
+**Exception:** abstractions mandated by architecture (layer boundaries · I/O adapters) are created on first need.
 
-### Abstraction Decision Table
+### Decision Table
 
 | Situation | Action |
 |---|---|
-| Same logic duplicated 3+ times with identical structure | Extract into shared function/module |
-| Same logic duplicated 2 times | Leave duplicated — duplication cheaper than wrong abstraction |
+| Identical logic duplicated 3+ times | Extract a shared function/module |
+| Same logic duplicated twice | Leave it — duplication is cheaper than the wrong abstraction |
 | Similar-but-not-identical logic across modules | ✗ force into one abstraction with flags — keep separate |
-| External dependency used in multiple modules | Wrap in adapter (architecture mandate); See architecture/STANDARDS.md §3 |
-| Complex subsystem with many internal functions | Expose facade; keep internals private; See §3 (Facade) |
-| Single-use helper function | Inline unless it clarifies intent at call site |
+| External dependency used across modules | Wrap in an adapter (architecture mandate) |
+| Complex subsystem with many internals | Expose a facade · keep internals private |
+| Single-use helper | Inline unless it clarifies intent at the call site |
 
-### Abstraction Level Consistency
+### When ✗ to Abstract
 
-Every function body operates at one abstraction level. ✗ mix high-level orchestration with low-level detail in same function.
-
-| Signal | Problem | Fix |
-|---|---|---|
-| Function calls high-level `process_order()` and low-level `str.split(",")` in same body | Mixed abstraction levels | Extract low-level ops into named function |
-| Function contains both business rule and data formatting | Tier mixing | Split into Tier 1 (rule) + Tier 2 (orchestration) or Tier 3 (formatting) |
-| Comments explaining "what this block does" | Block is an unnamed abstraction | Extract to named function — name replaces comment |
-
-### When NOT to Abstract
-
-| Situation | Why |
+| Situation | Reason |
 |---|---|
-| Abstraction has only one implementation and no planned variants | Indirection without value — use concrete type |
-| Abstraction wraps library with identical API | Pass-through wrapper adds nothing — abstract only if API must differ |
-| "For testing purposes" as sole reason | Use other test strategies (dependency injection, test doubles) |
-| Abstraction name is vaguer than concrete name | Abstraction obscures rather than clarifies — keep concrete |
+| One implementation and no planned variant | Indirection without value — use the concrete type |
+| Wrapper exposes the same API as the library it wraps | Pass-through adds nothing — abstract only when the API must differ |
+| "For testing" is the only reason | Use test doubles or injection → [testing](../testing/STANDARDS.md) |
+| Abstraction name is vaguer than the concrete name | It obscures rather than clarifies |
 
-### Leaky Abstraction Rules
+### Leaky Abstraction
 
-| Rule | Description |
+| Rule | Detail |
 |---|---|
-| Callers never handle implementation-specific errors | Abstraction translates errors to its own vocabulary |
-| Callers never configure implementation-specific settings | Abstraction maps generic config to implementation detail |
-| Swapping implementation requires zero caller changes | If callers must change → abstraction is leaky |
-| Performance characteristics documented | Abstractions that hide O(n) behind O(1)-looking API must document cost |
+| Callers ✗ handle implementation-specific errors | Abstraction translates errors into its own vocabulary |
+| Callers ✗ set implementation-specific settings | Abstraction maps generic config onto implementation detail |
+| Swapping the implementation requires zero caller changes | Caller must change → the abstraction is leaky |
+| Cost documented | Abstraction hiding O(n) behind an O(1)-looking API documents the cost |
+
+### YAGNI
+
+Every abstraction, config option, and extension point serves a current, demonstrated need. ✗ build for hypothetical requirements — removing speculative code later costs more than adding needed code when the need appears.
 
 ---
 
 ## 7. Module Design
 
-Module = unit of deployment, compilation, or import (file, package, crate, namespace). Modules are the primary unit of design — functions are implementation detail within modules.
+Module = unit of import, compilation, or deployment (file · package · crate · namespace). Modules are the primary design unit; functions are implementation detail within them.
 
-### Single Responsibility at Module Level
+### Responsibility
 
-| Rule | Description |
+| Rule | Detail |
 |---|---|
-| One domain concept per module | `user_auth`, `order_processing`, `price_calculation` — not `user_stuff` |
-| Name = noun (domain entity) or verb-phrase (action) | `payment_gateway`, `validate_input` — ✗ `utils`, `misc`, `common` |
-| Change frequency alignment | Elements that change together live together; elements that change independently live apart |
-| Module size: 100–400 lines typical | < 50 → likely belongs inside another module; > 500 → split by sub-responsibility |
+| One domain concept per module | `user_auth` · `order_processing` · `price_calculation` · ✗ `user_stuff` |
+| Name = noun (entity) or verb-phrase (action) | `payment_gateway` · `validate_input` · ✗ `utils` · ✗ `misc` · ✗ `common` |
+| Change-frequency alignment | Elements that change together live together; elements that change independently live apart |
+| Size 100–400 lines | < 50 → likely belongs inside another module. > 500 → split by sub-responsibility |
 
-### Public API Surface
+### Public Surface
 
-| Rule | Description |
+| Rule | Detail |
 |---|---|
 | Explicit exports | Module declares what is public — everything else is internal by default |
-| Minimal surface area | Expose only what external callers need; fewer public functions = more freedom to refactor internals |
-| Public functions: max 7 per module | Beyond 7 → module likely has multiple responsibilities |
-| ✗ exposing internal types in public signatures | Return types and parameter types are part of module's public contract |
-| Re-export from index/root | Module's public API accessible from single import path |
+| Max 7 public functions | Beyond 7 → the module has multiple responsibilities |
+| ✗ internal types in public signatures | Parameter and return types are part of the public contract |
+| Single import path | Public API reachable from the module root — ✗ deep imports into internal paths |
 
 ### Internal Structure
 
-| Rule | Description |
+| Rule | Detail |
 |---|---|
-| Private helpers clustered near their caller | Reader finds helper near usage — ✗ scattered across file |
-| Public functions at top of file | Caller sees API first, implementation detail later |
-| One level of internal decomposition | Module has public functions + private helpers. ✗ nested sub-modules within a module unless module is a package |
-| Constants at file top | After imports, before functions |
+| Public functions first | Reader sees the contract before implementation detail |
+| Private helpers near their caller | ✗ scattered across the file |
+| One level of internal decomposition | Public functions + private helpers. ✗ nested sub-modules unless the module is a package |
 
-### Module Dependency Rules
+### Cohesion Test
 
-| Rule | Description |
+Ask: "If I delete this module, what breaks?"
+
+| Answer | Diagnosis |
 |---|---|
-| Import only public API of other modules | ✗ deep imports reaching into internal paths |
-| Depend on interface, not implementation | When crossing tier boundaries; See §4 (Dependency Inversion) |
-| Acyclic dependency graph | If A imports B, B never imports A — directly or transitively; See architecture/STANDARDS.md §3 |
-| Shared types live in Tier 0 | Types needed by multiple modules → extract to kernel; See architecture/STANDARDS.md §2 |
-
-### Module Cohesion Test
-
-Ask: "If I delete this module, what breaks?" Answer reveals the module's responsibility.
-
-| Answer | Assessment |
-|---|---|
-| One feature/capability breaks | Good — high cohesion |
-| Multiple unrelated features break | Bad — module has multiple responsibilities, split it |
-| Nothing breaks | Dead code — remove the module |
-| Everything breaks | Module is Tier 0 kernel — verify it belongs there |
+| One feature breaks | High cohesion — correct |
+| Multiple unrelated features break | Multiple responsibilities → split |
+| Nothing breaks | Dead code → delete the module |
+| Everything breaks | It is an innermost-layer module — verify it belongs there |
 
 ---
 
-## 8. State Machine Patterns
+## 8. State Machines
 
-State machine = entity with defined states, transitions between states, and behavior that varies per state. Use when an entity has ≥ 3 distinct states with constrained transitions.
+Use when an entity has ≥ 3 distinct states with constrained transitions.
 
 ### When to Use
 
-| Situation | Use State Machine? |
+| Situation | State machine? |
 |---|---|
-| Entity has 2 states (on/off, active/inactive) | No — boolean + if/else suffices |
-| Entity has 3+ states with defined transitions | Yes |
-| Invalid state transitions must be prevented at design level | Yes |
-| Behavior differs per state (same input → different output) | Yes |
-| Entity has temporal lifecycle (created → processing → completed → archived) | Yes |
-| Status tracked as string with ad-hoc comparisons scattered across code | Refactor to state machine |
+| 2 states (on/off · active/inactive) | ✗ No — boolean + branch |
+| ≥ 3 states with defined transitions | Yes |
+| Invalid transitions must be impossible by construction | Yes |
+| Same input → different output depending on state | Yes |
+| Temporal lifecycle (created → processing → completed → archived) | Yes |
+| Status held as a string, compared ad-hoc across the codebase | Yes — refactor now |
 
-### State Machine Rules
+### Rules
 
-| Rule | Description |
+| Rule | Detail |
 |---|---|
-| States defined as enum/union type | ✗ string literals · ✗ integer codes — compiler-checked types only |
-| All valid transitions defined explicitly | Transition table or match/switch covering every state × event combination |
-| Invalid transitions = error, not silent no-op | Attempting illegal transition raises/returns error immediately |
-| Each state carries its own data | State `Processing` holds `{started_at, progress}` — state `Completed` holds `{result, duration}` — ✗ nullable fields for "not applicable in this state" |
-| Entry/exit actions explicit | Side effects on entering/leaving state declared alongside transition, not hidden in unrelated code |
-| Current state always queryable | External code can ask "what state?" without triggering transition |
+| States are an enum or union type | ✗ string literals · ✗ integer codes |
+| All valid transitions enumerated | Transition table covering every state × event pair |
+| Invalid transition = error | Raises or returns an error immediately · ✗ silent no-op |
+| Each state carries its own data | `Processing{started_at, progress}` · `Completed{result, duration}` · ✗ nullable fields meaning "not applicable here" |
+| Entry/exit actions declared with the transition | ✗ hidden in unrelated code |
+| Current state always queryable | Reading the state ✗ triggers a transition |
+| ✗ implicit states | `if running and has_error` is a hidden state — name it (`FailedWhileRunning`) |
+| Terminal states marked | States with no outgoing transition are explicit |
+| Persist state + transition history | Current state alone is insufficient for debugging |
+| Machine lives in the engine layer | Transition function is pure: (state, event) → (state, actions). Actions execute at the outermost layer |
 
-### Transition Table Format
-
-Define all transitions as a table (conceptual or literal data structure):
-
-| Current State | Event | Next State | Guard Condition | Action |
-|---|---|---|---|---|
-| Idle | Start | Running | Input valid | Initialize resources |
-| Running | Complete | Succeeded | Result present | Store result |
-| Running | Fail | Failed | Error present | Log error |
-| Running | Cancel | Cancelled | — | Release resources |
-| Failed | Retry | Running | Retry count < max | Reset, re-initialize |
-| Succeeded | Archive | Archived | — | Move to cold storage |
-
-### State Machine Design Rules
-
-| Rule | Description |
-|---|---|
-| No implicit states | If code checks `if running and has_error` → that is a hidden state. Make it explicit (`FailedWhileRunning`) |
-| Terminal states are explicit | States with no outgoing transitions clearly marked |
-| Persistence: store state + transition history | Current state alone insufficient for debugging — keep log of transitions |
-| State machine lives in Tier 1 | Pure logic — transition function takes (current_state, event) → (new_state, actions). I/O for actions executed in Tier 3 |
+Every machine is defined by one transition table with columns: current state · event · next state · guard · action.
 
 ---
 
 ## 9. Data Flow Patterns
 
-How data moves through the system. Selection depends on coupling requirements, timing, and cardinality. See architecture/STANDARDS.md §1 (Principle 25: unidirectional data flow).
+Selection depends on coupling, timing, and cardinality.
 
-### Pattern Selection Table
-
-| Pattern | Topology | Timing | Coupling | Best For |
+| Pattern | Topology | Timing | Coupling | Best for |
 |---|---|---|---|---|
-| Pipeline | Linear: A → B → C | Synchronous | Low (data only) | Data transforms, ETL, validation chains |
-| Request-Response | Point-to-point: A ↔ B | Synchronous | Medium (interface) | API calls, function calls, service invocations |
-| Event / Pub-Sub | Fan-out: A → {B, C, D} | Asynchronous | Low (event schema only) | Notifications, audit, cross-module reactions |
-| Command Queue | Buffered: A → [queue] → B | Asynchronous | Low (command schema only) | Task scheduling, work distribution, rate smoothing |
-| Streaming | Continuous: source →→→ sink | Continuous | Medium (protocol) | Real-time data, log processing, live metrics |
-| Callback / Hook | Inverted: B calls A-provided function | Synchronous | Medium (function signature) | Plugin points, middleware, lifecycle hooks |
+| Pipeline | Linear A → B → C | Sync | Low (data only) | Transforms · ETL · validation chains |
+| Request-Response | Point-to-point A ↔ B | Sync | Medium (interface) | API calls · service invocation |
+| Event / Pub-Sub | Fan-out A → {B, C, D} | Async | Low (event schema) | Notifications · audit · cross-module reactions |
+| Command Queue | Buffered A → [queue] → B | Async | Low (command schema) | Task scheduling · work distribution · rate smoothing |
+| Streaming | Continuous source →→ sink | Continuous | Medium (protocol) | Real-time data · log processing · live metrics |
+| Callback / Hook | Inverted: B calls A's function | Sync | Medium (signature) | Plugin points · middleware · lifecycle hooks |
 
-### Pipeline Pattern Rules
-
-| Rule | Description |
-|---|---|
-| Each stage: single input type → single output type | See architecture/STANDARDS.md §4 (pipeline contract) |
-| Stages are independently testable | Pass test data in, assert output — no pipeline harness needed |
-| Stage order explicit | Declared in orchestrator (Tier 2), not implicit through import order |
-| ✗ stage skipping based on runtime flags | Each stage handles its own "nothing to do" case and passes data through |
-| Error in one stage → pipeline stops or accumulates | Decision explicit per pipeline; See architecture/STANDARDS.md §7 (partial failure) |
-
-### Event / Pub-Sub Rules
-
-| Rule | Description |
-|---|---|
-| Events are immutable facts | Published events ✗ modified after emission — they represent what happened |
-| Event schema defined in Tier 0 | Shared vocabulary — producers and consumers depend on schema, not on each other |
-| Subscriber failure ✗ affects publisher | Publisher emits and continues — subscriber errors isolated |
-| Event ordering guaranteed within single producer | Cross-producer ordering requires explicit sequencing |
-| Dead letter handling | Events that fail processing routed to dead letter queue/log — ✗ silently dropped |
-
-### Request-Response Rules
-
-| Rule | Description |
-|---|---|
-| Caller defines expected response type | Contract-first — response shape agreed before implementation; See architecture/STANDARDS.md §1 (Principle 9) |
-| Timeout on every request | No unbounded waits — every call has explicit timeout; See architecture/STANDARDS.md §9 |
-| Retry with idempotency | Safe retries require idempotent operations; See architecture/STANDARDS.md §4 |
-| Error response same structure as success | Caller handles one response type — error info embedded, not thrown |
-
-### Data Flow Selection Criteria
+### Selection Criteria
 
 | Criterion | Pipeline | Request-Response | Event / Pub-Sub | Command Queue |
 |---|---|---|---|---|
 | Producer knows consumer? | Yes (next stage) | Yes (target) | No | No |
 | Consumer count | 1 per stage | 1 | 0–N | 1–N workers |
 | Failure isolation | Stage-level | Caller handles | Subscriber-level | Worker-level |
-| Backpressure | Natural (sync) | Natural (sync) | Requires explicit mechanism | Queue depth limit |
-| Ordering guarantee | Strict (sequential) | N/A | Per-producer | FIFO per queue |
+| Backpressure | Natural (sync) | Natural (sync) | Explicit mechanism required | Queue depth limit |
+| Ordering | Strict sequential | N/A | Per-producer | FIFO per queue |
+
+### Per-Pattern Rules
+
+| Pattern | Rule |
+|---|---|
+| Pipeline | Each stage: single input type → single output type. Pipeline contract → [architecture](../architecture/STANDARDS.md) §4 |
+| Pipeline | Stages independently testable — feed test data in, assert output, no harness |
+| Pipeline | Stage order declared in the orchestrator · ✗ implicit through import order |
+| Pipeline | ✗ stage skipping on runtime flags — each stage handles its own "nothing to do" case and passes data through |
+| Pipeline | Failure policy declared per pipeline: stop-on-first vs accumulate-all |
+| Event | Events are immutable facts · ✗ modified after emission |
+| Event | Event schema lives in the innermost layer — producers and consumers depend on the schema · ✗ on each other |
+| Event | Subscriber failure ✗ affects the publisher — publisher emits and continues |
+| Event | Ordering guaranteed per producer only; cross-producer ordering requires explicit sequencing |
+| Event | Failed events route to a dead-letter queue · ✗ silently dropped |
+| Request-Response | Response type agreed before implementation — contract-first |
+| Request-Response | Timeout on every request · ✗ unbounded waits |
+| Request-Response | Retry only on idempotent operations → [architecture](../architecture/STANDARDS.md) §4 |
+| Request-Response | Error response shares the success structure — caller handles one response type |
 
 ---
 
-## 10. Scale Matrix
+## 10. Anti-Patterns
 
-Apply design rules proportionally to project scale. See architecture/STANDARDS.md §12 for architecture-level scale matrix.
+| Anti-pattern | Symptom | Fix |
+|---|---|---|
+| Speculative pattern | Pattern chosen "for future flexibility" with no current need | Remove it until the need exists |
+| Single-variant abstraction | Factory creates exactly one type · Strategy has one implementation · Observer has one subscriber | Direct construction · inline the algorithm · direct call |
+| Decorator tower | Decorator chain > 3 deep | Merge decorators or redesign |
+| Pass-through wrapper | Wrapper exposes the delegate's API unchanged | Delete the wrapper |
+| Utils bucket | Module named `utils` · `helpers` · `common` · `misc` | Redistribute each function to its domain module |
+| God interface | One interface consumed by every module | Split by consumer role (§4) |
+| Flag-driven behavior | Enum/boolean argument selecting unrelated code paths | Separate functions or Strategy |
+| Stringly-typed state | Status tracked as a string with scattered comparisons | State machine (§8) |
+| Nullable-field state | Struct with fields that are "only valid in some states" | Per-state data (§8) |
+| Anemic abstraction | Interface whose name is vaguer than the concrete type it hides | Use the concrete type |
+| Deep inheritance | Hierarchy > 2 levels | Refactor to composition (§5) |
 
-| Design Area | PoC / Script | Small Project | Production System |
+---
+
+## 11. Scale Matrix
+
+| Dimension | Prototype | Production | Scale |
 |---|---|---|---|
-| SOLID (§1) | SRP at function level | SRP at module level · OCP for extensible parts | Full SOLID enforcement |
-| Coupling (§2) | Data coupling sufficient | Measure fan-out · eliminate common coupling | Full coupling metrics · review gate |
-| Patterns (§3) | ✗ patterns — direct code | Strategy · Factory where needed | Full pattern vocabulary as problems arise |
-| Interfaces (§4) | Implicit (function signatures) | Explicit module exports | Typed interfaces · versioned contracts |
-| Composition (§5) | Functions calling functions | Delegation · higher-order functions | Full composition · middleware chains · plugin systems |
-| Abstraction (§6) | Inline everything | Rule of three | Tiered abstractions · facade for subsystems |
-| Module design (§7) | Single file | Modules by domain concept | Full module boundaries · max 7 public functions |
-| State machines (§8) | Boolean flags | Enum-based state | Full state machine with transition table |
-| Data flow (§9) | Direct function calls | Pipeline for transforms | Pipeline + Pub-Sub + Command Queue as needed |
+| SOLID (§1) | SRP at function level | SRP at module level · OCP for extension points | Full SOLID enforced at review |
+| Coupling (§2) | Data coupling only | Fan-out measured · common coupling eliminated | Coupling metrics gate the build |
+| Patterns (§3) | ✗ patterns — direct code | Factory · Strategy where the problem exists | Full vocabulary as problems arise |
+| Interfaces (§4) | Implicit — function signatures | Explicit module exports | Typed interfaces · versioned contracts |
+| Composition (§5) | Functions calling functions | Delegation · higher-order functions | Middleware chains · plugin systems |
+| Abstraction (§6) | Inline everything | Rule of three | Facades for subsystems · documented costs |
+| Module design (§7) | Single file | Modules by domain concept | ≤ 7 public functions enforced |
+| State machines (§8) | Boolean flags | Enum-based state | Full transition table + history persisted |
+| Data flow (§9) | Direct calls | Pipeline for transforms | Pipeline + Pub-Sub + Command Queue |
 
-### Scale Transition Triggers
+### Transition Triggers
 
 | From → To | Trigger |
 |---|---|
-| PoC → Small | Project maintained > 1 month · has > 1 contributor · or > 5 modules |
-| Small → Production | Serves external users · handles real data · requires reliability guarantees · or > 20 modules |
+| Prototype → Production | Maintained > 1 month · > 1 contributor · or > 5 modules |
+| Production → Scale | External users · real data · reliability guarantees · or > 20 modules |
 
 ---
 
-## 11. Design Checklist
+## 12. Checklist
 
-### New Module
-
-- [ ] Module has single, named responsibility (§1 SRP, §7)
-- [ ] Public API surface ≤ 7 functions (§7)
-- [ ] All exports explicitly declared (§7)
-- [ ] No circular dependencies (§2, architecture/STANDARDS.md §3)
-- [ ] Fan-out ≤ 7 direct dependencies (§2)
-- [ ] ✗ `utils` / `helpers` / `common` naming (§2 cohesion)
-- [ ] Types shared across modules live in Tier 0 (§7, architecture/STANDARDS.md §2)
-
-### New Interface / Contract
-
-- [ ] Shaped by consumer needs, not implementation capabilities (§4)
-- [ ] ≤ 5 methods per interface (§4)
-- [ ] No implementation details leak through return types or errors (§4, §6)
-- [ ] Boolean parameters replaced with enums (§4)
-- [ ] Return types structured, not raw collections (§4, architecture/STANDARDS.md §4)
-- [ ] Evolution plan: additive-only changes, deprecation path (§4)
-
-### Pattern Application
-
-- [ ] Pattern solves existing problem, not hypothetical one (§3)
-- [ ] No pattern wrapping single concrete type (§3 anti-patterns)
-- [ ] Strategy/Observer/Factory has ≥ 2 implementations (§3)
-- [ ] Decorator chain ≤ 3 deep (§3)
-- [ ] State machine used when ≥ 3 states with constrained transitions (§8)
-
-### Composition
-
+- [ ] Every module has one named responsibility (§1, §7)
+- [ ] No module named `utils` · `helpers` · `common` · `misc` (§2, §7)
+- [ ] Zero common coupling — no shared mutable module-level state (§2)
+- [ ] Fan-out ≤ 7 direct dependencies per module (§2)
+- [ ] Dependency chain depth ≤ 4 hops (§2)
+- [ ] Zero circular dependencies (§2)
+- [ ] Every pattern applied solves an existing problem, not a hypothetical one (§3)
+- [ ] No Factory/Strategy/Observer with exactly one variant (§3, §10)
+- [ ] Every interface has ≤ 5 methods, lifecycle interfaces excepted (§4)
+- [ ] Interfaces shaped by consumer needs, not implementation capability (§4)
+- [ ] No implementation detail leaks through return types or errors (§4, §6)
+- [ ] Fallible operations return a success-or-error union, never null (§4)
+- [ ] Interface changes are additive; new fields carry defaults (§4)
 - [ ] Inheritance depth ≤ 2 levels (§5)
-- [ ] Each composed piece independently testable (§5)
+- [ ] Every composed piece is independently testable (§5)
 - [ ] Delegation targets interfaces, not concrete types (§5)
-- [ ] Middleware order explicitly declared (§5)
-
-### Abstraction
-
-- [ ] Abstraction justified by rule-of-three or architecture mandate (§6)
-- [ ] Abstraction level consistent within each function body (§6)
-- [ ] Swapping implementation requires zero caller changes (§6)
-- [ ] No pass-through wrappers that add nothing (§6)
-
-### Data Flow
-
-- [ ] Data flows one direction — no cycles (§9, architecture/STANDARDS.md §6)
-- [ ] Pipeline stages independently testable (§9)
-- [ ] Events are immutable facts with schema in Tier 0 (§9)
-- [ ] Every async call has explicit timeout (§9, architecture/STANDARDS.md §9)
-- [ ] Failure handling strategy explicit per flow (§9)
+- [ ] Middleware order declared explicitly (§5)
+- [ ] Every abstraction justified by rule-of-three or architecture mandate (§6)
+- [ ] No pass-through wrapper that adds nothing (§6, §10)
+- [ ] Swapping any implementation requires zero caller changes (§6)
+- [ ] Module public surface ≤ 7 functions, all exports explicit (§7)
+- [ ] Deleting the module would break exactly one feature (§7)
+- [ ] Entities with ≥ 3 states use a state machine with an enumerated transition table (§8)
+- [ ] Invalid state transitions raise an error, never a silent no-op (§8)
+- [ ] No state represented by a string or by nullable "sometimes valid" fields (§8, §10)
+- [ ] Every pipeline declares its failure policy (§9)
+- [ ] Events are immutable, schema-defined, and dead-lettered on failure (§9)
+- [ ] Every request has an explicit timeout (§9)
+- [ ] No anti-pattern from §10 present in the change

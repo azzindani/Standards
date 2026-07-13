@@ -1,626 +1,499 @@
 # Performance Standards
 
-Rules for measuring, budgeting, and optimizing system performance.
-Measure first, optimize second. Every optimization traces to measured data.
+> How systems are budgeted, measured, profiled, cached, and kept fast under load.
 
-Derived from: Mechanical Sympathy, Brendan Gregg's USE Method,
-Google SRE performance practices, cache-aside/write-through patterns,
-database query optimization, Linux kernel resource management,
-and principle #29 from architecture/STANDARDS.md §1.
-
-Composable with: Architecture Standards, Database Standards,
-Observability Standards, API Standards, DevOps Standards.
+**ID** `performance` · **Tier** Core · **Version** 1.0
+**Owns** performance budgets · percentile measurement · profiling method · caching strategy · memory + I/O optimization · algorithmic discipline · timeouts + load shedding · benchmark regression gates
+**Defers to** pagination + N+1 remediation → [database](../database/STANDARDS.md) · browser metrics (LCP · INP · CLS) → [web](../web/STANDARDS.md) · load · soak · spike · chaos execution → [testing/PRESSURE.md](../testing/PRESSURE.md) · coverage + pyramid → [testing](../testing/STANDARDS.md) · alert thresholds + SLO burn-rate → [observability](../observability/STANDARDS.md) · pipeline stages → [cicd](../cicd/STANDARDS.md) · layer model + backpressure architecture → [architecture](../architecture/STANDARDS.md) · infra cost + capacity spend → [devops](../devops/STANDARDS.md)
+**Load with** [architecture](../architecture/STANDARDS.md) · [observability](../observability/STANDARDS.md) · [database](../database/STANDARDS.md)
 
 ---
 
 ## Table of Contents
 
-1. [Performance Philosophy](#1-performance-philosophy)
-2. [Performance Budgets](#2-performance-budgets)
-3. [Profiling](#3-profiling)
-4. [Caching Strategy](#4-caching-strategy)
-5. [Lazy Loading](#5-lazy-loading)
-6. [Memory Management](#6-memory-management)
-7. [I/O Optimization](#7-io-optimization)
-8. [Query Performance](#8-query-performance)
-9. [Algorithm Selection](#9-algorithm-selection)
-10. [Resource Budgets](#10-resource-budgets)
+1. [Principles](#1-principles)
+2. [Measurement](#2-measurement)
+3. [Performance Budgets](#3-performance-budgets)
+4. [Profiling](#4-profiling)
+5. [Caching Strategy](#5-caching-strategy)
+6. [Memory and Allocation](#6-memory-and-allocation)
+7. [I/O and Concurrency](#7-io-and-concurrency)
+8. [Query Performance Detection](#8-query-performance-detection)
+9. [Algorithmic Discipline](#9-algorithmic-discipline)
+10. [Resource Budgets and Load Shedding](#10-resource-budgets-and-load-shedding)
 11. [Benchmarking](#11-benchmarking)
-12. [Scale Matrix](#12-scale-matrix)
-13. [Performance Checklist](#13-performance-checklist)
+12. [Anti-Patterns](#12-anti-patterns)
+13. [Scale Matrix](#13-scale-matrix)
+14. [Checklist](#14-checklist)
 
 ---
 
-## 1. Performance Philosophy
-
-### Core Rules
+## 1. Principles
 
 | # | Rule |
 |---|---|
-| 1 | ✗ optimize without measurement — profiling data required before any change |
-| 2 | Correctness first, clarity second, performance third |
-| 3 | Optimize the hot path; ignore the cold path until budgets break |
-| 4 | One change per optimization cycle — isolate cause and effect |
-| 5 | Every optimization carries a readability cost — cost must justify gain |
-| 6 | Measure end-to-end latency, not just component time |
-| 7 | Performance is a feature with regression tests, not an afterthought |
-| 8 | ✗ speculative optimization — "it might be slow" is not evidence |
+| 1 | Measure, ✗ guess — profiling data required before any optimization lands |
+| 2 | Correctness first · clarity second · performance third |
+| 3 | Optimize the hot path; leave the cold path alone until a budget breaks |
+| 4 | One change per optimization cycle — isolate cause from effect |
+| 5 | Every optimization costs readability — the measured gain must justify it |
+| 6 | Measure end-to-end latency, ✗ component time alone |
+| 7 | Performance is a feature with regression gates, ✗ an afterthought |
+| 8 | ✗ speculative optimization — "it might be slow" is not evidence. Fast-and-wrong is still wrong |
 
 ### Optimization Protocol
 
-1. Define performance budget for the operation (§2)
-2. Measure current performance against budget
-3. If within budget → stop. ✗ optimize what is fast enough
-4. Profile to identify bottleneck (§3)
-5. Fix the single largest bottleneck
-6. Measure again — verify improvement, check for regressions
-7. Repeat from step 3 until budget met
+1. Define budget for the operation (§3).
+2. Measure current performance against budget.
+3. Within budget → stop. ✗ optimize what is fast enough.
+4. Profile to locate the bottleneck (§4).
+5. Fix the single largest bottleneck.
+6. Re-measure — confirm gain, check for regressions elsewhere.
+7. Repeat from step 3 until budget met.
 
-### Amdahl's Law Awareness
-
-Optimizing a component that accounts for 5% of total time yields
-at most 5% improvement. Always identify the dominant time consumer
-before optimizing. If 90% of time is I/O, optimizing CPU logic is waste.
+**Amdahl's Law** — optimizing a component consuming 5% of total time yields ≤ 5% improvement. Identify the dominant consumer before touching code. 90% of time in I/O → CPU micro-optimization is waste.
 
 ---
 
-## 2. Performance Budgets
+## 2. Measurement
 
-### Response Time Tiers
+### Percentiles, Never Averages
 
-| Operation class | P50 target | P99 target | Hard ceiling |
+| Rule | Detail |
+|---|---|
+| ✗ average latency | Mean hides the tail; a bimodal distribution has no meaningful mean |
+| Report p50 · p95 · p99 always | Three numbers minimum for every latency metric |
+| p99 is the accountability metric | It is the experience of your worst-served 1% — real users, not outliers |
+| p50 is the planning metric | Capacity and cost models key off median |
+| p99.9 for high-fan-out systems | A request touching 100 services hits someone's p99 nearly always |
+| ✗ average percentiles together | Aggregate raw distributions/histograms, ✗ per-instance p99s |
+| Max is a signal, ✗ a target | Investigate max; ✗ budget against it |
+
+### Latency vs Throughput
+
+Latency = time for one operation. Throughput = operations/sec at saturation. They trade against each other: batching + deep queues buy throughput and pay in tail latency.
+
+- Declare per operation class which one is primary — ✗ optimize both blindly. Interactive → latency. Batch/pipeline → throughput.
+- Latency degrades non-linearly near saturation — throughput gained above ~70% utilization is paid for in the tail.
+- Queue depth is latency debt: wait time = queue depth ÷ service rate.
+- Measure at the boundary the user experiences, ✗ only inside the component. Durations from a monotonic clock — ✗ wall clock.
+- Measurement overhead is itself budgeted — sampling profilers over exhaustive tracing on hot paths.
+
+---
+
+## 3. Performance Budgets
+
+Budget = a number an operation is not allowed to exceed. Undefined budget → performance is unmanaged.
+
+### Response Time Budgets
+
+| Operation class | p50 | p99 | Hard ceiling |
 |---|---|---|---|
-| In-memory lookup | < 1ms | < 5ms | 10ms |
-| Local cache hit | < 5ms | < 20ms | 50ms |
-| Database read (indexed) | < 10ms | < 50ms | 200ms |
-| Database write | < 20ms | < 100ms | 500ms |
-| External API call | < 100ms | < 500ms | 2s |
-| Report/aggregation | < 500ms | < 2s | 10s |
-| Batch job (per item) | < 50ms | < 200ms | 1s |
-| Full page render | < 200ms | < 1s | 3s |
+| In-memory lookup | < 1 ms | < 5 ms | 10 ms |
+| Local cache hit | < 5 ms | < 20 ms | 50 ms |
+| Database read (indexed) | < 10 ms | < 50 ms | 200 ms |
+| Database write | < 20 ms | < 100 ms | 500 ms |
+| External API call | < 100 ms | < 500 ms | 2 s |
+| Report / aggregation | < 500 ms | < 2 s | 10 s |
+| Batch job (per item) | < 50 ms | < 200 ms | 1 s |
+| Full page render | < 200 ms | < 1 s | 3 s |
 
-P99 is the accountability metric. P50 is the planning metric.
-Hard ceiling = circuit-breaker trigger point.
+Hard ceiling = timeout + circuit-breaker trip point, ✗ a target.
+Browser-perceived metrics (LCP · INP · CLS) are owned by [web](../web/STANDARDS.md) — ✗ restate them here.
 
-### Startup Time Budgets
+### Startup and Memory Budgets
 
-| System type | Cold start target | Hard ceiling |
-|---|---|---|
-| CLI tool | < 100ms | 500ms |
-| Web server | < 2s | 10s |
-| Background worker | < 5s | 30s |
-| Desktop application | < 3s | 10s |
+| Component | Cold start | Start ceiling | Memory baseline | Memory ceiling |
+|---|---|---|---|---|
+| CLI tool | < 100 ms | 500 ms | < 50 MB | 200 MB |
+| Web server / request handler | < 2 s | 10 s | < 100 MB | 500 MB |
+| Background worker | < 5 s | 30 s | < 256 MB | 1 GB |
+| Desktop application | < 3 s | 10 s | — | — |
+| Data pipeline stage | — | — | < 512 MB | 2 GB |
 
-### Memory Budgets
+### CPU Budget
 
-| Component type | Baseline target | Hard ceiling |
-|---|---|---|
-| CLI tool | < 50MB | 200MB |
-| Web request handler | < 100MB | 500MB |
-| Background worker | < 256MB | 1GB |
-| Data pipeline stage | < 512MB | 2GB |
+Idle CPU per service < 2%. Sustained processing ceiling: 80% of allocated by default. Resource **alert** thresholds → [observability](../observability/STANDARDS.md); ✗ restate here.
 
-### CPU Budgets
+### Enforcement in CI
 
-Idle CPU consumption for any service < 2%.
-Sustained processing ceiling defined per deployment — default 80% of allocated.
-CPU spike above 90% for > 30s triggers alert.
-See observability/STANDARDS.md for alert configuration.
-
-### Budget Enforcement
-
-- Budgets defined at project start, recorded in project config
-- CI pipeline checks performance budgets on every merge — see cicd/STANDARDS.md
-- Budget violation = build warning; hard ceiling violation = build failure
-- Budget changes require documented justification + team review
+| Rule | Detail |
+|---|---|
+| Budgets declared at project start | Recorded in repo, versioned with code — ✗ tribal knowledge |
+| CI checks budgets on every merge | Budget exceeded → warning · hard ceiling exceeded → build failure. Stage placement → [cicd](../cicd/STANDARDS.md) |
+| Relaxing a budget requires written justification + review | ✗ silently raise the number to make CI green |
 
 ---
 
-## 3. Profiling
+## 4. Profiling
 
 ### When to Profile
 
 | Trigger | Action |
 |---|---|
-| Budget exceeded | Profile immediately — find bottleneck |
+| Budget exceeded | Profile immediately — find the bottleneck |
 | New critical path | Baseline profile before shipping |
-| Performance regression detected | Profile before/after comparison |
-| Scaling to new tier (see §12) | Re-profile under projected load |
-| ✗ "feels slow" without data | Get data first — instrument, then decide |
+| Regression detected | Before/after profile comparison |
+| Scale tier change (§13) | Re-profile under projected load |
+| "Feels slow", no data | ✗ act — instrument first, decide second |
 
 ### What to Measure
 
-| Dimension | Metric | Tool category |
+| Dimension | Metric | Tool class |
 |---|---|---|
 | Wall time | End-to-end latency per operation | APM · distributed tracing |
 | CPU time | User + system time per function | CPU profiler · flame graph |
 | Memory | Peak allocation · allocation rate · live set | Heap profiler · allocation tracker |
-| I/O | Read/write bytes · syscall count · wait time | I/O tracer · strace-class |
-| Lock contention | Wait time on locks · lock hold duration | Concurrency profiler |
-| GC pressure | GC pause time · frequency · promoted bytes | Runtime GC metrics |
+| I/O | Bytes read/written · syscall count · wait time | I/O tracer |
+| Lock contention | Wait time on locks · hold duration | Concurrency profiler |
+| GC pressure | Pause time · frequency · promoted bytes | Runtime GC metrics |
 | Cache | Hit rate · miss rate · eviction rate | Cache instrumentation |
 
-### Bottleneck Identification — USE Method
-
-For every resource (CPU, memory, disk, network, locks):
+### USE Method — per resource (CPU · memory · disk · network · locks)
 
 | Signal | Question |
 |---|---|
-| **U**tilization | What percentage of resource capacity is consumed? |
+| **U**tilization | What percentage of capacity is consumed? |
 | **S**aturation | Is work queuing because the resource is full? |
 | **E**rrors | Are errors occurring on this resource? |
 
-High utilization + saturation = bottleneck.
-High errors + low utilization = misconfiguration, not capacity.
+High utilization + saturation → bottleneck. High errors + low utilization → misconfiguration, not capacity.
 
 ### Profiling Rules
 
-- Profile under realistic load — synthetic micro-tests hide real bottlenecks
-- Profile in an environment matching production topology
-- Capture both CPU-bound and I/O-bound profiles separately
-- ✗ profile in debug/unoptimized builds — results not representative
-- Store profile baselines alongside benchmarks (§11) for regression comparison
-- Flame graphs = default visualization for CPU profiles
+- Profile under realistic load in an environment matching production topology — synthetic micro-tests hide real bottlenecks.
+- Capture CPU-bound and I/O-bound profiles separately — one masks the other.
+- ✗ profile debug/unoptimized builds — results are not representative.
+- Flame graphs = default visualization for CPU profiles. Store baselines with benchmarks (§11).
 
 ---
 
-## 4. Caching Strategy
+## 5. Caching Strategy
 
-### Decision Framework — When to Cache
+Cache = acceleration, ✗ storage. Data that exists only in cache is data already lost.
+
+### When to Cache
 
 | Condition | Cache? |
 |---|---|
-| Read-heavy, write-rare data | Yes |
-| Expensive computation, same inputs repeated | Yes |
+| Read-heavy, write-rare data · expensive computation with repeated inputs | Yes |
 | External API with rate limits | Yes — with TTL |
-| Data changes every request | ✗ no |
-| Data must be real-time consistent | ✗ no — use read-through only |
-| Cache key space unbounded | ✗ no — bound first, then cache |
+| Data changes every request · strict real-time consistency required | ✗ no — read through to source |
+| Key space unbounded | ✗ no — bound the key space first |
 
 ### Cache Layers
 
 | Layer | Scope | TTL range | Eviction |
 |---|---|---|---|
-| L1 — In-process | Single instance, single request/session | Seconds–minutes | LRU · size-bounded |
-| L2 — Shared local | Single host, all processes | Minutes–hours | LRU · TTL expiry |
-| L3 — Distributed | All hosts in cluster | Minutes–days | TTL · explicit invalidation |
-| L4 — CDN/edge | Geographically distributed | Hours–days | TTL · purge API |
+| L1 — in-process | One instance, one request/session | Seconds–minutes | LRU · size-bounded |
+| L2 — shared local | One host, all processes | Minutes–hours | LRU · TTL |
+| L3 — distributed | All hosts in cluster | Minutes–days | TTL · explicit invalidation |
+| L4 — CDN / edge | Geographic | Hours–days | TTL · purge API |
 
-Always start at L1. Add layers only when L1 miss rate exceeds budget.
-Each layer adds complexity + consistency risk.
+Start at L1. Add a layer only when the miss rate of the layer below breaks a budget — each layer adds a consistency failure mode. HTTP cache headers · CDN rules · browser cache → [web](../web/STANDARDS.md).
 
-### Cache Invalidation Rules
+### Write and Invalidation Patterns
 
-| Pattern | Use when | Consistency |
+| Pattern | Mechanism | Consistency |
 |---|---|---|
-| TTL expiry | Eventual consistency acceptable | Weak |
-| Write-through | Write updates cache + store simultaneously | Strong |
-| Write-behind | Write updates cache, async flush to store | Eventual |
-| Cache-aside | Application manages cache explicitly | Application-controlled |
-| Event-driven purge | Source emits change event → cache listener invalidates | Near-real-time |
+| Cache-aside | Application reads cache, loads + populates on miss | Application-controlled — default choice |
+| Write-through | Write updates cache + store synchronously | Strong; slower writes |
+| Write-behind | Write hits cache, async flush to store | Eventual; data loss window on crash |
+| TTL expiry | Entry dies on a clock | Weak — staleness bounded by TTL |
+| Event-driven purge | Source emits change event → cache invalidates | Near-real-time; requires event bus |
 
-### Cache Key Design
+Rules:
 
-- Keys deterministic from input parameters — same input → same key always
-- Include version/schema in key prefix — avoids stale data on schema changes
-- ✗ user-specific data in shared cache keys without namespace isolation
-- Key length bounded — hash long keys to fixed size
+- Every cache entry has a TTL — ✗ unbounded lifetime, even for "immutable" data.
+- Every cache has a max size + eviction policy — ✗ unbounded cache (it is a memory leak).
+- ✗ cache error responses — a transient 500 must not be served for a TTL.
+- Invalidation is the hard part: prefer short TTL over clever invalidation when correctness allows.
 
-### Cache Anti-Patterns
+### Stampede Protection — mandatory on any cache fronting an expensive origin
 
-| Anti-pattern | Problem | Fix |
-|---|---|---|
-| Unbounded cache | Memory leak — grows until OOM | Set max size + eviction policy |
-| No TTL | Stale data served indefinitely | Always set TTL, even if long |
-| Cache stampede | Many threads recompute on simultaneous expiry | Locking/coalescing on miss |
-| Caching errors | Error responses cached, served repeatedly | ✗ cache error results |
-| Cache as primary store | Data loss on eviction/restart | Cache is acceleration, not storage |
-
----
-
-## 5. Lazy Loading
-
-### Core Principle
-
-Defer expensive work until the result is actually needed.
-Pay initialization cost at first access, not at startup.
-
-### Where to Apply
-
-| Scenario | Lazy pattern |
+| Mechanism | Effect |
 |---|---|
-| Module imports with heavy init | Lazy import — load on first use |
-| Configuration from external source | Load on first read, cache result |
-| Database connections | Pool initialized on first query |
-| Large data structures | Build on demand, not at startup |
-| Optional features | Load only if feature path is triggered |
-| File/resource handles | Open on first I/O, not at construction |
+| Single-flight / request coalescing | Concurrent misses on one key → one origin call, all callers share the result |
+| Lock-on-miss | First miss takes a lock; others wait or serve stale |
+| Early / probabilistic refresh | Refresh before expiry with jittered probability — entry never expires under load |
+| TTL jitter | Randomize TTL ±10% — ✗ synchronized mass expiry |
+| Stale-while-revalidate | Serve stale entry, refresh in background |
+| Negative caching | Cache "not found" with a short TTL — bounds miss floods for absent keys |
 
-### Lazy Initialization Rules
+### Cache Keys and Metrics
 
-- Lazy init must be thread-safe — use language-idiomatic once/sync primitives
-- Initialization failure on first access must propagate clearly — ✗ silent fallback to null
-- Lazy-loaded resource must still respect startup time budgets (§2) for first-access latency
-- ✗ lazy-load on the hot path if first-access penalty exceeds P99 budget — warm eagerly instead
-- Document lazy behavior — callers must know first call may be slow
-
-### Eager vs Lazy Decision
-
-| Factor | Eager | Lazy |
-|---|---|---|
-| Used on every request | Eager — avoid per-request init check | |
-| Used on < 20% of requests | | Lazy — avoid wasted init |
-| Startup time is critical | | Lazy — defer to spread cost |
-| First-request latency critical | Eager — no cold-start penalty | |
-| Resource expensive to hold | | Lazy — hold only when needed |
+- Keys deterministic from inputs — same input → same key, always.
+- Version/schema prefix in every key — a schema change must not read stale-shaped data.
+- ✗ user-scoped data under a shared key without a namespace — cross-tenant leak.
+- Bound key length — hash long keys to a fixed size.
+- Track hit rate · miss rate · eviction rate · origin load **per layer**. Hit rate below budget → the cache is decoration; fix it or delete it.
 
 ---
 
-## 6. Memory Management
+## 6. Memory and Allocation
 
-### Allocation Awareness
+### Allocation Rules
 
-- Minimize allocations in hot loops — pre-allocate, reuse buffers
-- Prefer stack allocation over heap for short-lived data
-- Size collections at creation when final size is known or estimable
-- ✗ grow collections by appending one element at a time in tight loops
+- Minimize allocation in hot loops — pre-allocate, reuse buffers. Prefer stack allocation for short-lived data where the language offers the choice.
+- Size collections at creation when the final size is known or estimable. ✗ grow a collection one element at a time inside a tight loop.
+- Size buffers to the expected payload — ✗ default to MAX_SIZE "just in case".
 
 ### Object Pooling
 
-| Use pooling when | ✗ pool when |
+| Pool when | ✗ Pool when |
 |---|---|
-| Object creation is expensive (DB connections, threads) | Object creation is cheap (primitives, small structs) |
-| Objects are short-lived + high-frequency | Objects have long, variable lifetimes |
-| Fixed upper bound on concurrent objects is known | Pool size cannot be reasonably bounded |
+| Creation is expensive (DB connections, threads, TLS sessions) | Creation is cheap (primitives, small structs) |
+| Objects are short-lived + high-frequency | Lifetimes are long and variable |
+| Concurrent count has a known upper bound | Pool size cannot be bounded |
 
 Pool rules:
-- Every pool has explicit max size — see architecture/STANDARDS.md §9 resource budgets
-- Idle objects reclaimed after timeout — ✗ hold unused resources indefinitely
-- Borrowed objects returned to pool, never abandoned — use RAII/defer/finally patterns
-- Pool exhaustion strategy explicit: block | reject | create-temporary (pick one, document)
 
-### Buffer Reuse
+- Every pool has an explicit max size — see [architecture](../architecture/STANDARDS.md). Idle objects reclaimed after a timeout; ✗ hold unused resources indefinitely.
+- Borrowed objects always returned — RAII · defer · finally · context manager.
+- Exhaustion strategy declared explicitly: block | reject | create-temporary. Pick one, document it.
 
-- Allocate buffers once, clear and reuse across iterations
-- Use ring buffers for streaming data with fixed window
-- Size buffers to expected payload — ✗ default to MAX_SIZE "just in case"
-- Return buffers to a pool when operation completes
+### Eager vs Lazy Initialization
+
+| Factor | Choose |
+|---|---|
+| Used on every request | Eager — ✗ pay a per-request init check |
+| Used on < 20% of requests · expensive to hold idle | Lazy — ✗ waste init cost |
+| Startup budget is the binding constraint | Lazy — spread the cost |
+| First-request latency is the binding constraint | Eager — ✗ put a cold-start penalty on a user |
+
+- Lazy init must be thread-safe — language-idiomatic once/sync primitive. First-access failure propagates loudly; ✗ silent fallback to null/default.
+- ✗ lazy-load on the hot path when first-access cost exceeds the p99 budget — warm eagerly instead.
 
 ### Leak Prevention
 
-| Leak type | Prevention |
+| Leak | Prevention |
 |---|---|
-| Handle/connection leak | Deterministic cleanup — RAII, defer, finally, context managers |
-| Event listener leak | Remove listeners when owner is destroyed |
-| Closure/callback leak | ✗ capture references to long-lived objects in short-lived closures |
-| Cache leak | Bounded size + TTL on every cache (§4) |
-| Goroutine/task leak | Every spawned task has a cancellation path + timeout |
+| Handle / connection | Deterministic cleanup — RAII · defer · finally · context manager |
+| Event listener | Remove listener when the owner is destroyed |
+| Closure capture | ✗ capture long-lived references in short-lived closures |
+| Cache | Bounded size + TTL on every cache (§5) |
+| Task / thread | Every spawned task has a cancellation path + timeout |
 
-### Memory Profiling Triggers
-
-- Resident set grows monotonically over time → investigate leak
-- Allocation rate spikes during specific operations → profile those operations
-- GC pause time exceeds 50ms → reduce allocation rate or tune GC
-- Memory budget (§2) exceeded → profile peak allocation, optimize top consumers
+Triggers: resident set grows monotonically → leak hunt · GC pause > 50 ms → cut allocation rate · memory budget (§3) exceeded → profile peak allocation.
 
 ---
 
-## 7. I/O Optimization
-
-### Batching
-
-- Combine multiple small I/O operations into single batch call
-- Database: batch inserts/updates instead of row-at-a-time — see database/STANDARDS.md
-- Network: combine multiple API requests into batch endpoint when available
-- File: buffer writes, flush at interval or threshold — ✗ flush per line/record
+## 7. I/O and Concurrency
 
 ### Batching Thresholds
 
-| I/O type | Min batch size | Max batch size | Flush interval |
+| I/O type | Min batch | Max batch | Flush interval |
 |---|---|---|---|
-| Database writes | 10 rows | 1000 rows | 5s |
-| API calls | 5 requests | 100 requests | 2s |
-| File writes | 4KB | 64KB | 1s |
-| Log entries | 10 entries | 500 entries | 1s |
+| Database writes | 10 rows | 1000 rows | 5 s |
+| API calls | 5 requests | 100 requests | 2 s |
+| File writes | 4 KB | 64 KB | 1 s |
+| Log entries | 10 entries | 500 entries | 1 s |
 
-Adjust per workload — these are starting points, not absolutes.
+Starting points, tuned per workload. ✗ flush per line/record. Batch flushes on size **or** interval, whichever hits first — an unflushed batch is unbounded latency.
 
 ### Streaming vs Load-All
 
-| Choose streaming when | Choose load-all when |
+| Stream when | Load-all when |
 |---|---|
-| Data size exceeds available memory | Entire dataset fits comfortably in memory |
-| Processing is sequential/single-pass | Multiple passes over data required |
-| First result needed before all data arrives | All data needed before processing starts |
-| Data source is continuous/unbounded | Data source is finite + small |
+| Data exceeds available memory | Dataset fits comfortably in memory |
+| Processing is single-pass | Multiple passes required |
+| First result needed before all data arrives | All data needed before processing |
+| Source is unbounded/continuous | Source is finite + small |
 
-### Streaming Rules
+- Process as data arrives — ✗ accumulate the whole stream then process. Streaming pipeline has bounded memory regardless of input size.
+- Backpressure required: the consumer sets the pace, ✗ the producer. Architecture → [architecture](../architecture/STANDARDS.md).
 
-- Process data as it arrives — ✗ accumulate entire stream then process
-- Backpressure required — consumer controls pace, not producer
-  (see architecture/STANDARDS.md §9 backpressure)
-- Streaming pipeline has bounded memory regardless of input size
-- Each stage in pipeline processes + forwards before reading next chunk
+### Async and Connections
 
-### Async I/O
-
-- Default to async for network I/O — synchronous blocks thread on wait
-- Use async for file I/O only when concurrent file operations needed
-- ✗ mix sync and async I/O in the same code path — pick one model
-- Every async operation has explicit timeout — see §10
-- Async does not mean fire-and-forget — track completion, handle errors
-
-### Connection Management
-
-- Reuse connections — ✗ create new connection per request
-- Connection pools for database, HTTP, gRPC — sized per workload
-- Idle connection timeout: release unused connections after inactivity
-- Connection health checks: validate before borrowing from pool
-- Maximum connection lifetime: rotate connections to prevent stale state
+- Async by default for network I/O — a synchronous call blocks a thread for the whole wait. ✗ mix sync and async I/O in one code path.
+- Every async operation has an explicit timeout (§10). Async ✗ fire-and-forget — track completion, handle errors.
+- Reuse connections — ✗ new connection per request. Pool database · HTTP · gRPC, with health-check before borrow · idle timeout · max lifetime (rotate to shed stale state).
 
 ---
 
-## 8. Query Performance
+## 8. Query Performance Detection
 
-Cross-reference: database/STANDARDS.md for schema design, migration, transaction rules.
+Pagination strategy and N+1 remediation are owned by [database](../database/STANDARDS.md). This section covers **detection and profiling only** — ✗ restate keyset-vs-OFFSET rules here.
 
-### N+1 Prevention
+### N+1 Detection
 
-N+1 = loading a list, then issuing one query per item in the list.
+N+1 = load a list, then issue one query per item.
 
-| Pattern | Mechanism |
+| Detection method | Mechanism |
 |---|---|
-| Eager join | Single query joins related data upfront |
-| Batch loading | Collect IDs, load all related records in one query |
-| DataLoader pattern | Automatic batching + caching within request scope |
-| Denormalization | Store derived data alongside primary — avoids join entirely |
+| Query count per request as a metric | Instrument the data layer; alert when count scales with result-set size |
+| Query-count assertion in tests | Assert a fixed query count for a fixed fixture — count grows → test fails |
+| Slow-query log correlation | Many identical queries differing only in a bound parameter |
+| ORM/data-layer log in dev | Log every query with its calling site in development builds |
+| Code review trigger | Any list-then-lookup pattern is flagged |
 
-Rule: every list-then-lookup pattern flagged in code review.
-Automated detection in CI when tooling supports it.
+Query count per request has a budget like any other resource. Remediation → [database](../database/STANDARDS.md).
 
-### Pagination
+### Query Profiling
 
-- ✗ unbounded result sets — every list query has a LIMIT
-- Default page size: 20–100 items depending on payload weight
-- Cursor-based pagination for large/changing datasets — ✗ OFFSET for deep pages
-- OFFSET pagination acceptable for small, static datasets (< 10K rows)
-- Include total count only when explicitly requested — count queries are expensive
-
-### Index Strategy
-
-| Query pattern | Index type |
-|---|---|
-| Exact match lookup | B-tree (default) |
-| Range queries (dates, numbers) | B-tree |
-| Full-text search | Full-text / inverted index |
-| Geospatial queries | Spatial index |
-| High-cardinality equality checks | Hash index (where supported) |
-
-Index rules:
-- Every WHERE clause column used in production queries has an index
-- Composite indexes match query column order — leftmost prefix rule
-- ✗ index every column — indexes cost write performance + storage
-- Review query plans quarterly; drop unused indexes
-- Covering indexes for read-heavy queries — avoid table lookups
-
-### Query Plan Review
-
-- Run EXPLAIN/ANALYZE on every query touching > 1K rows or joining > 2 tables
-- Full table scans on tables > 10K rows = performance bug
-- Nested loop joins on large tables = investigate alternatives (hash join, merge join)
-- Query plan changes after schema migration → re-verify performance
+- Run EXPLAIN/ANALYZE on every query touching > 1K rows or joining > 2 tables. Re-verify plans after every schema migration — plans shift under new statistics.
+- Full table scan on a table > 10K rows = performance bug. Unbounded result set = performance bug; every list query has a LIMIT.
+- Track slow queries as a metric, ✗ an anecdote — see [observability](../observability/STANDARDS.md).
 
 ---
 
-## 9. Algorithm Selection
+## 9. Algorithmic Discipline
 
-### Complexity Awareness
-
-Every developer must know the time and space complexity of operations
-they use. "It works" is not sufficient — "it works within budget at
-expected scale" is the bar.
-
-### Common Operation Complexity
+Know the time and space complexity of what you call. "It works" is not the bar — "it works within budget at expected scale" is.
 
 | Operation | Acceptable | Investigate | ✗ Avoid |
 |---|---|---|---|
-| Collection lookup | O(1) hash · O(log n) tree | O(n) linear scan on large sets | O(n²) nested scans |
+| Collection lookup | O(1) hash · O(log n) tree | O(n) scan on small sets | O(n²) nested scans |
 | Sorting | O(n log n) | O(n²) on small sets only | O(n²) on unbounded input |
-| Search | O(log n) binary · O(1) hash | O(n) when set is small + unsorted | O(n) on large sorted sets |
-| Graph traversal | O(V+E) BFS/DFS | | O(V²) adjacency matrix on sparse graphs |
-| String matching | O(n+m) linear | O(nm) on short patterns | O(nm) on long text + pattern |
-
-### Data Structure Selection
+| Search | O(log n) binary · O(1) hash | O(n) on small unsorted sets | O(n) on large sorted sets |
+| Graph traversal | O(V+E) BFS/DFS | — | O(V²) adjacency matrix on sparse graphs |
+| String matching | O(n+m) | O(nm) on short patterns | O(nm) on long text + pattern |
 
 | Need | Use | ✗ Avoid |
 |---|---|---|
-| Fast key lookup | Hash map / hash set | Linear scan through list |
-| Ordered iteration | Sorted tree / sorted array | Sort-on-every-access |
+| Fast key lookup | Hash map / set | Linear scan of a list |
+| Ordered iteration | Sorted tree / sorted array | Sort on every access |
 | Queue semantics | Ring buffer / deque | Array with shift-from-front |
-| Priority ordering | Heap / priority queue | Sort-then-pop repeatedly |
-| Membership test (approximate ok) | Bloom filter | Full set when false positives acceptable |
-| Append-heavy log | Append-only list / linked list | Array with frequent resizing |
+| Priority ordering | Heap | Sort-then-pop repeatedly |
+| Membership, false positives ok | Bloom filter | Full set in memory |
 
-### Rules
+Rules:
 
-- Choose data structure based on access pattern, not familiarity
-- When in doubt, profile both options — theoretical complexity hides constant factors
-- For collections < 100 elements, constant factors dominate — simpler structure often wins
-- ✗ premature data structure optimization — start simple, switch when profiling demands
-- Document non-obvious algorithm choices with complexity rationale in comments
+- Choose by access pattern, ✗ by familiarity. Below ~100 elements constant factors dominate — the simpler structure usually wins.
+- ✗ premature data-structure optimization. Start simple; switch when profiling demands it, and profile both options.
+- Document non-obvious algorithm choices with the complexity rationale.
 
 ---
 
-## 10. Resource Budgets
-
-Extends architecture/STANDARDS.md §1 principle #29 and §9 resource budgets.
+## 10. Resource Budgets and Load Shedding
 
 ### Budget Categories
 
-| Resource | Budget defined as | Enforcement |
+| Resource | Budget | Enforcement |
 |---|---|---|
-| Time | Max wall-clock per operation | Timeout — cancel after limit |
-| Memory | Max bytes allocated per operation | Allocation tracking — reject above limit |
-| Connections | Max concurrent connections per pool | Pool size cap — block or reject on exhaustion |
-| File descriptors | Max open handles per process | OS-level ulimit + application tracking |
-| Queue depth | Max items buffered per queue | Backpressure — block producer at limit |
-| Worker count | Max concurrent workers per pool | Pool bounded — architecture/STANDARDS.md §9 |
-| Disk space | Max storage per component | Rotation policy — archive or delete oldest |
-| Network bandwidth | Max bytes/sec per operation class | Rate limiting at client or gateway |
+| Time | Max wall-clock per operation | Timeout — cancel at limit |
+| Memory | Max bytes per operation | Allocation tracking — reject above limit |
+| Connections | Max concurrent per pool | Pool cap — block or reject on exhaustion |
+| File descriptors | Max open handles per process | OS ulimit + application tracking |
+| Queue depth | Max items buffered | Backpressure — block producer at limit |
+| Concurrency | Max in-flight operations | Bounded worker pool / semaphore |
+| Disk | Max storage per component | Rotation — archive or delete oldest |
+| Bandwidth | Max bytes/sec per operation class | Rate limit at client or gateway |
 
-### Timeout Strategy
+### Timeouts
 
-| Operation class | Timeout | On timeout |
+| Operation class | Timeout | On expiry |
 |---|---|---|
-| Internal function call | 1–10s depending on complexity | Cancel + return error |
-| Database query | 5–30s depending on query type | Cancel query + return error |
-| External API call | 2–10s | Cancel + circuit breaker increment |
-| Batch job (total) | Minutes–hours (defined per job) | Checkpoint + resume on restart |
-| Health check | 1–3s | Mark unhealthy |
+| Internal call | 1–10 s by complexity | Cancel + return error |
+| Database query | 5–30 s by query type | Cancel query + return error |
+| External API call | 2–10 s | Cancel + increment circuit breaker |
+| Batch job (total) | Defined per job | Checkpoint + resume on restart |
+| Health check | 1–3 s | Mark unhealthy |
 
-Rules:
-- Every outbound call has an explicit timeout — ✗ rely on system defaults
-- Timeout values derived from P99 measurements + safety margin (2–3x P99)
-- Cascading timeouts: caller timeout > callee timeout — prevents orphan work
-- Timeout at the outermost boundary catches all inner failures
+- Every outbound call has an explicit timeout — ✗ rely on library or system defaults (often infinite). Values derive from measured p99 × 2–3, ✗ from intuition.
+- Cascading rule: caller timeout > callee timeout — otherwise the callee orphans work the caller already abandoned.
+- Propagate a deadline through the call chain; ✗ start downstream work for a request that has already blown its deadline.
 
-### Rate Limiting
+### Backpressure and Load Shedding
 
-- Rate limits on all public API endpoints — see api/STANDARDS.md
-- Internal service-to-service rate limiting when downstream has known capacity
-- Rate limit responses include retry-after header/signal
-- Client-side rate limiting: respect limits, implement exponential backoff
+| Mechanism | Rule |
+|---|---|
+| Bounded queues | Every queue has a max depth — an unbounded queue converts overload into OOM |
+| Backpressure | At depth limit, block or reject the producer — ✗ buffer without limit |
+| Load shedding | Above capacity, reject early with a retryable error — ✗ accept work you cannot finish |
+| Shed by priority | Drop low-value traffic first (background, retries, non-paying tiers); protect the critical path |
+| Fail fast at the edge | Reject at admission, ✗ after doing the expensive work |
+| Circuit breaker | Consecutive failures/timeouts on a dependency → open the circuit, fail immediately, probe periodically |
+| Rate limits | On all public endpoints — see [api](../api/STANDARDS.md). Responses carry a retry-after signal; clients respect it with exponential backoff + jitter. ✗ retry storms |
 
-### Budget Monitoring
-
-- All resource budgets exposed as metrics — see observability/STANDARDS.md
-- Alerts at 80% utilization (warning) and 95% utilization (critical)
-- Budget trending: track utilization over time to predict exhaustion
-- Capacity planning uses budget metrics as input data
+A degraded response served in time beats a perfect response served after the client gave up.
 
 ---
 
 ## 11. Benchmarking
 
-### Reproducibility Requirements
+### Reproducibility
 
-- Benchmarks run on dedicated, isolated environment — ✗ shared CI runner with variable load
-- Environment spec recorded: hardware, OS, runtime version, configuration
-- Warm-up iterations excluded from measurement — steady-state only
-- Minimum 30 iterations per benchmark — report mean, median, P99, std deviation
-- Results stored in version control alongside code — enables historical comparison
+- Dedicated, isolated environment — ✗ a shared CI runner with variable neighbors. Record hardware · OS · runtime version · configuration.
+- Warm-up iterations excluded — steady state only. ≥ 30 iterations; report median, p99, standard deviation.
+- Deterministic input data — same data every run, or results are not comparable.
+- Results committed with the code — history enables regression detection.
 
-### Baseline Measurement
-
-- Establish baseline benchmarks before any optimization work
-- Baseline recorded for each critical path identified in profiling (§3)
-- Baseline includes: operation, P50 latency, P99 latency, throughput, memory peak
-- Update baseline after each shipped optimization — new floor for regression detection
-
-### Regression Detection
+### Regression Gates
 
 | Method | Frequency | Threshold |
 |---|---|---|
-| CI benchmark suite | Every merge to main | > 10% regression = warning; > 20% = failure |
-| Nightly extended suite | Daily | > 5% sustained regression over 3 days = alert |
-| Load test | Before release | Throughput drop > 10% vs baseline = block release |
+| CI benchmark suite | Every merge to main | > 10% regression → warn · > 20% → fail |
+| Nightly extended suite | Daily | > 5% sustained over 3 days → alert |
+| Pre-release comparison | Before release | Throughput drop > 10% vs baseline → block release |
 
-### Benchmark Design Rules
+### Design Rules
 
-- Benchmark real operations, not micro-operations in isolation
-- Include setup/teardown in measurement only if it happens in production
-- ✗ benchmark with optimizations disabled (debug builds)
-- ✗ benchmark only best case — include worst case and average case
-- Data size in benchmarks matches production scale (or defined fraction)
-- Benchmark data is deterministic — same data on every run for comparability
-
-### Load Testing
-
-- Load test simulates realistic traffic patterns — ✗ uniform synthetic load only
-- Ramp-up gradually: 10% → 50% → 100% → 120% of expected peak
-- Measure: latency percentiles, error rate, resource utilization at each level
-- Soak test: sustained load for hours — detect memory leaks, connection leaks
-- Spike test: sudden burst to 3x baseline — verify graceful degradation
+- Benchmark real operations, ✗ micro-operations in isolation. Data size matches production scale, or a documented fraction of it.
+- Include setup/teardown only when production pays that cost too.
+- ✗ benchmark debug builds. ✗ benchmark only the best case — include the worst case.
+- Baseline updated after each shipped optimization — the new floor for regression detection.
+- Load · soak · spike · chaos execution → [testing/PRESSURE.md](../testing/PRESSURE.md).
 
 ---
 
-## 12. Scale Matrix
+## 12. Anti-Patterns
 
-Apply rules proportionally to project complexity.
-See architecture/STANDARDS.md §12 for general scale matrix.
+| Anti-pattern | Problem | Fix |
+|---|---|---|
+| Optimizing without profiling | Effort spent on the 5% path | Profile first (§4) |
+| Averaging latency | Tail invisible; users feel the tail | p50 · p95 · p99 (§2) |
+| Unbounded cache | Memory leak with extra steps | Max size + eviction + TTL (§5) |
+| Unbounded queue | Overload becomes OOM | Bounded queue + backpressure (§10) |
+| No timeout | One slow dependency hangs the system | Explicit timeout everywhere (§10) |
+| Cache as source of truth | Data lost on eviction or restart | Cache accelerates; the store persists |
+| Retry without backoff | Retry storm turns a blip into an outage | Backoff + jitter + circuit breaker (§10) |
+| Premature micro-optimization | Unreadable code, no measured gain | Budget → measure → optimize (§1) |
+| Budget raised to make CI green | Regression laundered into policy | Justification + review (§3) |
 
-| Rule | PoC / Script | Small Project | Production System |
+---
+
+## 13. Scale Matrix
+
+| Dimension | Prototype | Production | Scale |
 |---|---|---|---|
-| Performance budgets (§2) | Informal — "fast enough" | Defined for critical paths | Full budgets, CI-enforced |
-| Profiling (§3) | On-demand when slow | Baseline for critical paths | Regular profiling cadence |
-| Caching (§4) | In-process only if needed | L1 + L2 where measured need | Multi-layer, monitored hit rates |
-| Lazy loading (§5) | Optional | For expensive resources | Systematic for all non-critical init |
-| Memory management (§6) | Language defaults | Pool connections | Full pooling + buffer reuse + leak monitoring |
-| I/O optimization (§7) | Direct I/O acceptable | Batch writes, connection reuse | Full batching + streaming + async |
-| Query performance (§8) | Ad-hoc queries ok | Indexes on frequent queries | Full index strategy + query plan review |
-| Algorithm selection (§9) | Simplest correct option | Appropriate complexity | Profiled + justified choices |
-| Resource budgets (§10) | Timeouts on external calls | Timeouts + connection limits | Full budget matrix + monitoring |
-| Benchmarking (§11) | Manual timing acceptable | CI benchmarks for critical paths | Full benchmark suite + load testing |
+| Budgets (§3) | Informal | Defined for critical paths · CI-warned | Full budget set · CI-enforced ceilings |
+| Measurement (§2) | Ad-hoc timing | p50 · p99 on critical paths | p50 · p95 · p99 · p99.9, all endpoints |
+| Profiling (§4) | On demand when slow | Baseline per critical path | Continuous/always-on profiling |
+| Caching (§5) | In-process only if needed | L1 + L2 where measured need exists | Multi-layer · stampede protection · hit-rate SLOs |
+| Memory (§6) | Language defaults | Pool connections | Full pooling · buffer reuse · leak monitoring |
+| I/O (§7) | Direct I/O acceptable | Batch writes · connection reuse | Batching · streaming · async · backpressure |
+| Timeouts (§10) | On external calls | All outbound calls | Deadline propagation across the chain |
+| Load shedding (§10) | ✗ not needed | Circuit breakers on dependencies | Priority shedding · admission control |
+| Benchmarks (§11) | Manual timing | CI benchmarks on critical paths | Full suite · regression gates · pre-release comparison |
 
-### Scale Transition Triggers
-
-| Signal | Action |
-|---|---|
-| Single operation exceeds budget | Profile + optimize that operation |
-| Multiple operations near budget | Establish systematic profiling cadence |
-| User-visible latency complaints | Introduce end-to-end latency tracking |
-| Memory growth over time | Add memory profiling + leak detection |
-| Traffic exceeds 100 req/s | Add load testing + caching layers |
-| Multi-service architecture | Add distributed tracing + cascading timeout strategy |
+Transition triggers: single operation over budget → profile it · traffic > 100 req/s → add caching + load tests · memory grows over time → leak hunt · multi-service topology → distributed tracing + deadline propagation.
 
 ---
 
-## 13. Performance Checklist
+## 14. Checklist
 
-### New Project
-
-- [ ] Define performance budgets for response time, memory, startup (§2)
-- [ ] Identify critical paths — operations where performance matters most
-- [ ] Choose data structures appropriate to access patterns (§9)
-- [ ] Set timeouts on all outbound calls (§10)
-- [ ] Establish baseline benchmarks for critical paths (§11)
-
-### New Feature
-
-- [ ] Feature's critical path identified + budget assigned (§2)
-- [ ] Profiled under realistic load before shipping (§3)
-- [ ] Cache strategy decided: cache or explicitly not-cached with reason (§4)
-- [ ] Lazy vs eager loading decision documented for expensive resources (§5)
-- [ ] No N+1 query patterns — verified via query plan or review (§8)
-- [ ] All list queries paginated with LIMIT (§8)
-- [ ] All outbound I/O has explicit timeout (§10)
-- [ ] Benchmarks added for performance-critical operations (§11)
-
-### Performance Investigation
-
-- [ ] Budget defined for the operation under investigation (§2)
-- [ ] Current performance measured against budget (§3)
-- [ ] USE method applied — utilization, saturation, errors checked (§3)
-- [ ] Bottleneck isolated to single component via profiling (§3)
-- [ ] One optimization applied per cycle (§1)
-- [ ] Improvement measured — before/after comparison recorded (§11)
-- [ ] Regression check — no other operations degraded by the change
-
-### Code Review — Performance Concerns
-
-- [ ] Hot-path allocations minimized (§6)
-- [ ] Buffers/pools used where appropriate (§6)
-- [ ] I/O operations batched where possible (§7)
-- [ ] No unbounded collections or caches (§4 · §6)
-- [ ] Algorithm complexity appropriate for data size (§9)
-- [ ] Timeouts present on all external calls (§10)
-- [ ] No premature optimization — optimization justified by measurement (§1)
-
-### Production Monitoring
-
-- [ ] P50 and P99 latency tracked for critical paths — see observability/STANDARDS.md
-- [ ] Memory utilization trended over time (§6)
-- [ ] Cache hit rates monitored per cache layer (§4)
-- [ ] Resource budget utilization exposed as metrics (§10)
-- [ ] Alerts configured for budget threshold breaches (§10)
-- [ ] Benchmark regression detection in CI pipeline (§11)
+- [ ] Performance budgets defined for every critical path and committed to the repo
+- [ ] Latency reported as p50 · p95 · p99 — no average-latency metric anywhere
+- [ ] CI checks budgets on every merge; hard-ceiling breach fails the build
+- [ ] No budget was relaxed without written justification and review
+- [ ] Every optimization traces to a profile — none justified by intuition
+- [ ] Profiles captured under realistic load, in optimized builds only
+- [ ] USE method applied when hunting a bottleneck (utilization · saturation · errors)
+- [ ] Every cache has a max size, an eviction policy, and a TTL
+- [ ] Stampede protection on every cache fronting an expensive origin
+- [ ] Cache keys deterministic, schema-versioned, namespaced per tenant/user
+- [ ] Cache hit rate monitored per layer; error responses never cached
+- [ ] No unbounded collection, queue, or buffer anywhere
+- [ ] Every spawned task has a cancellation path and a timeout
+- [ ] Pools have an explicit max size and a declared exhaustion policy
+- [ ] I/O batched with both a size trigger and an interval trigger
+- [ ] Every outbound call has an explicit timeout derived from measured p99
+- [ ] Caller timeout exceeds callee timeout across the whole chain
+- [ ] Backpressure at every queue; load shedding rejects early when over capacity
+- [ ] Circuit breaker on every external dependency
+- [ ] Query count per request measured and budgeted; N+1 caught by a test
+- [ ] Every list query has a LIMIT
+- [ ] Algorithm complexity appropriate for production data size
+- [ ] Benchmarks reproducible: isolated environment, ≥ 30 iterations, deterministic data
+- [ ] Benchmark regression gate in CI (> 10% warn · > 20% fail)

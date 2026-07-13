@@ -1,520 +1,393 @@
 # Dependency Management Standards
 
-Rules for acquiring, isolating, updating, and auditing external and internal
-dependencies across all projects. Language-agnostic — language-specific
-tooling rules belong in their respective standards.
+> How a project acquires, pins, isolates, audits, licenses, and retires every external and internal dependency in its supply chain.
 
-Composable with: architecture/STANDARDS.md §3, security/STANDARDS.md,
-cicd/STANDARDS.md, configuration/STANDARDS.md.
+**ID** `dependencies` · **Tier** Core · **Version** 1.0
+**Owns** dependency minimization + evaluation · wrapper/adapter isolation · version pinning + lockfiles · reproducible builds · SBOM · supply-chain integrity (SLSA · signing · dependency-confusion · typosquatting) · vuln scanning + patch SLAs · **license tiers (sole owner)** · vendoring · internal + transitive dependencies
+**Defers to** language-specific package tooling → language standards · CVE remediation vs exposure model → [security](../security/STANDARDS.md) · pipeline stage placement → [cicd](../cicd/STANDARDS.md) · container base-image supply chain → [devops](../devops/STANDARDS.md) · semver + release tagging → [git](../git/STANDARDS.md) · dependency isolation vs layer model → [architecture](../architecture/STANDARDS.md)
+**Load with** [security](../security/STANDARDS.md) · [cicd](../cicd/STANDARDS.md) · [architecture](../architecture/STANDARDS.md)
 
 ---
 
 ## Table of Contents
 
-1. [Dependency Philosophy](#1-dependency-philosophy)
-2. [Wrapper Pattern](#2-wrapper-pattern)
-3. [Version Pinning](#3-version-pinning)
-4. [Lock Files](#4-lock-files)
-5. [Update Strategy](#5-update-strategy)
-6. [Vulnerability Scanning](#6-vulnerability-scanning)
-7. [Dependency Evaluation](#7-dependency-evaluation)
-8. [Transitive Dependencies](#8-transitive-dependencies)
-9. [Vendoring](#9-vendoring)
-10. [License Compliance](#10-license-compliance)
-11. [Internal Dependencies](#11-internal-dependencies)
-12. [Dependency Isolation](#12-dependency-isolation)
-13. [Scale Matrix](#13-scale-matrix)
-14. [Checklist](#14-checklist)
+1. [Principles](#1-principles)
+2. [Evaluation and Adoption](#2-evaluation-and-adoption)
+3. [Wrapper Pattern](#3-wrapper-pattern)
+4. [Version Pinning and Lockfiles](#4-version-pinning-and-lockfiles)
+5. [Reproducible Builds and SBOM](#5-reproducible-builds-and-sbom)
+6. [Supply-Chain Integrity](#6-supply-chain-integrity)
+7. [Vulnerability Scanning and Patch SLAs](#7-vulnerability-scanning-and-patch-slas)
+8. [Update Strategy](#8-update-strategy)
+9. [License Tiers](#9-license-tiers)
+10. [Transitive Dependencies](#10-transitive-dependencies)
+11. [Vendoring](#11-vendoring)
+12. [Internal Dependencies and Isolation](#12-internal-dependencies-and-isolation)
+13. [Anti-Patterns](#13-anti-patterns)
+14. [Scale Matrix](#14-scale-matrix)
+15. [Checklist](#15-checklist)
 
 ---
 
-## 1. Dependency Philosophy
+## 1. Principles
 
-Every dependency = liability. Each one adds attack surface, maintenance burden,
-upgrade risk, build complexity, and license obligation. Minimize count ruthlessly.
+Every dependency is a liability: attack surface, maintenance burden, upgrade risk, build complexity, license obligation. Minimize count ruthlessly.
 
-### Core Rules
-
-| Rule | Rationale |
+| # | Rule |
 |---|---|
-| Justify every addition in writing | Forces cost-benefit analysis before adoption |
-| Prefer standard library over third-party | Standard library matches language lifecycle |
-| Prefer one dep that does three things over three deps | Fewer moving parts, fewer conflicts |
-| ✗ add dependency for trivial functionality | Write 20 lines instead of importing 2000 |
-| Remove unused dependencies on every release | Dead deps still carry vulnerability + license risk |
-| Count dependencies as part of project complexity | More deps = harder to build, test, audit, deploy |
-
-### Dependency Justification
-
-Before adding any dependency, answer:
-
-| Question | Fail condition |
-|---|---|
-| What problem does it solve? | Vague answer → write it yourself |
-| How much of it do you use? | <20% of surface area → too heavy |
-| What happens if it is abandoned? | No fork path → unacceptable risk |
-| Can standard library cover it? | Yes → use standard library |
-| Does it pull transitive deps? | >5 transitive → evaluate alternatives |
-| What is its license? | Incompatible → reject immediately |
+| 1 | Justify every addition in writing before adopting it |
+| 2 | Prefer the standard library over a third-party package |
+| 3 | Prefer one dependency doing three things over three doing one each |
+| 4 | ✗ add a dependency for trivial functionality — 20 lines beats a 2000-line import |
+| 5 | Remove unused dependencies every release — dead deps still carry vuln + license risk |
+| 6 | Dependency count is part of project complexity — it is built, tested, audited, deployed |
+| 7 | Core logic never touches a third-party API directly — it goes through a wrapper (§3) |
+| 8 | Pin everything · commit the lockfile · scan every build |
 
 ---
 
-## 2. Wrapper Pattern
+## 2. Evaluation and Adoption
 
-All third-party libraries are wrapped at tier boundaries. Core logic (Tier 0–1)
-never calls third-party code directly. See architecture/STANDARDS.md §3.
+Score every candidate before adoption. One failed criterion vetoes it.
 
-### Wrapper Rules
+| Criterion | Minimum | Red flag |
+|---|---|---|
+| Maintenance activity | Commit within 6 months | No commit in 12+ months |
+| Release cadence | ≥ 1 release/year | Last release > 2 years ago |
+| Issue response | Maintainer responds within 30 days | Issues unanswered 90+ days |
+| Test suite | Tests exist and pass in CI | No tests / broken CI |
+| Documentation | API docs + usage guide | README stub only |
+| License | Permissive or weak-copyleft (§9) | Strong/network copyleft in a proprietary project · no license |
+| Transitive count | ≤ 10 | > 20 |
+| Security track record | No unpatched critical CVEs | History of slow response |
+| Bus factor | ≥ 2 active maintainers | Single maintainer, no org backing |
+| Footprint | Proportional to value | Adds > 10% to the binary for a minor feature |
+
+### Decision Record
+
+Every new dependency (production scale) records: name + exact version · problem it solves (concrete, ✗ "might be useful") · ≥ 2 alternatives considered including "write it ourselves" · evaluation scores · wrapper plan · exit strategy.
+
+---
+
+## 3. Wrapper Pattern
+
+Every third-party library is wrapped at a boundary. Core logic never imports third-party types directly. See [architecture](../architecture/STANDARDS.md).
 
 | Rule | Detail |
 |---|---|
 | One wrapper per external library | Single point of contact between project and dependency |
-| Wrapper exposes project-native types | Internal code never imports third-party types directly |
-| Wrapper lives at Tier 3 (Interface) | Or at Tier 2 boundary if library is pure logic |
-| Swap test: remove library, only wrapper breaks | If core logic breaks → wrapper is leaking |
-| Wrapper is thin — translation only | ✗ business logic in wrappers |
-| Standard library exemption | Language stdlib used directly, no wrapper needed |
+| Wrapper exposes project-native types | Internal code never imports third-party types |
+| Wrapper lives at a boundary layer | The edge, or the boundary where the library is used |
+| Thin — translation only | ✗ business logic in a wrapper |
+| Swap test | Remove the library and only the wrapper breaks; if core logic breaks, the wrapper leaked |
+| Stdlib exemption | Language standard library used directly, no wrapper |
 
-### Wrapper Scope
-
-| What to wrap | What NOT to wrap |
+| Wrap | ✗ Wrap |
 |---|---|
-| HTTP clients | Language builtins (string, math, collections) |
-| Database drivers | Standard library I/O |
-| Serialization libraries | Language type system features |
-| Cloud SDKs | Build tool plugins |
-| Logging frameworks | Test frameworks (test-time only) |
-| Templating engines | Development-only tooling (linters, formatters) |
+| HTTP clients · DB drivers · serialization libs | Language builtins (string, math, collections) |
+| Cloud SDKs · logging frameworks · templating engines | Standard-library I/O · type-system features |
 
-### Wrapper Contract
-
-Each wrapper must:
-- Accept and return project-native types only
-- Translate between project types and library types internally
-- Handle library-specific exceptions, convert to project error types
-- Expose only the subset of library functionality actually used
-- Document which library version it targets
+Each wrapper: accepts/returns project-native types only · converts library exceptions to project error types · exposes only the subset actually used · documents the library version it targets.
 
 ---
 
-## 3. Version Pinning
+## 4. Version Pinning and Lockfiles
 
-### Pinning Rules
-
-| Context | Version format | Rationale |
-|---|---|---|
-| Lock file | Exact: `1.2.3` | Reproducible builds — byte-identical output |
-| Project metadata (manifest) | Range: `>=1.2,<2.0` | Allows compatible resolution across consumers |
-| Internal shared library | Exact in lock, range in manifest | Same discipline as external deps |
-| Development tools | Exact in lock file | Linter version drift causes spurious failures |
-
-### Version Constraints
+| Context | Version format |
+|---|---|
+| Lock file | Exact: `1.2.3` — reproducible, byte-identical builds |
+| Manifest | Range: `>=1.2,<2.0` — compatible resolution across consumers |
+| Internal shared library | Exact in lock, range in manifest |
+| Development tools | Exact in lock — linter drift causes spurious failures |
 
 | Constraint | Rule |
 |---|---|
-| Minimum version | Always specify — bare `*` is prohibited |
-| Maximum version | Use next-major ceiling: `<2.0` for `1.x` series |
-| Pre-release versions | ✗ in production dependencies; allowed in dev-only |
-| Multiple major versions | ✗ two major versions of same dep in one project |
+| Minimum version | Always specified — bare `*` is prohibited |
+| Maximum version | Next-major ceiling: `<2.0` for a `1.x` series |
+| Pre-release | ✗ in production deps; allowed dev-only |
+| Multiple majors | ✗ two major versions of one dependency in a project |
 
-### Reproducibility Requirement
-
-Given identical source + lock file + build tooling version, builds produce
-identical output on any machine. If they don't, the pinning strategy is broken.
-
----
-
-## 4. Lock Files
-
-### Rules
+### Lockfiles
 
 | Rule | Detail |
 |---|---|
-| Always commit lock files to version control | Lock file = reproducibility guarantee |
-| One canonical lock file per deployable unit | Monorepo: one per package/service, not one global |
-| Regenerate lock on every dependency change | Manual edit of lock file is prohibited |
-| CI validates lock file freshness | Build fails if lock file is stale or missing |
-| Lock file includes integrity hashes | Checksum verification prevents supply-chain tampering |
-| ✗ `.gitignore` lock files | Ever. For any reason. |
+| Always committed | Every project, every deployable unit. ✗ `.gitignore` a lockfile, ever, for any reason |
+| One per deployable unit | Monorepo: one per package/service, ✗ a single global lock |
+| Regenerated by tooling | Manual edits are prohibited |
+| CI enforces freshness | Build fails on a stale or missing lockfile |
+| Integrity hashes included | Checksums verified on install — blocks tampering |
 
-### Lock File Hygiene
-
-| Action | When |
-|---|---|
-| Regenerate from scratch | Quarterly, or after major dependency upgrade |
-| Diff-review lock file changes | Every PR that modifies dependencies |
-| Verify hash integrity | Every CI build |
-| Audit transitive additions | When lock file diff introduces new packages |
+**Reproducibility requirement:** identical source + lockfile + tooling version → byte-identical output on any machine. If not, the pinning strategy is broken.
 
 ---
 
-## 5. Update Strategy
+## 5. Reproducible Builds and SBOM
 
-### Update Classification
+### Reproducible Builds
+
+| Rule | Detail |
+|---|---|
+| Deterministic output | Same inputs → identical artifact; ✗ embedded timestamps, paths, or build-host identity |
+| Pinned toolchain | Compiler/build-tool version pinned alongside dependencies |
+| Hermetic where possible | Build reads only declared inputs — ✗ ambient network or global state |
+| Verified in CI | Rebuild and compare digests; a mismatch fails the build |
+
+### SBOM
+
+| Rule | Detail |
+|---|---|
+| Generated every build | A Software Bill of Materials lists every direct + transitive component with version and license |
+| Standard format | SPDX or CycloneDX — ✗ a bespoke format |
+| Published with the artifact | SBOM is a release artifact, retained with the build |
+| Diffed on change | SBOM diff surfaces every added/removed/upgraded component for review |
+| Feeds scanning | Vuln (§7) and license (§9) scanning consume the SBOM |
+
+---
+
+## 6. Supply-Chain Integrity
+
+The dependency is only as trustworthy as its delivery path.
+
+| Threat | Defense |
+|---|---|
+| Tampered package | Verify integrity hashes from the lockfile on every install |
+| Compromised publisher | Prefer signed artifacts; verify signatures/provenance before install |
+| Dependency confusion | Pin the registry/source per package; ✗ let an internal name resolve to a public registry |
+| Typosquatting | Verify exact package name + namespace on add; new deps reviewed by a second person |
+| Malicious postinstall | Disable arbitrary install scripts by default; allowlist the few that are required |
+| Upstream account takeover | Pin exact versions; a sudden new version is reviewed, ✗ auto-adopted |
+
+### Provenance
+
+| Rule | Detail |
+|---|---|
+| Target a SLSA level | Adopt SLSA build-provenance; state the target level per project |
+| Provenance attestation | Build emits a signed statement of what was built, from which source, by which builder |
+| Verify on deploy | Deploy gate checks provenance + signature — ✗ deploy an unattested artifact |
+| Trusted builders only | Artifacts built by the CI system, ✗ from a developer laptop |
+
+---
+
+## 7. Vulnerability Scanning and Patch SLAs
+
+Scanning is owned here; the *exposure/risk model* (is this CVE reachable in our context) is owned by [security](../security/STANDARDS.md).
+
+| Rule | Detail |
+|---|---|
+| Automated scan every CI build | Catch vulnerabilities before merge — stage placement → [cicd](../cicd/STANDARDS.md) |
+| Scan the lockfile, not the manifest | The lockfile reflects actual resolved versions |
+| Scan transitive deps | Vulnerabilities hide in indirect deps |
+| Scan container images separately | OS packages have an independent surface — see [devops](../devops/STANDARDS.md) |
+| Exception list with expiry | An accepted vuln gets a documented deadline, ✗ silent ignore |
+
+### Patch SLA by Severity
+
+| Severity | CI gate | Patch deadline |
+|---|---|---|
+| Critical (CVSS ≥ 9.0) | Block merge + alert | 24 hours |
+| High (7.0–8.9) | Block merge | 1 week |
+| Medium (4.0–6.9) | Warn, allow merge | 1 month |
+| Low (< 4.0) | Log only | Next scheduled cycle |
+
+### Exception Record
+
+Required fields: CVE id · affected dependency + version · justification (✗ "will fix later") · compensating mitigation in place · expiry date (auto-expires, forces re-evaluation) · named owner (a person, ✗ a team).
+
+---
+
+## 8. Update Strategy
 
 | Category | Timeline | Process |
 |---|---|---|
-| Critical security patch (CVE, actively exploited) | Within 24 hours | Hotfix branch → expedited review → deploy |
-| High-severity vulnerability (CVSS ≥ 7.0) | Within 1 week | Normal PR → prioritized review |
-| Medium-severity vulnerability (CVSS 4.0–6.9) | Within 1 month | Batched with scheduled update cycle |
-| Low-severity vulnerability (CVSS < 4.0) | Next scheduled cycle | Batched update |
-| Feature update (minor version) | Scheduled cycle | Batched, tested, reviewed |
-| Major version upgrade | Planned migration | Dedicated branch, migration plan, extended testing |
+| Critical security patch (exploited) | 24 hours | Hotfix branch → expedited review → deploy |
+| High vuln (CVSS ≥ 7.0) | 1 week | Prioritized PR |
+| Medium vuln (4.0–6.9) | 1 month | Batched with the scheduled cycle |
+| Low vuln (< 4.0) | Next cycle | Batched |
+| Feature / minor update | Scheduled cycle | Batched, tested, reviewed |
+| Major version upgrade | Planned | Dedicated branch + migration plan + extended testing |
 
 ### Update Process
 
-| Step | Detail |
-|---|---|
-| 1. Review changelog | Understand what changed — ✗ blind update |
-| 2. Check breaking changes | Major version bumps require migration plan |
-| 3. Update in isolation | One dependency per commit for bisectability |
-| 4. Run full test suite | Including integration tests, not just unit |
-| 5. Review lock file diff | Verify transitive changes are expected |
-| 6. Deploy to staging first | Production deploy only after staging validation |
+1. Review the changelog — ✗ blind update.
+2. Check for breaking changes; a major bump needs a migration plan.
+3. Update one dependency per commit — bisectable.
+4. Run the full suite, integration tests included.
+5. Review the lockfile diff — verify transitive changes are expected.
+6. Deploy to staging before production.
 
-### Scheduled Update Cadence
-
-| Project scale | Cadence |
-|---|---|
-| PoC / Script | Ad hoc — update when needed |
-| Small project | Monthly review cycle |
-| Production system | Bi-weekly automated scan + monthly manual review |
-
-### ✗ Forbidden Update Practices
-
-- Auto-merge dependency update PRs without review
-- Update multiple unrelated deps in single commit
-- Skip changelog review
-- Update production deps without running tests
-- Pin to `latest` or floating tags
+**✗ Forbidden:** auto-merge dependency PRs without review · update multiple unrelated deps in one commit · skip changelog review · pin to `latest` or a floating tag.
 
 ---
 
-## 6. Vulnerability Scanning
+## 9. License Tiers
 
-### Scanning Rules
+**Sole owner.** Every other standard cross-references this table — ✗ restate it, ✗ flat-ban a tier locally.
 
-| Rule | Detail |
-|---|---|
-| Automated scan on every CI build | Catch vulnerabilities before merge |
-| Scan lock file, not manifest | Lock file reflects actual resolved versions |
-| Block merge on critical/high severity | ✗ ship known high-severity vulnerabilities |
-| Scan transitive dependencies | Vulnerabilities hide in indirect deps |
-| Maintain exception list with expiry dates | Acknowledged vulns get documented deadline, not ignored |
-| Scan container images separately | OS-level packages have independent vulnerability surface |
-
-### Severity Thresholds
-
-| Severity | CI gate | Remediation deadline |
+| Tier | Licenses | Rule |
 |---|---|---|
-| Critical (CVSS ≥ 9.0) | Block merge + alert | 24 hours |
-| High (CVSS 7.0–8.9) | Block merge | 1 week |
-| Medium (CVSS 4.0–6.9) | Warn, allow merge | 1 month |
-| Low (CVSS < 4.0) | Log only | Next scheduled cycle |
-
-### Exception Process
-
-When a vulnerability cannot be remediated immediately:
-
-| Field | Required |
-|---|---|
-| CVE identifier | Yes |
-| Affected dependency + version | Yes |
-| Justification for exception | Yes — ✗ "will fix later" without reasoning |
-| Mitigation in place | Yes — compensating control or reduced exposure |
-| Expiry date | Yes — exception auto-expires, forces re-evaluation |
-| Owner | Yes — named person, not team |
-
-### Scanning Pipeline Integration
-
-See cicd/STANDARDS.md for pipeline stage placement. Vulnerability scans run:
-- Pre-merge: on every PR that modifies dependency files
-- Post-merge: nightly on main/default branch
-- Pre-deploy: as deploy gate for production releases
-
----
-
-## 7. Dependency Evaluation
-
-### Evaluation Criteria
-
-Score each candidate dependency before adoption. All criteria must pass minimum
-threshold — one failure vetoes adoption.
-
-| Criterion | Minimum threshold | Red flag |
-|---|---|---|
-| Maintenance activity | Commit in last 6 months | No commit in 12+ months |
-| Issue response time | Maintainer responds within 30 days | Issues unanswered for 90+ days |
-| Release cadence | At least 1 release/year | Last release > 2 years ago |
-| Test suite | Tests exist and pass in CI | No tests or broken CI |
-| Documentation | API docs + usage guide | No docs beyond README stub |
-| License | OSI-approved, compatible with project | No license, AGPL (if shipping SaaS), or custom |
-| Transitive dependency count | ≤ 10 transitive deps | > 20 transitive deps |
-| Download/usage metrics | Established user base | < 100 weekly downloads (context-dependent) |
-| Security track record | No unpatched critical CVEs | History of slow vulnerability response |
-| Bus factor | ≥ 2 active maintainers | Single maintainer, no org backing |
-| Binary size / footprint | Proportional to value provided | Adds > 10% to total binary for minor feature |
-
-### Decision Record
-
-Every new dependency addition requires a decision record:
-
-| Field | Content |
-|---|---|
-| Dependency name + version | Exact version being adopted |
-| Problem it solves | Concrete use case, not "might be useful" |
-| Alternatives considered | Minimum 2 alternatives evaluated (including "write it ourselves") |
-| Evaluation scores | Criteria table filled per above |
-| Wrapper plan | Which module wraps it, what interface it exposes |
-| Exit strategy | How to remove or replace if needed |
-
----
-
-## 8. Transitive Dependencies
-
-### Awareness Rules
-
-| Rule | Detail |
-|---|---|
-| Know your full dependency tree | Audit transitive deps at adoption and on updates |
-| Review transitive additions in lock diffs | New indirect deps require same scrutiny as direct |
-| ✗ depend on transitive dep directly | If you use it, declare it as direct dependency |
-| Monitor transitive dep licenses | Incompatible license in transitive dep = project risk |
-| Transitive depth limit | > 5 levels deep → evaluate if direct dep is worth it |
-
-### Conflict Resolution
-
-| Scenario | Resolution |
-|---|---|
-| Two deps require incompatible versions of same transitive | Upgrade both to compatible range; if impossible → replace one |
-| Transitive dep has critical vulnerability | Patch, override, or replace parent dep |
-| Transitive dep is abandoned | Fork transitive, or replace parent dep |
-| Diamond dependency (A→B→D, A→C→D) | Pin D to single version compatible with both B and C |
-
-### Transitive Pinning
-
-When package manager supports it, pin critical transitive dependencies explicitly.
-Critical = transitive deps that handle security-sensitive operations (crypto, parsing,
-network) or that have caused past breakage.
-
----
-
-## 9. Vendoring
-
-### When to Vendor
-
-| Scenario | Vendor? | Rationale |
-|---|---|---|
-| Air-gapped / offline builds required | Yes | No network access at build time |
-| Critical dependency with uncertain future | Yes | Insurance against disappearance |
-| Need to patch upstream bug locally | Yes | Fork-in-repo until upstream merges fix |
-| Regulatory requirement for source audit | Yes | Full source must be inspectable |
-| Standard open-source dep, stable, maintained | No | Package manager handles it |
-| Large dependency (>10MB source) | Avoid | Bloats repository; use artifact cache instead |
-
-### Vendoring Rules
-
-| Rule | Detail |
-|---|---|
-| Vendored code lives in dedicated directory | `vendor/`, `third_party/`, or language convention |
-| ✗ modify vendored code without patch file | Changes must be trackable and re-appliable |
-| Record original version + source URL | Provenance must be traceable |
-| License file included with vendored code | Legal requirement — ✗ strip license from vendored source |
-| Review vendored code for security | Vendored = your responsibility now |
-| Update vendored code on same schedule as managed deps | ✗ vendor-and-forget |
-| Patch files stored alongside vendored source | `vendor/lib-name/patches/*.patch` |
-
----
-
-## 10. License Compliance
-
-### License Tiers
-
-| Tier | Licenses | Usage rule |
-|---|---|---|
-| Permissive (preferred) | MIT, BSD-2, BSD-3, ISC, Apache-2.0, Unlicense, Zlib | Use freely in any project |
-| Weak copyleft (caution) | LGPL-2.1, LGPL-3.0, MPL-2.0 | Dynamic linking ok; static linking may trigger copyleft |
-| Strong copyleft (restricted) | GPL-2.0, GPL-3.0 | ✗ in proprietary projects; ok in GPL-licensed projects |
-| Network copyleft (high risk) | AGPL-3.0 | ✗ in SaaS/server applications unless project is AGPL |
-| No license | Unlicensed code on public repos | ✗ use — no license = all rights reserved by default |
+| Permissive (preferred) | MIT · BSD-2 · BSD-3 · ISC · Apache-2.0 · Unlicense · Zlib | Use freely in any project |
+| Weak copyleft (caution) | LGPL-2.1 · LGPL-3.0 · MPL-2.0 | Permitted. **Dynamic linking only** — static linking may trigger copyleft. ✗ flat ban |
+| Strong copyleft (restricted) | GPL-2.0 · GPL-3.0 | ✗ in proprietary/distributed products; OK inside a GPL-licensed project |
+| Network copyleft (high risk) | AGPL-3.0 | ✗ in SaaS/server products unless the project is itself AGPL |
+| No license | Unlicensed public code | ✗ use — absent a license, all rights are reserved by default |
 | Custom / proprietary | Vendor-specific terms | Legal review required before adoption |
+
+The LGPL ruling is authoritative: **permitted with caution, dynamic linking only** — ✗ reintroduce a flat ban (ROUTER.md §8).
 
 ### Compliance Rules
 
 | Rule | Detail |
 |---|---|
-| Audit licenses on every dependency addition | Including transitive deps |
-| Maintain project-level license compatibility matrix | Document which license tiers are acceptable |
-| Automate license scanning in CI | Fail build on forbidden license detected |
-| Attribution file for all permissive deps | Collect NOTICE/LICENSE per dependency |
-| Re-audit on major version upgrades | License can change between major versions |
-| ✗ assume license from parent project | Each dependency has its own license |
-
-### License Change Detection
-
-Monitor dependencies for license changes across versions. A dependency that
-was MIT in v1.x may become AGPL in v2.x. Lock file review + automated
-scanning catches this at update time, not after deployment.
+| Audit on every addition | Including transitive deps |
+| Automated CI scan | Fail the build on a forbidden license |
+| Attribution file | Collect NOTICE/LICENSE for every permissive dep |
+| Re-audit on major upgrades | A license can change between major versions (MIT `1.x` → AGPL `2.x`) |
+| ✗ assume license from the parent | Each dependency carries its own license |
 
 ---
 
-## 11. Internal Dependencies
-
-### Shared Library Rules
+## 10. Transitive Dependencies
 
 | Rule | Detail |
 |---|---|
-| Shared internal libraries follow same discipline as external deps | Version, pin, test, release |
-| Semantic versioning for all internal packages | Breaking change = major bump |
-| ✗ depend on internal library's `main` branch directly | Use tagged releases |
-| Internal library has its own test suite + CI | ✗ rely on downstream projects to validate library |
-| API stability contract | Public API changes follow deprecation protocol |
+| Know the full tree | Audit transitives at adoption and on every update |
+| Review transitive additions | New indirect deps get the same scrutiny as direct ones |
+| ✗ use a transitive directly | If you import it, declare it as a direct dependency |
+| Monitor transitive licenses | An incompatible license in a transitive dep is project risk |
+| Depth limit | > 5 levels deep → reconsider whether the direct dep is worth it |
+| Pin critical transitives | Where the manager allows: crypto · parsing · network deps, or any that caused past breakage |
 
-### Monorepo Dependencies
+| Conflict | Resolution |
+|---|---|
+| Two deps need incompatible versions of one transitive | Upgrade both to a compatible range; if impossible, replace one |
+| Transitive has a critical vuln | Patch, override the pin, or replace the parent |
+| Transitive is abandoned | Fork it, or replace the parent |
+| Diamond (A→B→D, A→C→D) | Pin D to a single version compatible with both |
+
+---
+
+## 11. Vendoring
+
+| Scenario | Vendor? |
+|---|---|
+| Air-gapped / offline builds | Yes — no network at build time |
+| Critical dep with an uncertain future | Yes — insurance against disappearance |
+| Local patch pending upstream merge | Yes — fork-in-repo until upstream accepts |
+| Regulatory source-audit requirement | Yes — full source must be inspectable |
+| Standard, stable, maintained OSS dep | No — the package manager handles it |
+| Large source (> 10 MB) | Avoid — use an artifact cache instead |
 
 | Rule | Detail |
 |---|---|
-| Explicit dependency declaration between packages | ✗ implicit path imports across package boundaries |
-| Build system enforces dependency graph | Unauthorized cross-package imports fail the build |
-| Shared code extracted into explicit internal package | ✗ reach into another service's source directory |
-| Version pinning within monorepo | Workspace protocol or explicit version references |
+| Dedicated directory | `vendor/` · `third_party/` · language convention |
+| ✗ modify without a patch file | Changes tracked and re-appliable: `vendor/<lib>/patches/*.patch` |
+| Record version + source URL | Provenance is traceable |
+| Keep the license file | ✗ strip a license from vendored source |
+| Review for security | Vendored code is now your responsibility |
+| Update on the managed schedule | ✗ vendor-and-forget |
+
+---
+
+## 12. Internal Dependencies and Isolation
+
+### Internal / Monorepo
+
+| Rule | Detail |
+|---|---|
+| Same discipline as external | Version · pin · test · release internal shared libraries |
+| Strict semver (1.0+) | Breaking = major, feature = minor, fix = patch — format → [git](../git/STANDARDS.md) |
+| ✗ depend on `main` | Use tagged releases, ✗ a moving branch |
+| Explicit cross-package declaration | ✗ implicit path imports across package boundaries; the build enforces the graph |
+| Acyclic | A → B forbids B → A directly or transitively — a cycle is an architectural violation |
 | Independent deployability | Service A deploys without rebuilding Service B |
 
-### Internal Library Versioning
+### Isolation
 
-| Stage | Version strategy |
+| Mechanism | Isolation level |
 |---|---|
-| Pre-1.0 (unstable) | `0.x.y` — breaking changes allowed in minor bumps |
-| Stable (1.0+) | Strict semver — breaking = major, features = minor, fixes = patch |
-| Deprecation | Mark deprecated in `1.x`, remove in `2.0` |
-
-### Dependency Direction in Monorepos
-
-Follows architecture/STANDARDS.md §3 — dependencies form a DAG. If package A
-depends on package B, package B must never depend on package A, directly or
-transitively. Circular dependencies between internal packages are architectural
-violations.
-
----
-
-## 12. Dependency Isolation
-
-### Isolation Mechanisms
-
-| Mechanism | Use case | Isolation level |
-|---|---|---|
-| Virtual environment | Language-level dep isolation (Python venv, Node node_modules) | Process |
-| Container | Full OS-level isolation, reproducible runtime | OS |
-| Sandbox / jail | Untrusted dependency execution | Kernel |
-| Dependency scope (dev/prod/test) | Separate deps by lifecycle phase | Build |
-| Workspace / package boundary | Monorepo internal isolation | Project |
-
-### Isolation Rules
+| Virtual environment (venv, node_modules) | Process |
+| Container | OS |
+| Sandbox / jail | Kernel (untrusted deps) |
+| Dependency scope (dev/test/prod) | Build |
 
 | Rule | Detail |
 |---|---|
-| Every project has isolated dependency environment | ✗ global/system package installs for project deps |
-| Dev dependencies never ship to production | Build system strips dev-only deps from production artifact |
-| Test dependencies isolated from production deps | Test frameworks ✗ in production dependency tree |
-| CI builds in clean environment | ✗ rely on cached global state from previous builds |
-| Container builds start from pinned base image | `FROM image:latest` is prohibited — use digest or exact tag |
+| Isolated environment per project | ✗ global/system installs for project deps |
+| Dev/test deps never ship | The build strips them from the production artifact |
+| Clean CI environment | ✗ rely on cached global state from a prior build |
+| Pinned base image | ✗ `FROM image:latest` — use a digest or exact tag. Supply chain → [devops](../devops/STANDARDS.md) |
+| One-command setup | Reads lockfiles, installs exact versions, produces a ready environment; more than one step = incomplete |
 
-### Scope Classification
+| Scope | Ships to production? |
+|---|---|
+| Production (runtime deps) | Yes |
+| Development (linters, formatters, type checkers) | No |
+| Test (frameworks, mocks, fixtures) | No |
+| Build (compilers, bundlers, codegen) | No (output ships, tools don't) |
+| Optional (feature-gated) | Only if the feature is enabled |
 
-| Scope | Contains | Ships to production? |
+---
+
+## 13. Anti-Patterns
+
+| Anti-pattern | Problem | Fix |
 |---|---|---|
-| Production | Runtime dependencies | Yes |
-| Development | Linters, formatters, type checkers, build tools | No |
-| Test | Test frameworks, mocking libraries, fixtures | No |
-| Build | Compilers, bundlers, code generators | No (output ships, tools don't) |
-| Optional | Feature-gated dependencies, plugins | Only if feature enabled |
-
-### Environment Reproducibility
-
-Development environment setup must be a single command. That command reads lock
-files, installs exact pinned versions, and produces a ready-to-use environment.
-If setup requires manual steps beyond one command → automation is incomplete.
+| Dependency for a one-liner | 2000 lines of surface for 20 lines of value | Write it (§1) |
+| Lockfile gitignored | Non-reproducible builds; drift between machines | Always commit (§4) |
+| `latest` / floating tag | Silent, unreviewed upgrades | Pin exact in the lock (§4) |
+| Auto-merge dependency PRs | Malicious/breaking update ships unreviewed | Human review (§8) |
+| Core logic imports a third-party type | Library swap becomes a rewrite | Wrapper at a boundary (§3) |
+| Flat-banning LGPL | Loses usable deps on a false premise | Weak-copyleft-caution, dynamic link (§9) |
+| Vendor-and-forget | Vendored code rots with unpatched vulns | Update on the managed schedule (§11) |
+| Internal dep on `main` | Downstream breaks on an upstream push | Tagged releases (§12) |
+| Scanning the manifest not the lockfile | Misses the actually-resolved versions | Scan the lockfile (§7) |
 
 ---
 
-## 13. Scale Matrix
+## 14. Scale Matrix
 
-Apply dependency management rigor proportionally to project scale.
-See architecture/STANDARDS.md §12 for scale definitions.
-
-| Practice | PoC / Script | Small Project | Production System |
+| Dimension | Prototype | Production | Scale |
 |---|---|---|---|
-| Dependency justification | Informal | Written in commit message | Formal decision record |
+| Justification | Informal | Commit message | Formal decision record |
 | Wrapper pattern | Not required | Wrap critical deps | Wrap all external deps |
-| Version pinning | Lock file sufficient | Lock file + ranges in manifest | Lock file + ranges + hash verification |
-| Lock file committed | Yes | Yes | Yes — CI enforces freshness |
+| Pinning | Lockfile | Lock + manifest ranges | Lock + ranges + hash verification |
+| Lockfile committed | Yes | Yes | Yes — CI enforces freshness |
+| Reproducible build | Best effort | Deterministic output | Verified digest match in CI |
+| SBOM | ✗ | Generated per build | Published + diffed + feeds scanning |
+| Supply-chain integrity | Hash verify | + signature/provenance verify | + SLSA target + confusion/typosquat defense |
+| Vuln scanning | Manual pre-release | CI on every PR | CI + nightly + deploy gate |
 | Update cadence | Ad hoc | Monthly review | Bi-weekly scan + monthly review |
-| Vulnerability scanning | Manual before release | CI on every PR | CI + nightly + deploy gate |
-| Dependency evaluation | Quick assessment | Criteria checklist | Full evaluation + decision record |
-| Transitive dep awareness | Know direct deps | Review transitives on add | Full tree audit + critical transitive pinning |
-| Vendoring | Not needed | Only if offline required | Per policy — critical deps may be vendored |
-| License audit | Check direct deps | Automated scan on direct | Automated scan on full tree + attribution file |
-| Internal dep versioning | Path references ok | Tagged versions | Strict semver + CI validation |
-| Dependency isolation | Virtual env minimum | Virtual env + scoped deps | Container + virtual env + scoped deps |
-| Security exception process | Not required | Documented exceptions | Formal exception with owner + expiry |
+| License audit | Direct deps | Automated on direct | Full tree + attribution file |
+| Isolation | Virtual env | + scoped deps | Container + venv + scoped deps |
 
-### Scale Transition
-
-When graduating from one scale to the next, apply new practices incrementally:
-1. Add lock file and commit it (PoC → Small)
-2. Wrap critical external dependencies (PoC → Small)
-3. Enable automated vulnerability scanning (Small → Production)
-4. Formalize evaluation and decision records (Small → Production)
-5. Implement full isolation + deploy gates (Small → Production)
+Transitions: PoC → Small — commit a lockfile, wrap critical deps. Small → Production — enable vuln + license scanning, SBOM, decision records, provenance verification, full isolation + deploy gates.
 
 ---
 
-## 14. Checklist
+## 15. Checklist
 
-### Adding a New Dependency
-
-- [ ] Problem it solves clearly identified
-- [ ] Alternatives evaluated (minimum 2, including "write it ourselves")
-- [ ] License compatible with project
-- [ ] Maintenance status acceptable (commits, releases, issue response)
-- [ ] Transitive dependency count reviewed
-- [ ] Security track record checked (CVE history)
-- [ ] Bus factor ≥ 2 (or risk acknowledged + exit strategy documented)
-- [ ] Wrapper module created (production scale)
-- [ ] Wrapper exposes project-native types only
-- [ ] Version pinned in lock file
-- [ ] Range specified in manifest
-- [ ] Decision record written (production scale)
-- [ ] CI passes with new dependency
-
-### Updating Dependencies
-
-- [ ] Changelog reviewed for breaking changes
-- [ ] Single dependency per commit
-- [ ] Lock file diff reviewed (transitive changes inspected)
-- [ ] Full test suite passes
-- [ ] License unchanged or still compatible
-- [ ] No new critical/high vulnerabilities introduced
-- [ ] Staging validation before production deploy
-
-### Periodic Review (Monthly/Quarterly)
-
-- [ ] Unused dependencies removed
-- [ ] Vulnerability scan results reviewed
-- [ ] Security exceptions re-evaluated (expired ones remediated)
-- [ ] Lock file regenerated from scratch (quarterly)
-- [ ] License audit up to date
-- [ ] Transitive dependency tree reviewed for unexpected growth
-- [ ] Internal library versions current
-- [ ] Vendored dependencies updated if applicable
-
-### Project Setup
-
-- [ ] Dependency isolation mechanism in place (venv, container, etc.)
-- [ ] Lock file exists and is committed
-- [ ] CI validates lock file freshness
-- [ ] Vulnerability scanning enabled in CI pipeline
-- [ ] License scanning enabled in CI pipeline
-- [ ] Dev/test/prod dependency scopes properly separated
-- [ ] Single-command environment setup works
-- [ ] Wrapper pattern established for external dependencies
+- [ ] Every dependency has a written justification; ≥ 2 alternatives were considered
+- [ ] Standard library preferred where it covers the need
+- [ ] Each external library is wrapped; core logic imports no third-party types
+- [ ] The swap test passes — removing a library breaks only its wrapper
+- [ ] Exact versions pinned in the lockfile; ranges in the manifest
+- [ ] Lockfile committed; CI enforces its freshness and integrity hashes
+- [ ] Build is reproducible — identical inputs yield an identical artifact
+- [ ] SBOM generated every build in SPDX or CycloneDX and retained with the release
+- [ ] Install verifies integrity hashes; artifacts are signed/attested where available
+- [ ] Registry pinned per package — no dependency-confusion path to a public registry
+- [ ] New dependency names verified against typosquats by a second reviewer
+- [ ] Vulnerability scan runs on every CI build against the lockfile
+- [ ] Patch SLAs enforced: critical 24 h · high 1 week · medium 1 month
+- [ ] Vuln exceptions carry a mitigation, an expiry date, and a named owner
+- [ ] Updates land one dependency per commit with the lockfile diff reviewed
+- [ ] No `latest`/floating tags; no auto-merged dependency PRs
+- [ ] Every dependency license classified against the tier table
+- [ ] LGPL treated as weak-copyleft-caution (dynamic linking) — not flat-banned
+- [ ] No strong/network copyleft or unlicensed code in a proprietary product
+- [ ] License scan fails CI on a forbidden license; attribution file maintained
+- [ ] Transitive tree audited; critical transitives pinned
+- [ ] Vendored code carries a patch file, source URL, and its license
+- [ ] Internal deps use tagged releases and strict semver; the dependency graph is acyclic
+- [ ] Dev/test/build deps are stripped from the production artifact
+- [ ] Environment setup is a single command; base images pinned by digest or exact tag

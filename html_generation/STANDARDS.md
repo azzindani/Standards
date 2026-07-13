@@ -1,1258 +1,340 @@
-# HTML_STANDARDS.md — Data Visualization & Report Layout
+# HTML Generation Standards
 
-Version 1.1 — applies to all MCP projects that produce HTML output.
+> Rules for programs that emit standalone HTML files — charts, dashboards, EDA and profiling reports — so every output opens offline, renders instantly, and is safe to hand to a browser.
+
+**ID** `html_generation` · **Tier** Domain · **Version** 1.0
+**Owns** offline-first HTML output · asset inlining · output path resolution · generator module structure · standard function contracts · document skeleton · output-specific security
+**Defers to** theme system · CSS architecture · UX patterns → [THEMING.md](THEMING.md) · chart integration · dashboards · interactive controls → [CHARTS.md](CHARTS.md) · generic input validation · secrets · injection classes → [security](../security/STANDARDS.md) · error taxonomy · boundaries → [error_handling](../error_handling/STANDARDS.md) · logging · metrics → [observability](../observability/STANDARDS.md) · file/module naming → [directory](../directory/STANDARDS.md) · language idiom → [python](../python/STANDARDS.md) | [typescript](../typescript/STANDARDS.md)
+**Load with** [THEMING.md](THEMING.md) · [CHARTS.md](CHARTS.md) · [security](../security/STANDARDS.md)
 
 ---
 
 ## Table of Contents
 
-1. [Purpose](#1-purpose)
-2. [Fundamental Rules](#2-fundamental-rules)
-3. [Theme System](#3-theme-system)
-4. [CSS Architecture](#4-css-architecture)
-5. [Plotly Integration](#5-plotly-integration)
-6. [Output Path](#6-output-path)
-7. [Module Structure](#7-module-structure)
-8. [Standard Functions](#8-standard-functions)
-9. [HTML Document Structure](#9-html-document-structure)
-10. [Security](#10-security)
-11. [Cross-Platform](#11-cross-platform)
+1. [Principles](#1-principles)
+2. [Offline-First Rules](#2-offline-first-rules)
+3. [Tool Surface Contract](#3-tool-surface-contract)
+4. [Output Path](#4-output-path)
+5. [Module Structure](#5-module-structure)
+6. [Standard Functions](#6-standard-functions)
+7. [Document Structure](#7-document-structure)
+8. [Output Security](#8-output-security)
+9. [Cross-Platform](#9-cross-platform)
+10. [Anti-Patterns](#10-anti-patterns)
+11. [Scale Matrix](#11-scale-matrix)
 12. [Checklist](#12-checklist)
-13. [JavaScript & TypeScript Standards](#13-javascript--typescript-standards)
-14. [Interactive Controls](#14-interactive-controls)
-15. [UX Patterns](#15-ux-patterns)
 
 ---
 
-## 1. Purpose
+## 1. Principles
 
-This document defines how all MCP projects that produce HTML files — charts,
-dashboards, EDA reports, profiling reports — must structure, theme, and deliver
-those outputs.
+Generated HTML is an **artifact**, not a service. It is written once, copied anywhere, opened at any time — on a laptop with no network, on a phone, from an email attachment, five years later.
 
-These rules exist because:
-- All MCP servers run locally, offline, without internet access.
-- LLMs call tools with limited context; output must open and render immediately.
-- Reports must work on mobile without installing anything.
-- Every project must produce visually consistent output.
+| Principle | Rule |
+|---|---|
+| Self-contained | One `.html` file. Zero sidecar assets. Zero network requests at render time |
+| Deterministic | Same data + same theme → byte-comparable output ; embedded timestamps |
+| Render-on-open | No build step, no server, no `file://` CORS dependency |
+| Consistent | Every generator in a project emits the same theme, layout, and control vocabulary |
+| Escaped by default | All data reaching the DOM is untrusted until escaped (§8) |
+| Progressive | Page is fully readable with JavaScript disabled — JS enhances, ✗ gates |
 
----
-
-## 2. Fundamental Rules
-
-### No CDN. Ever.
-
-All assets — Plotly, fonts, icons — must be **inline or system-supplied**.
-No `<script src="https://...">`, no `@import url(...)`, no remote anything.
-
-```python
-# Wrong
-PLOTLY_CDN = "https://cdn.plot.ly/plotly-2.35.2.min.js"   # must not exist
-
-# Correct
-fig.to_html(include_plotlyjs=True, ...)   # embeds Plotly inline
-```
-
-If a file contains a `PLOTLY_CDN` constant, it is a violation even if not used.
-
-### System fonts only
-
-```css
-/* Correct */
-font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-
-/* Wrong — downloads a font */
-@import url('https://fonts.googleapis.com/...');
-```
-
-### Default theme is dark
-
-All projects default to `theme="dark"` (`plotly_dark` template, `#0d1117`
-background). Use `theme="light"` or `theme="device"` when the caller requests.
-
-### All HTML outputs accept `theme` and `open_after`
-
-Every tool that produces an HTML file must expose:
-```python
-theme: str = "dark"        # "dark" | "light" | "device"
-open_after: bool = True    # open in browser after saving
-```
+Consumer is often an LLM tool call with limited context: output must be one path, one file, immediately viewable.
 
 ---
 
-## 3. Theme System
+## 2. Offline-First Rules
 
-### Three themes
+**! The central constraint: no CDN, ever.** Generators run locally, offline, air-gapped. A remote reference is a broken report.
 
-| Value | Plotly template | Background | When |
+| Asset | Rule |
+|---|---|
+| Chart library (Plotly et al.) | Inlined into the document — see [CHARTS.md](CHARTS.md) §1 |
+| Scripts | Inline `<script>` only. ✗ `<script src="http…">` · ✗ `import` · ✗ `require()` |
+| Stylesheets | Inline `<style>` only. ✗ `<link rel="stylesheet" href="http…">` · ✗ `@import url(…)` |
+| Fonts | System font stack only (§9). ✗ webfont download · ✗ Google Fonts |
+| Icons | Unicode glyphs or inline SVG. ✗ icon-font CDN · ✗ remote sprite sheet |
+| Images | Inline `data:` URI. ✗ remote `src` |
+| Source maps | ✗ emitted — they reference files that will not travel with the HTML |
+
+Hard bans, enforced by grep in CI:
+
+- ✗ any `https://` or `http://` in a `src`, `href`, or `@import` of generated HTML ; anchor links intended for human clicking.
+- ✗ a `PLOTLY_CDN`-style constant anywhere in the codebase — its **existence** is the violation, use is not required.
+- ✗ `fetch()` · `XMLHttpRequest` · `WebSocket` · `navigator.sendBeacon` in emitted JS.
+- ✗ external form `action` targets.
+
+### Verification
+
+| Check | Rule |
+|---|---|
+| Grep gate | CI greps generated fixtures for `http://` · `https://` · `cdn.` · `@import` → any hit fails the build |
+| Offline render test | Open a generated fixture with the network disabled; page must render fully — see [testing](../testing/STANDARDS.md) |
+| Single-file assertion | Generator writes exactly one file per output; ✗ companion `.css` · `.js` · `.json` |
+
+---
+
+## 3. Tool Surface Contract
+
+Every function or tool that produces an HTML file exposes the same surface.
+
+| Parameter | Type | Default | Rule |
 |---|---|---|---|
-| `"dark"` | `plotly_dark` | `#0d1117` | Default |
-| `"light"` | `plotly_white` | `#ffffff` | Caller opt-in |
-| `"device"` | starts `plotly_white` | JS-switched | Follows system pref |
+| `theme` | `"dark"` \| `"light"` \| `"device"` | `"dark"` | Dark is the default for every project. Reject unknown values — ✗ silently fall back |
+| `open_after` | bool | `true` | Open in the system viewer after write. Best-effort (§9) |
+| `output_path` | path \| empty | empty | Empty → resolve per §4 |
+| `title` | string | required | Rendered into `<title>` and page header, escaped |
 
-### Color tokens — dark
+Return payload must include, at minimum:
 
-```
---bg:         #0d1117    page background
---surface:    #161b22    cards, sidebar, chart background
---border:     #21262d    borders, dividers
---text:       #c9d1d9    body text
---text-muted: #8b949e    labels, metadata
---accent:     #58a6ff    headings, links, active states
---green:      #3fb950    success, good values
---orange:     #f0883e    warnings
---red:        #f85149    errors, bad values
-```
-
-### Color tokens — light
-
-```
---bg:         #ffffff
---surface:    #f6f8fa
---border:     #d0d7de
---text:       #1f2328
---text-muted: #636c76
---accent:     #0969da
---green:      #1a7f37
---orange:     #9a6700
---red:        #cf222e
-```
-
-### CSS token function
-
-```python
-def css_vars(theme: str) -> str:
-    """Return :root{} block for the theme. Includes device media query if needed."""
-```
-
-For `"device"`: emit `:root{light vars}` + `@media(prefers-color-scheme:dark){:root{dark vars}}`.
-
-### Spatial tokens (layout vars — same for all themes)
-
-Spatial dimensions belong in a second token block that is merged with color vars.
-All values in `rem`, no `px`.
-
-```
---sidebar-w:     16.25rem     (260 px equivalent)
---sidebar-w-md:  13.75rem     (220 px at tablet breakpoint)
---main-pad:      2rem
---main-pad-sm:   1rem
---section-gap:   3rem
---card-gap:      0.75rem
---card-min:      8rem
---card-pad:      1rem
---radius-sm:     0.375rem
---radius-md:     0.625rem
---radius-lg:     0.75rem
---font-xs:       0.6875rem    (~11 px)
---font-sm:       0.8125rem    (~13 px)
---font-base:     1rem
---font-lg:       1.125rem
---font-xl:       1.25rem
---font-2xl:      clamp(1.125rem, 2vw, 1.5rem)
---chart-radius:  0.75rem
-```
-
-### Device-mode JS
-
-Every `"device"` themed page must inject a JS snippet that:
-1. Reads `window.matchMedia('(prefers-color-scheme:dark)')` on load
-2. Sets `document.documentElement.setAttribute('data-theme', 'dark'|'light')`
-3. Calls `Plotly.relayout()` on all `.plotly-graph-div` elements with matching
-   `template`, `paper_bgcolor`, `plot_bgcolor`
-4. Adds a `change` listener to update on system pref change
-
-This snippet lives in `device_mode_js()` in `html_theme.py`.
-
----
-
-## 4. CSS Architecture
-
-### Units — never px for layout or typography
-
-| Use case | Rule |
+| Key | Value |
 |---|---|
-| Spacing, padding, margins | `rem` |
-| Fluid headings, card numbers | `clamp()` |
-| Chart container heights | `clamp()` via CSS class |
-| Border radius | `rem` or CSS custom property |
-| Borders | `1px` is the only allowed `px` (browser minimum) |
+| `output_path` | Absolute, resolved path string |
+| `filename` | Basename only |
 
-```css
-/* Wrong */
-.card { padding: 16px; font-size: 13px; }
-
-/* Correct */
-.card { padding: var(--card-pad); font-size: var(--font-sm); }
-```
-
-### Reset and base
-
-Always first:
-```css
-*{box-sizing:border-box;margin:0;padding:0}
-*{overflow-wrap:break-word;word-break:break-word}
-code,pre,kbd,samp{word-break:normal;overflow-wrap:normal;overflow-x:auto}
-html{scroll-behavior:smooth;font-size:16px}
-```
-
-### Text blowout prevention
-
-Apply to all user-supplied content (column names, values, file names):
-```css
-overflow-wrap: break-word;
-word-break: break-word;
-```
-
-For card numbers that must not wrap: use ellipsis instead:
-```css
-.card .num { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-```
-
-### CSS structure order
-
-Always layer CSS in this order:
-1. CSS custom properties (`:root{}`)
-2. Reset / base (`*`, `html`, `body`)
-3. Scrollbar
-4. Typography (`h1`–`h3`, helpers)
-5. Component classes (cards, tables, charts, alerts, insights)
-6. Layout (sidebar, main, header)
-7. Responsive breakpoints (tablet → mobile → small mobile)
-8. Print
-
-### Z-index layers
-
-| Layer | Value | Element |
-|---|---|---|
-| Overlay / backdrop | 90 | `#sb-overlay` |
-| Sidebar | 100 | `.sidebar` |
-| Mobile toggle button | 200 | `#sb-toggle` |
-| Dropdowns / tooltips | 200 | `.ddmenu` |
-| Modals | 1000 | `.modal` |
-
-### Responsive breakpoints (rem, not px)
-
-| Breakpoint | Max-width | Behaviour |
-|---|---|---|
-| Tablet | `68.75rem` | Sidebar narrows to `--sidebar-w-md` |
-| Mobile | `48rem` | Sidebar hides; hamburger appears; single-column layout |
-| Small mobile | `30rem` | Card grid collapses to 1 column |
-
-Never use `px` in `@media` queries — use `em` or `rem` so they scale with
-user font settings.
-
-### Mobile sidebar — hamburger toggle required
-
-The sidebar must never just `display:none` on mobile. It must be accessible via
-a hamburger button with an overlay backdrop:
-
-```html
-<button id="sb-toggle" aria-label="Open navigation">&#9776;</button>
-<div id="sb-overlay"></div>
-```
-
-```css
-@media(max-width:48em) {
-  #sb-toggle { display:flex; ... }
-  .sidebar { transform:translateX(-100%); }
-  .sidebar.open { transform:translateX(0); }
-  #sb-overlay.show { display:block; }
-}
-```
-
-JS to wire it up lives in `_SIDEBAR_JS` in `html_theme.py`.
-
-### Grid layout for chart grids
-
-Use CSS Grid with `auto-fill` + `minmax()` for chart grids. Never use fixed
-column counts.
-
-```css
-.cgrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(18rem,42vw,34rem)), 1fr));
-  gap: clamp(.5rem,1.5vw,.875rem);
-}
-```
-
-Always set `min-width:0` on direct grid/flex children to prevent overflow.
-
-### Chart container heights
-
-CSS controls chart height. Plotly receives `autosize=True` and no `height` in
-the layout dict. The container div has a defined height via a CSS class.
-
-```css
-.chart-div          { height: clamp(18rem, 40vh, 30rem); }
-.chart-div.heatmap  { height: clamp(22rem, 50vh, 38rem); }
-.chart-div.compact  { height: clamp(14rem, 30vh, 22rem); }
-.chart-div.network  { height: clamp(20rem, 45vh, 34rem); }
-```
-
-Cap all chart heights at `80vh` maximum to prevent infinite scroll on tall
-charts.
-
-### Tables
-
-Always wrap tables in a scroll container. Never let a table bleed off-screen.
-
-```html
-<div class="table-wrap"><table>...</table></div>
-```
-
-```css
-.table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
-table { min-width: 30rem; }
-th { white-space: nowrap; }
-td { max-width: 20rem; overflow-wrap: break-word; }
-```
-
-### Transitions
-
-Maximum `0.2s` for any UI transition (background, color, transform). Longer
-transitions are distracting and make tools feel slow.
-
-### Print media query
-
-Every multi-section report must include:
-```css
-@media print {
-  .sidebar, #sb-toggle, #sb-overlay { display:none !important; }
-  .main { margin-left:0 !important; padding:0 !important; }
-  .chart-container { break-inside:avoid; border:1px solid #ccc; }
-  .section { break-inside:avoid; }
-}
-```
-
-### Custom scrollbar
-
-```css
-::-webkit-scrollbar       { width: 0.375rem; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-sm); }
-```
+✗ return a relative path. ✗ return only a success flag — the caller cannot find the file.
 
 ---
 
-## 5. Plotly Integration
+## 4. Output Path
 
-### Always inline — never CDN
+### Resolution order
 
-```python
-# Standalone page (save_chart, full HTML)
-fig.to_html(include_plotlyjs=True, full_html=True, ...)
+1. Explicit `output_path` argument, if provided and non-empty → resolve to absolute, use it.
+2. `~/Downloads/<stem>_<descriptor>.html`, if `~/Downloads` exists and is a directory.
+3. Directory of the input file.
 
-# Embedded div inside a report page that already loaded Plotly
-pio.to_html(fig, include_plotlyjs=False, full_html=False, ...)
-```
+Resolution is total — it always yields a path. ✗ raise on step 2 miss ; fall through to step 3.
 
-Use `include_plotlyjs=False` only when Plotly has already been embedded once
-earlier in the same HTML document.
+### Rules
 
-### Standard Plotly config
-
-Always pass this config dict:
-```python
-{
-    "responsive": True,
-    "displayModeBar": True,
-    "scrollZoom": True,
-    "plotGlPixelRatio": 0,   # prevents WebGL memory bloat
-}
-```
-
-### `apply_fig_theme()` — always call before embedding
-
-Before embedding any figure in a report, set its background to match the card
-surface token to prevent background mismatch:
-
-```python
-def apply_fig_theme(fig, theme: str) -> None:
-    t = get_theme(theme)
-    fig.update_layout(
-        paper_bgcolor=t["paper_color"],
-        plot_bgcolor=t["paper_color"],
-        font=dict(color=t["text_color"]),
-        template=plotly_template(theme),
-        autosize=True,
-    )
-```
-
-### `plotly_layout_base()` — no height in layout
-
-```python
-def plotly_layout_base(plot_bg: str, font_color: str, margin=None) -> dict:
-    """Base layout dict. Never includes height — CSS controls that."""
-    return {
-        "paper_bgcolor": plot_bg,
-        "plot_bgcolor":  plot_bg,
-        "font":          {"color": font_color},
-        "margin":        margin or {"l": 50, "r": 20, "t": 20, "b": 40},
-        "autosize":      True,
-    }
-```
-
-### `calc_chart_height()` — no magic numbers
-
-Use this for standalone charts or embedded charts that need a Plotly `height`
-(e.g., stacked subplots where CSS height alone is insufficient):
-
-```python
-def calc_chart_height(n: int = 1, mode: str = "subplot", extra_base: int = 0) -> int:
-    """
-    mode:  "subplot"  — stacked subplot rows
-           "bar"      — horizontal bar rows
-           "heatmap"  — matrix rows
-           "fixed"    — return n directly
-    Returns int px, clamped to [280, 1800].
-    """
-```
-
-Per-item constants: subplot=220px/row, bar=28px/row, heatmap=28px/row,
-base=80px overhead. Never hardcode these numbers in calling code.
-
-### Template consistency
-
-| Theme | Plotly template |
+| Rule | Detail |
 |---|---|
-| `"dark"` | `"plotly_dark"` |
-| `"light"` | `"plotly_white"` |
-| `"device"` | starts `"plotly_white"`, JS switches to `"plotly_dark"` |
+| Always absolute | Explicit paths pass through path-resolution before use and before return |
+| Path objects | Construct with a path library. ✗ string concatenation · ✗ hardcoded `/` or `\` |
+| Naming | `{input_stem}_{descriptor}.html` — e.g. `sales_dashboard.html` · `sales_eda.html` · `sales_correlation.html` |
+| Descriptor is fixed vocabulary | One descriptor per report type across the project; ✗ freeform names |
+| Atomic write | Write to temp file in the destination directory → `fsync` → atomic rename onto the final path |
+| Encoding | `utf-8` explicit on every write. ✗ platform default |
+| Overwrite | Same inputs overwrite the same path silently — outputs are regenerable, not precious |
+
+Partial output is never visible: a reader either sees the previous complete file or the new complete file.
 
 ---
 
-## 6. Output Path
+## 5. Module Structure
 
-### Downloads-first priority
+Every project emitting HTML has exactly two shared generator modules. Names are conventions; the **split** is the rule.
 
-```
-1. Explicit output_path argument (if provided and non-empty)
-2. ~/Downloads/<stem>_<suffix>.html  (if ~/Downloads exists)
-3. Same directory as the input file
-```
+| Module | Owns |
+|---|---|
+| `html_layout` | Output-path resolution · viewport meta constant · CSS string blocks · CSS assemblers · chart-library config constant · base layout dict |
+| `html_theme` | Theme registry · color/spatial token strings · `:root{}` assembler · device-mode JS · sidebar JS · figure theming · chart height calculator · report builders · table/card renderers · viewer launch |
 
-```python
-def get_output_path(
-    output_path: str,
-    input_path: Path,
-    stem_suffix: str,
-    ext: str = "html",
-) -> Path:
-    if output_path:
-        return Path(output_path).resolve()
-    downloads = Path.home() / "Downloads"
-    base_dir = downloads if downloads.is_dir() else input_path.parent
-    return base_dir / f"{input_path.stem}_{stem_suffix}.{ext}"
-```
+Split rule: **`html_layout` produces strings that do not know the theme; `html_theme` chooses the theme and calls into `html_layout`.** Dependency is one-directional: `html_theme` → `html_layout`. ✗ reverse import.
 
-Always call `.resolve()` on the explicit path — never return a relative Path.
+### Single-definition rules
 
-### File naming convention
+| Symbol | Rule |
+|---|---|
+| Viewport meta | Defined once in `html_layout`; imported everywhere. ✗ redefine |
+| Chart config dict | Defined once; ✗ inline literal config at call sites |
+| Color + spatial tokens | Defined once in `html_theme`; ✗ literal hex or `rem` values in engine code |
+| Chart height constants | Defined once in the height calculator; ✗ magic numbers in engine code |
 
-`{input_stem}_{descriptor}.html`
+### Must not exist
 
-Examples:
-- `sales_dashboard.html`
-- `sales_eda.html`
-- `sales_profile.html`
-- `sales_distribution.html`
-- `sales_correlation.html`
-
-### Atomic writes
-
-Always write HTML via atomic write (temp file → move), never direct open/write:
-
-```python
-from shared.file_utils import atomic_write_text
-atomic_write_text(out_path, html, encoding="utf-8")
-```
-
-Or use `Path.write_text(html, encoding="utf-8")` if atomicity is guaranteed by
-the file system context (single-threaded tool call).
-
-### Tool response must include output path
-
-Every tool that saves an HTML file must include in its return dict:
-```python
-{
-    "output_path": str(out.resolve()),
-    "filename":    out.name,
-}
-```
+- ✗ CDN URL constant of any kind, used or unused.
+- ✗ Hardcoded pixel `height` inside the base layout or figure-theming helpers — CSS owns height ([CHARTS.md](CHARTS.md) §3).
+- ✗ Per-report bespoke CSS copies — a new report composes existing CSS blocks or adds one to `html_layout`.
+- ✗ HTML string assembly inside engine/analysis code — engines return data, renderers return HTML. See [architecture](../architecture/STANDARDS.md).
 
 ---
 
-## 7. Module Structure
+## 6. Standard Functions
 
-Every project that produces HTML output must have exactly these two files in
-`shared/`:
+These contracts are identical across projects. Implementation may vary; signature, inputs, and return shape may not.
 
-```
-shared/
-├── html_layout.py   ← CSS strings, layout helpers, get_output_path()
-└── html_theme.py    ← theme helpers, Plotly wrappers, report builders
-```
+| Function | Input | Returns | Contract |
+|---|---|---|---|
+| `get_output_path` | explicit path · input path · descriptor · extension | absolute path | §4 resolution order. Always resolved |
+| `css_vars` | theme | `:root{}` CSS block | Includes the `prefers-color-scheme` media query when theme is `device` |
+| `get_theme` | theme | theme config | Rejects unknown theme names |
+| `apply_fig_theme` | figure · theme | none (mutates) | Sets paper/plot background, font color, template, autosize. ✗ set height |
+| `calc_chart_height` | count · mode · extra base | integer px | Clamped `[280, 1800]`. Modes: subplot · bar · heatmap · fixed |
+| `plotly_div` | figure · theme | HTML `<div>` string | Chart library **not** re-embedded; theming applied first |
+| `save_chart` | figure · path · theme · open flag · title | (absolute path, filename) | Full standalone page; chart library inlined |
+| `build_html_report` | title · subtitle · sections · theme · open flag · path | HTML string | Sidebar nav · hamburger · device JS · print CSS. Writes file when path given |
+| `metrics_cards_html` | metrics mapping | HTML string | Card grid. Keys and values escaped |
+| `data_table_html` | rows · max rows | HTML string | Scroll-wrapped table. Appends "N more rows" footer when truncated |
+| `open_file` | path | none | Best-effort viewer launch. ✗ raise — log to stderr and continue |
 
-### `html_layout.py` owns
-
-- `get_output_path()` — Downloads-first path resolution
-- `VIEWPORT_META` — the single source of truth (never redefine elsewhere)
-- `PLOTLY_CFG_JS` — standard Plotly config as a JS string (for inline scripts)
-- `plotly_config()` — standard Plotly config as a Python dict
-- `_BASE_CSS`, `_REPORT_CSS`, `_DASHBOARD_CSS` — raw CSS string blocks
-- `css_report()`, `css_dashboard()` — full CSS assemblers
-- `plotly_layout_base()` — base Plotly layout dict (no height)
-
-### `html_theme.py` owns
-
-- `PLOTLY_TEMPLATE` dict + `plotly_template()` — theme → template name
-- `_DARK_VARS`, `_LIGHT_VARS`, `_LAYOUT_VARS` — CSS token strings
-- `css_vars()` — theme → `:root{}` CSS block
-- `_DEVICE_JS` + `device_mode_js()` — device-mode theme switcher
-- `_SIDEBAR_JS` — hamburger toggle JS
-- `THEMES` dict + `get_theme()` — full theme config dicts
-- `theme_plot_colors()` — returns (plot_bg, font_color, accent) tuple
-- `apply_fig_theme()` — sets Plotly figure colors to match CSS tokens
-- `calc_chart_height()` — formula-based chart height calculator
-- `save_chart()` — save standalone Plotly figure as HTML
-- `build_html_report()` — assemble multi-section HTML report
-- `plotly_div()` — embed figure as inline div within a report
-- `metrics_cards_html()` — render a dict as card HTML
-- `data_table_html()` — render a list of dicts as scrollable table HTML
-- `_open_file()` — cross-platform browser/viewer launch
-
-### What must NOT exist anywhere
-
-- `PLOTLY_CDN` constant — prohibited in all shared files
-- Duplicate `VIEWPORT_META` — defined only in `html_layout.py`, imported everywhere else
-- Hardcoded `height` in `plotly_layout_base()` or `apply_fig_theme()`
-- Magic-number chart heights in engine code — use `calc_chart_height()`
+Section input to `build_html_report` is an ordered list of records with `id` · `heading` · `html`. The `id` is the sidebar anchor target (§7).
 
 ---
 
-## 8. Standard Functions
+## 7. Document Structure
 
-These functions must exist with exactly these signatures in every project that
-produces HTML output. Deviate in implementation only — not in signature or
-contract.
+Fixed head order for every generated page:
 
-### `save_chart(fig, output_path, theme, open_browser, title) -> (str, str)`
+| Order | Element | Rule |
+|---|---|---|
+| 1 | Doctype | `<!DOCTYPE html>` — first line, always |
+| 2 | Root element | `<html lang="en">` — `lang` required |
+| 3 | Charset meta | `utf-8` — first element inside `<head>` |
+| 4 | Viewport meta | From the shared constant — `width=device-width,initial-scale=1` |
+| 5 | Title | Escaped page title |
+| 6 | Style | One inline `<style>`: token block → CSS blocks, in the order fixed by [THEMING.md](THEMING.md) §6 |
+| 7 | Body | Page content |
+| 8 | Scripts | Inline `<script>` blocks at end of body — device-mode JS if theme is `device`, sidebar JS if a sidebar exists, feature JS last |
 
-Saves a standalone Plotly figure as a full responsive HTML page.
-Returns `(absolute_path_str, filename)`.
+### Report body structure
 
-### `build_html_report(title, subtitle, sections, theme, open_browser, output_path, ...) -> str`
+| Rule | Detail |
+|---|---|
+| Section wrapper | Every major section is a container carrying a stable `id` |
+| Sidebar linkage | Sidebar anchor href matches the section `id` exactly — mismatch = dead in-page link |
+| Heading level | One `h1` per page (report title); sections use `h2`; subsections `h3` |
+| Section ids are slugs | Lowercase, hyphenated, derived from heading; stable across runs |
+| Empty section | Rendered with an explicit "no data" placeholder. ✗ omit silently — the sidebar link would break |
 
-Assembles a multi-section HTML report with sidebar navigation, hamburger toggle,
-device-mode support, and print stylesheet.
-`sections` is a list of `{"id": str, "heading": str, "html": str}`.
-Returns rendered HTML string. Writes to `output_path` if provided.
-
-### `plotly_div(fig, height, theme) -> str`
-
-Embeds a Plotly figure as an inline `<div>` without a full HTML page wrapper.
-Sets `include_plotlyjs=False`. Uses `apply_fig_theme()` before embedding.
-
-### `calc_chart_height(n, mode, extra_base) -> int`
-
-Returns a chart height in px, clamped to [280, 1800].
-
-### `apply_fig_theme(fig, theme) -> None`
-
-Applies `paper_bgcolor`, `plot_bgcolor`, `font color`, `template`, `autosize=True`
-to a figure, using token values matching the CSS `--surface` and `--text` vars.
-
-### `get_output_path(output_path, input_path, stem_suffix, ext) -> Path`
-
-Downloads-first path resolution. Always resolves explicit paths.
-
-### `metrics_cards_html(metrics, styles) -> str`
-
-Renders a `dict[str, Any]` as a `.cards` grid of `.card` divs.
-
-### `data_table_html(rows, max_rows) -> str`
-
-Renders a `list[dict]` as a `.table-wrap > table`. Appends a "N more rows"
-footer when truncated.
-
-### `_open_file(path) -> None`
-
-Cross-platform file open. Best-effort, never raises. Logs failures to stderr.
+Scripts run after the DOM they reference exists. ✗ rely on `defer` for inline scripts placed in `<head>`.
 
 ---
 
-## 9. HTML Document Structure
+## 8. Output Security
 
-Every full HTML page must follow this skeleton:
+Generated HTML is an untrusted-data rendering surface: column names, cell values, file paths, and error strings all originate outside the generator. Generic injection theory, secret handling, and threat classes → [security](../security/STANDARDS.md). What follows is output-specific and binding.
 
-```html
-<!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Page Title</title>
-<style>
-/* css_vars(theme) + all CSS */
-</style>
-</head><body>
+### Escaping
 
-<!-- Page content -->
+| Rule | Detail |
+|---|---|
+| Escape at injection point | Every interpolated value is HTML-escaped immediately before it enters the string — ✗ "escaped upstream" assumptions |
+| Escape everything from data | Column names · cell values · file names · paths · error messages · titles · units |
+| Attribute context | Values inside attributes are escaped **and** quoted. ✗ unquoted attribute values |
+| Never raw | ✗ interpolate a data value into markup without escaping, even when "known" numeric — types lie |
+| Escape once | Double-escaping corrupts display; escape at the boundary, ✗ again downstream |
 
-<!-- device_mode_js() injected here if theme=="device" -->
-<!-- _SIDEBAR_JS injected here if page has a sidebar -->
-</body></html>
-```
+### Script rules
 
-### Required elements on every page
+| Rule | Detail |
+|---|---|
+| ✗ `eval()` · ✗ `new Function(string)` | All JS is authored at generation time and static |
+| ✗ inline event attributes | `onclick` · `onload` · `onerror` etc. → `addEventListener` in an inline `<script>` ; single exception below |
+| ✗ `innerHTML` with data | Data → `textContent`. `innerHTML` only with generator-authored, data-free markup |
+| Data → JS | Serialize as JSON. ✗ language-native repr of lists/dicts — it breaks on quotes, NaN, and non-ASCII |
+| JSON in script | Values embedding `</script>` must be escaped so the tag cannot terminate the block early |
 
-- `<!DOCTYPE html>` — always first line
-- `<html lang="en">` — lang attribute required
-- `<meta charset="utf-8">` — always first in head
-- `<meta name="viewport" ...>` — use the `VIEWPORT_META` constant
-- All CSS inlined in `<style>` — no external stylesheets
-- All JS inlined in `<script>` — no external scripts
-- `encoding="utf-8"` on every `write_text()` call
+**Inline-handler exception (only one):** `window.print()` on a print button — no arguments, no data, no injection surface. Every other inline handler is a defect.
 
-### Section structure for reports
+### Content-Security-Policy
 
-Every major section in a multi-section report must have a matching `id`
-for sidebar anchor navigation:
+Emit a restrictive CSP meta tag on every page. Because everything is inlined, the policy is inline-only and network-free.
 
-```html
-<div id="overview" class="section">
-  <h2>Overview</h2>
-  ...
-</div>
-```
+| Directive | Required value | Reason |
+|---|---|---|
+| `default-src` | `'none'` | Nothing loads by default |
+| `script-src` | `'unsafe-inline'` | Inline scripts only — no host source is ever allowed |
+| `style-src` | `'unsafe-inline'` | Inline styles only |
+| `img-src` | `'self' data:` | Inline data URIs only |
+| `connect-src` | `'none'` | ! Kills every runtime fetch — enforces §2 at the browser |
+| `font-src` | `'none'` | System fonts need no source |
+| `frame-src` · `object-src` | `'none'` | No embedded documents or plugins |
 
-The sidebar `<a href="#overview">` must match exactly.
+`connect-src 'none'` is the mechanical guarantee behind the offline-first rule: even a smuggled `fetch()` cannot leave the page.
 
 ---
 
-## 10. Security
+## 9. Cross-Platform
 
-### No CDN assets
+### Font stacks
 
-No `<script src="...">` or `<link href="...">` pointing to external URLs.
-The only scripts and styles in the page are those written by the server itself.
+| Use | Stack |
+|---|---|
+| Body / UI | `'Segoe UI', system-ui, -apple-system, sans-serif` |
+| Monospace | `'Cascadia Code', 'Fira Mono', monospace` |
 
-### No `eval()` or `new Function()`
+Every entry is either OS-supplied or a generic family. Degradation is graceful on any OS. ✗ add a family that requires download.
 
-No JavaScript `eval()`. No `new Function(string)`. All JS is static, authored
-at server build time.
+### Viewer launch
 
-### No inline event handlers
+| Platform | Mechanism |
+|---|---|
+| Windows | OS shell open |
+| macOS | `open` |
+| Linux / BSD | `xdg-open` |
+| Headless / no viewer | Skip silently; path is already in the return payload |
 
-No `onclick="..."`, `onload="..."`, or other inline event attributes in HTML.
-All event listeners must be attached via `addEventListener()` in `<script>`.
+Launch is best-effort: wrap it, never let it raise, log the failure to stderr. A failed browser launch ✗ fail the tool — the file is written and its path returned.
 
-### No user content injected as raw HTML
+### Paths and text
 
-Column names, file names, and data values passed into HTML must be
-HTML-escaped. Use `html.escape()`:
-
-```python
-import html
-safe_name = html.escape(column_name)
-```
-
-Never: `f"<td>{column_name}</td>"`
-Always: `f"<td>{html.escape(str(column_name))}</td>"`
+| Rule | Detail |
+|---|---|
+| Separators | Path library only. `resolve()` yields OS-native separators |
+| Encoding | `utf-8` on read and write, explicit, everywhere |
+| Newlines | Written as `\n`; ✗ platform-dependent newline translation in HTML output |
+| Long values | Non-ASCII column names and paths must survive round-trip — test with them |
 
 ---
 
-## 11. Cross-Platform
+## 10. Anti-Patterns
 
-### Font stack
+| Anti-pattern | Failure | Fix |
+|---|---|---|
+| CDN "just for the chart library" | Report is blank offline | Inline the library ([CHARTS.md](CHARTS.md) §1) |
+| Unused CDN constant "for later" | Copy-paste reintroduces it | Delete the constant; CI greps for it |
+| Webfont `@import` | Silent network call, FOUT, offline failure | System font stack (§9) |
+| Sidecar `report.css` | File emailed alone renders unstyled | Single-file output (§2) |
+| Relative `output_path` returned | Caller cannot locate the file | Resolve before returning (§4) |
+| Direct write to the final path | Reader sees a half-written page | Temp file → atomic rename (§4) |
+| f-string interpolation of a column name | XSS from a CSV header | Escape at the injection point (§8) |
+| `innerHTML = userValue` | Same, via JS | `textContent` (§8) |
+| Language-native repr into JS | Breaks on `'`, `None`, `NaN` | JSON serialization (§8) |
+| Height set in both layout dict and CSS | Charts clip or double-scroll | CSS owns height ([CHARTS.md](CHARTS.md) §3) |
+| Hex colors in engine code | Theme switch misses them | Token references only ([THEMING.md](THEMING.md) §2) |
+| Browser launch raises | Tool fails after writing a valid file | Best-effort launch (§9) |
 
-```css
-font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-```
+---
 
-`Segoe UI` renders on Windows. `system-ui` / `-apple-system` cover macOS/Linux.
-The stack degrades gracefully everywhere.
+## 11. Scale Matrix
 
-### Monospace font stack
-
-```css
-font-family: 'Cascadia Code', 'Fira Mono', monospace;
-```
-
-### Browser auto-open (`_open_file`)
-
-```python
-if sys.platform == "win32":
-    os.startfile(str(p))
-elif sys.platform == "darwin":
-    subprocess.Popen(["open", str(p)])
-else:
-    subprocess.Popen(["xdg-open", str(p)])
-```
-
-Always `best-effort, never raises`. Wrap in try/except and log to stderr.
-
-### Output path separators
-
-Always use `pathlib.Path` for path construction. Never string concatenation.
-`Path.resolve()` returns the OS-native separator automatically.
+| Dimension | Prototype | Production | Scale |
+|---|---|---|---|
+| Report types | 1–2, one module | 3–10, shared `html_layout` + `html_theme` | >10, versioned generator package |
+| Offline enforcement | Manual review | CI grep gate for `http` · `cdn.` · `@import` | Grep gate + network-disabled render test on fixtures |
+| Escaping | Escape helper used by convention | Escape helper mandatory; review rejects raw interpolation | Escaping enforced by renderer API — raw string injection impossible |
+| CSP | Optional | Meta tag with `connect-src 'none'` on every page | CSP + automated fixture assertion on every directive |
+| Output size | Unbounded | ≤5 MB per report; row-truncate tables beyond the cap | ≤5 MB + explicit row/chart budgets per section |
+| Theme support | `dark` only | `dark` · `light` · `device` | All three + per-project brand token override |
+| Regression testing | Open and eyeball | Golden-file diff on generated HTML | Golden-file diff + DOM assertions + offline render test |
 
 ---
 
 ## 12. Checklist
 
-Use this checklist when adding or reviewing any tool that produces HTML output.
-
-### HTML output checklist
-
-- [ ] No CDN URLs anywhere in the file (no `https://cdn.`, no `PLOTLY_CDN`)
-- [ ] `include_plotlyjs=True` for standalone pages; `False` for embedded divs
-- [ ] `apply_fig_theme(fig, theme)` called before every `plotly_div()` or embed
-- [ ] `autosize=True` in figure layout; no hardcoded `height` in layout dict
-- [ ] `calc_chart_height()` used for any standalone chart needing a px height
-- [ ] `get_output_path()` used for output path resolution (Downloads-first)
-- [ ] Explicit `output_path` passed through `.resolve()`
-- [ ] `"output_path"` and `"filename"` keys in tool return dict
-- [ ] `theme` parameter accepts `"dark"` | `"light"` | `"device"`
-- [ ] `open_after: bool = True` parameter present
-- [ ] Device-mode JS injected when `theme == "device"`
-- [ ] `VIEWPORT_META` injected into `<head>` (imported from `html_layout.py`)
-- [ ] `<!DOCTYPE html>`, `<html lang="en">`, `<meta charset="utf-8">` present
-- [ ] All CSS inlined; no external stylesheets
-- [ ] All JS inlined; no external scripts
-- [ ] User content HTML-escaped before injection
-- [ ] No `onclick=...` inline handlers; `addEventListener()` only
-- [ ] No `eval()` or `new Function()` anywhere in JS
-
-### CSS checklist
-
-- [ ] No `px` except `1px` borders
-- [ ] Spacing and typography use `rem` or CSS custom properties
-- [ ] Fluid values use `clamp()`
-- [ ] `overflow-wrap:break-word` on all user-content elements
-- [ ] Tables wrapped in `.table-wrap` div
-- [ ] `min-width:0` on flex/grid children
-- [ ] Hamburger sidebar toggle for mobile (not just `display:none`)
-- [ ] Print media query present on multi-section reports
-- [ ] Custom scrollbar styles present
-- [ ] Z-index follows defined layer table
-- [ ] Transitions ≤ 0.2s
-
-### Module structure checklist
-
-- [ ] `VIEWPORT_META` defined only in `html_layout.py` (not redefined in `html_theme.py`)
-- [ ] `get_output_path()` lives in `html_layout.py`
-- [ ] `calc_chart_height()`, `apply_fig_theme()`, `build_html_report()` live in `html_theme.py`
-- [ ] `_open_file()` lives in `html_theme.py`
-- [ ] No `PLOTLY_CDN` constant anywhere in shared/
-
-### JavaScript checklist
-
-- [ ] Vanilla JS only — no framework imports (React, Vue, Alpine, jQuery)
-- [ ] All Python data → JS via `json.dumps()`, never raw Python repr
-- [ ] All variables declared inside IIFEs — no global pollution
-- [ ] `const`/`let` only, never `var`
-- [ ] `addEventListener()` only — no inline event attributes
-- [ ] No `eval()`, no `new Function()`
-- [ ] Cross-chart events use `CustomEvent` + `dispatchEvent`
-- [ ] `sessionStorage` used for UI state that should survive page reload
-
-### Interactive controls checklist
-
-- [ ] Column/variable pickers: search box + checkbox list + Select-all/Clear-all
-- [ ] Numeric range filters: two inputs with min/max validation
-- [ ] Table search: debounced (≥ 150 ms) live row filter
-- [ ] Sortable tables: `▲`/`▼` indicator on sorted column
-- [ ] Chart expand: `⛶` button → modal; ESC or backdrop closes
-- [ ] Collapsible sections: state persisted in `sessionStorage`
-- [ ] Cross-filter: Plotly `plotly_selected` used, not `plotly_click`
-- [ ] All controls fully keyboard-accessible (Tab, Enter, Escape)
-- [ ] "Clear" / "Reset" available for every filter
-
-### UX patterns checklist
-
-- [ ] Scroll spy: `IntersectionObserver` drives sidebar `.active` class
-- [ ] Section headings: `position:sticky;top:0` to stay visible while scrolling
-- [ ] Animated counters: `requestAnimationFrame`, ≤ 600 ms, ease-out
-- [ ] Copy-to-clipboard: `navigator.clipboard.writeText()` with "Copied!" feedback
-- [ ] CSV download: Blob URL, includes only currently-visible rows
-- [ ] Back-to-top button: appears after 300 px scroll, `scroll-behavior:smooth`
-- [ ] Tooltips on truncated cells: `title` attribute at minimum
-
----
-
-## 13. JavaScript & TypeScript Standards
-
-### Language — what to embed
-
-All JavaScript embedded inside HTML reports must be **vanilla JS** — no
-framework or library imports of any kind (React, Vue, Angular, Alpine.js,
-jQuery, Lodash, etc.). Every script must be self-contained and run without
-any network access.
-
-**TypeScript** is allowed as a development/authoring tool, but only its
-compiled JavaScript output may be embedded in HTML. MCP projects that have
-no build step must use vanilla JS directly.
-
-```
-Allowed in <script>:  ES2017+ vanilla JS (compiled from TS is fine)
-Not allowed:          import statements, require(), framework runtime bundles
-```
-
-### Language features
-
-Use modern JS idioms — all target browsers support ES2017+:
-
-```javascript
-// Good
-const result = items.filter(x => x.active).map(x => x.value);
-const label = `${col} (${dtype})`;
-const val = obj?.nested?.key ?? "default";
-
-// Bad — ES5 patterns are verbose and error-prone
-var result = [];
-for (var i = 0; i < items.length; i++) { ... }
-```
-
-| Feature | Use |
-|---|---|
-| `const` / `let` | Always — never `var` |
-| Arrow functions | Prefer for callbacks |
-| Template literals | String interpolation |
-| Destructuring | For function params and return values |
-| Optional chaining `?.` | Safe property access |
-| Nullish coalescing `??` | Default values |
-| `async`/`await` | Async operations (rare in reports) |
-
-### IIFE module pattern
-
-Every script block must be wrapped in an IIFE. No globals, no accidental
-name collisions between independently-written script blocks.
-
-```javascript
-// Every script block
-(function() {
-  "use strict";
-  const el = document.getElementById("my-chart");
-  // ...
-})();
-```
-
-### Python data → JavaScript
-
-All data from Python must be serialized with `json.dumps()` before injection.
-Never use Python's string representation of lists or dicts.
-
-```python
-import json
-
-# Wrong — Python repr; breaks if column name has a quote
-var x = {corr_x};
-
-# Correct — valid JSON, handles all characters
-var x = {json.dumps(corr_x)};
-```
-
-This applies to: column name arrays, matrix values, category lists,
-node/edge data, any Python object placed in a JS variable.
-
-### Cross-chart communication
-
-When one control should affect multiple charts (cross-filter, theme switch,
-column toggle), use `CustomEvent` on `document` rather than calling chart
-functions directly. This decouples the control from the charts it affects.
-
-```javascript
-// Control fires an event
-document.dispatchEvent(new CustomEvent("filter-change", {
-  detail: { column: "revenue", min: 0, max: 10000 }
-}));
-
-// Chart listens
-document.addEventListener("filter-change", function(e) {
-  applyFilter(e.detail);
-});
-```
-
-### State persistence
-
-UI state that should survive page reload (collapsed sections, active tab,
-selected theme override) must be stored in `sessionStorage`, not `localStorage`.
-Reports are ephemeral; `sessionStorage` is scoped to the tab session.
-
-```javascript
-// Save
-sessionStorage.setItem("section-overview-collapsed", "true");
-
-// Restore
-const collapsed = sessionStorage.getItem("section-overview-collapsed") === "true";
-```
-
----
-
-## 14. Interactive Controls
-
-All controls follow progressive enhancement: the page is fully readable
-with JavaScript disabled. Controls enhance the experience; they do not
-gate it.
-
-### Multi-select column / variable picker
-
-Use when a report covers many columns (> 10) and the user may want to
-focus on a subset. Standard pattern:
-
-```html
-<div class="ddw">
-  <button class="ddbtn" id="col-picker-btn">Columns ▾</button>
-  <div class="ddmenu hid" id="col-picker-menu">
-    <input class="ddsrch" type="text" placeholder="Search…" />
-    <div class="ddacts">
-      <button class="btn" id="col-all">Select all</button>
-      <button class="btn" id="col-none">Clear</button>
-    </div>
-    <!-- one .optlbl per column -->
-    <label class="optlbl">
-      <input type="checkbox" value="revenue" checked> revenue
-    </label>
-  </div>
-</div>
-```
-
-Requirements:
-- Search box filters the list in real time (debounce 150 ms)
-- Select-all / Clear-all buttons
-- Checked state persists in `sessionStorage`
-- Menu closes when clicking outside (`document` click listener with `closest()`)
-- Keyboard accessible: Tab to button, Enter/Space to open, Escape to close
-
-### Numeric range filter
-
-For filtering rows by a numeric column:
-
-```html
-<div class="nrng">
-  <input class="ninp" type="number" id="min-val" placeholder="Min">
-  <span class="nsep">–</span>
-  <input class="ninp" type="number" id="max-val" placeholder="Max">
-  <button class="btn" id="apply-range">Apply</button>
-  <button class="btn" id="clear-range">Clear</button>
-</div>
-```
-
-Validate: `min ≤ max`; show inline error if violated. Never silently clamp.
-
-### Live table search
-
-Every data table with more than 20 rows must have a search input that
-filters rows in real time.
-
-```javascript
-(function() {
-  "use strict";
-  const input = document.getElementById("tbl-search");
-  const rows = document.querySelectorAll("#data-table tbody tr");
-  let timer;
-  input.addEventListener("input", function() {
-    clearTimeout(timer);
-    timer = setTimeout(function() {
-      const q = input.value.toLowerCase();
-      rows.forEach(function(r) {
-        r.style.display = r.textContent.toLowerCase().includes(q) ? "" : "none";
-      });
-    }, 150);
-  });
-})();
-```
-
-Debounce ≥ 150 ms. Filter applies to all visible text in the row.
-
-### Sortable tables
-
-Every static data table must support click-to-sort on column headers.
-
-```javascript
-(function() {
-  "use strict";
-  document.querySelectorAll("th[data-sort]").forEach(function(th) {
-    th.style.cursor = "pointer";
-    let dir = 1;
-    th.addEventListener("click", function() {
-      const idx = th.cellIndex;
-      const tbody = th.closest("table").querySelector("tbody");
-      const rows = Array.from(tbody.rows);
-      rows.sort(function(a, b) {
-        const av = a.cells[idx].textContent.trim();
-        const bv = b.cells[idx].textContent.trim();
-        return dir * (isNaN(av - bv) ? av.localeCompare(bv) : av - bv);
-      });
-      rows.forEach(function(r) { tbody.appendChild(r); });
-      th.closest("table").querySelectorAll("th").forEach(function(t) {
-        t.textContent = t.textContent.replace(/ [▲▼]$/, "");
-      });
-      th.textContent += dir > 0 ? " ▲" : " ▼";
-      dir *= -1;
-    });
-  });
-})();
-```
-
-Mark sortable headers with `data-sort` attribute. Numeric columns sort
-numerically; others sort lexicographically.
-
-### Chart expand modal
-
-Every chart card in a grid report must have an expand button that opens
-the chart full-size in a modal overlay.
-
-Standard elements:
-```html
-<div class="modal" id="chart-modal">
-  <div class="mbox">
-    <div class="mhdr">
-      <h3 id="modal-title"></h3>
-      <button class="mclose" id="modal-close">&#x2715;</button>
-    </div>
-    <div id="mdiv"></div>
-  </div>
-</div>
-```
-
-Expand button HTML on each chart card:
-```html
-<button class="exp" data-chart-id="revenue-chart" data-chart-title="Revenue">⛶</button>
-```
-
-Behavior:
-- Click expand → move chart div into `#mdiv` → set `#modal-title` → show modal
-- ESC key or backdrop click → close modal → return chart div to original card
-- Modal resize triggers `Plotly.relayout(div, {autosize: true})`
-
-### Cross-filter
-
-When a dashboard has multiple related charts, selecting a point or bar in
-one chart should filter the data shown in others.
-
-Use Plotly events:
-```javascript
-chartDiv.on("plotly_selected", function(eventData) {
-  const selected = eventData ? eventData.points.map(p => p.customdata) : null;
-  document.dispatchEvent(new CustomEvent("cross-filter", {
-    detail: { source: "revenue-chart", keys: selected }
-  }));
-});
-```
-
-Always provide a visible **"Clear filter"** button that resets all charts.
-Highlight filtered state in the source chart (change opacity of non-selected
-points: `marker.opacity` update via `Plotly.restyle`).
-
-### Collapsible sections
-
-Long reports benefit from collapsible sections. Each section heading gets a
-toggle, and state is persisted.
-
-```javascript
-(function() {
-  "use strict";
-  document.querySelectorAll(".section > h2").forEach(function(h) {
-    const id = h.closest(".section").id;
-    const body = h.nextElementSibling;
-    if (!body) return;
-    h.style.cursor = "pointer";
-    const key = "collapsed-" + id;
-    if (sessionStorage.getItem(key) === "1") {
-      body.style.display = "none";
-      h.textContent = "▶ " + h.textContent;
-    } else {
-      h.textContent = "▼ " + h.textContent;
-    }
-    h.addEventListener("click", function() {
-      const hidden = body.style.display === "none";
-      body.style.display = hidden ? "" : "none";
-      sessionStorage.setItem(key, hidden ? "0" : "1");
-      h.textContent = (hidden ? "▼ " : "▶ ") + h.textContent.slice(2);
-    });
-  });
-})();
-```
-
----
-
-## 15. UX Patterns
-
-### Scroll spy
-
-The sidebar active link must track the currently visible section as the
-user scrolls. Use `IntersectionObserver` — not `scroll` event listeners.
-
-```javascript
-(function() {
-  "use strict";
-  const links = document.querySelectorAll(".nav a[href^='#']");
-  const sections = Array.from(document.querySelectorAll(".section[id]"));
-  const observer = new IntersectionObserver(function(entries) {
-    entries.forEach(function(entry) {
-      if (entry.isIntersecting) {
-        links.forEach(function(l) { l.classList.remove("active"); });
-        const match = document.querySelector('.nav a[href="#' + entry.target.id + '"]');
-        if (match) match.classList.add("active");
-      }
-    });
-  }, { rootMargin: "-20% 0px -70% 0px" });
-  sections.forEach(function(s) { observer.observe(s); });
-})();
-```
-
-### Sticky section headings
-
-Section headings in long reports should stick at the top of the viewport
-while their section is visible. Add to CSS:
-
-```css
-.section > h2 {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: var(--bg);
-  padding-top: 0.5rem;
-}
-```
-
-Only apply to reports without a fixed sidebar that already anchors
-navigation (use with EDA/profile layouts; not needed in dashboard layout).
-
-### Animated KPI counters
-
-Numeric KPI cards animate from 0 to their final value on page load.
-Duration 600 ms, ease-out. Skip animation if `prefers-reduced-motion`.
-
-```javascript
-(function() {
-  "use strict";
-  if (window.matchMedia("(prefers-reduced-motion:reduce)").matches) return;
-  document.querySelectorAll(".card .num[data-val]").forEach(function(el) {
-    const target = parseFloat(el.dataset.val);
-    if (isNaN(target)) return;
-    const fmt = el.dataset.fmt || "int";  // "int" | "float2" | "pct"
-    const start = performance.now();
-    const dur = 600;
-    function step(now) {
-      const t = Math.min((now - start) / dur, 1);
-      const ease = 1 - Math.pow(1 - t, 3);  // ease-out cubic
-      const v = target * ease;
-      el.textContent = fmt === "float2" ? v.toFixed(2)
-                      : fmt === "pct"    ? v.toFixed(1) + "%"
-                                        : Math.round(v).toLocaleString();
-      if (t < 1) requestAnimationFrame(step);
-    }
-    requestAnimationFrame(step);
-  });
-})();
-```
-
-Mark cards with `data-val="{number}"` and `data-fmt="int|float2|pct"`.
-
-### Copy to clipboard
-
-File paths, column names, and code block values should be copyable with
-a single click. Visual feedback: "Copied!" replaces the button label for
-1.5 s then reverts.
-
-```javascript
-(function() {
-  "use strict";
-  document.querySelectorAll("[data-copy]").forEach(function(btn) {
-    btn.addEventListener("click", function() {
-      const text = btn.dataset.copy;
-      navigator.clipboard.writeText(text).then(function() {
-        const orig = btn.textContent;
-        btn.textContent = "Copied!";
-        setTimeout(function() { btn.textContent = orig; }, 1500);
-      });
-    });
-  });
-})();
-```
-
-Add a small copy icon button `<button class="btn" data-copy="{path}">⧉</button>`
-next to file paths in report headers and code blocks.
-
-### Download filtered table as CSV
-
-Every filterable data table must offer a "Download CSV" button that exports
-only the currently visible rows.
-
-```javascript
-(function() {
-  "use strict";
-  const btn = document.getElementById("dl-csv");
-  if (!btn) return;
-  btn.addEventListener("click", function() {
-    const tbl = document.getElementById("data-table");
-    const headers = Array.from(tbl.querySelectorAll("th"))
-      .map(th => JSON.stringify(th.textContent.trim()));
-    const visibleRows = Array.from(tbl.querySelectorAll("tbody tr"))
-      .filter(r => r.style.display !== "none");
-    const rows = visibleRows.map(function(r) {
-      return Array.from(r.cells).map(td => JSON.stringify(td.textContent.trim())).join(",");
-    });
-    const csv = [headers.join(","), ...rows].join("\n");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    a.download = "export.csv";
-    a.click();
-    URL.revokeObjectURL(a.href);
-  });
-})();
-```
-
-### Back-to-top button
-
-Appears after the user scrolls 300 px. Smoothly returns to top.
-
-```html
-<button id="back-top" aria-label="Back to top"
-  style="display:none;position:fixed;bottom:1.5rem;right:1.5rem;z-index:300;
-  background:var(--surface);border:1px solid var(--border);
-  border-radius:var(--radius-md);padding:.5rem .75rem;cursor:pointer;
-  color:var(--accent);font-size:1rem;box-shadow:0 2px 8px rgba(0,0,0,.2)">▲</button>
-```
-
-```javascript
-(function() {
-  "use strict";
-  const btn = document.getElementById("back-top");
-  if (!btn) return;
-  window.addEventListener("scroll", function() {
-    btn.style.display = window.scrollY > 300 ? "" : "none";
-  }, { passive: true });
-  btn.addEventListener("click", function() {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  });
-})();
-```
-
-### Tooltip on truncated cells
-
-Add `title` attribute to any cell where `text-overflow:ellipsis` may clip
-content. For cells generated from data:
-
-```python
-f'<td title="{html.escape(full_value)}">{html.escape(display_value[:40])}</td>'
-```
-
-For dynamic truncation, use a `ResizeObserver` to detect when text overflows
-and add/remove `title` accordingly.
-
-### Print button
-
-Every multi-section report should have a print button in the header area.
-Works with the existing `@media print` stylesheet.
-
-```html
-<button class="btn" onclick="window.print()">🖨 Print</button>
-```
-
-Exception to the no-inline-handler rule: `window.print()` is the only
-acceptable inline `onclick` because it has no side-effects and no injection
-risk.
+- [ ] Zero `http://` or `https://` in `src`, `href`, or `@import` of generated HTML
+- [ ] No CDN URL constant exists anywhere in the codebase, used or unused
+- [ ] No `fetch`, `XMLHttpRequest`, `WebSocket`, or `sendBeacon` in emitted JS
+- [ ] Chart library, CSS, and JS are inlined; output is exactly one file
+- [ ] Generated fixture renders fully with the network disabled
+- [ ] `theme` accepts `dark` | `light` | `device`, defaults to `dark`, rejects unknown values
+- [ ] `open_after` parameter present and defaults to true
+- [ ] Return payload contains absolute `output_path` and `filename`
+- [ ] Output path follows explicit → `~/Downloads` → input directory order
+- [ ] Writes are atomic (temp file → rename) with explicit `utf-8` encoding
+- [ ] Viewport meta, chart config, tokens, and height constants each defined exactly once
+- [ ] `html_theme` imports `html_layout`; no reverse import
+- [ ] No hardcoded chart height in layout dict or figure-theming helper
+- [ ] Doctype, `<html lang="en">`, charset meta, viewport meta present in fixed order
+- [ ] Every report section has a stable `id` matching its sidebar anchor
+- [ ] Every data-derived value is HTML-escaped at its injection point
+- [ ] Attribute-context values are escaped and quoted
+- [ ] No `eval()`, no `new Function()`, no `innerHTML` with data
+- [ ] No inline event handlers ; the single `window.print()` exception
+- [ ] Python/host data reaches JS as JSON, never as native repr
+- [ ] CSP meta tag present with `default-src 'none'` and `connect-src 'none'`
+- [ ] Font stacks are system-only; no downloadable font referenced
+- [ ] Viewer launch is best-effort and never raises
+- [ ] Paths built with a path library, never string concatenation

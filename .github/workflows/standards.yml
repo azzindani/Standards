@@ -1,0 +1,104 @@
+name: standards
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  conformance:
+    name: Template conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate every standard against TEMPLATE.md
+        run: python3 tools/validate.py
+
+  lint:
+    name: Markdown lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Lint markdown
+        run: npx --yes markdownlint-cli2 "**/*.md" "#node_modules"
+
+  links:
+    name: Link check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check all links resolve
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --no-progress --offline --include-fragments .
+          fail: true
+
+  hygiene:
+    name: Repo hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No trailing whitespace
+        run: |
+          if grep -rIn --include='*.md' ' $' . ; then
+            echo "::error::trailing whitespace found"
+            exit 1
+          fi
+
+      - name: Files end with newline
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            [ -n "$(tail -c1 "$f")" ] && { echo "::error file=$f::missing trailing newline"; fail=1; }
+          done < <(git ls-files '*.md' '*.py')
+          exit $fail
+
+      - name: No tabs in markdown
+        run: |
+          if grep -rInP --include='*.md' '\t' . ; then
+            echo "::error::tab character in markdown — use spaces"
+            exit 1
+          fi
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [conformance, lint, links, hygiene]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Standards ${GITHUB_REF_NAME}" \
+            --notes-file CHANGELOG.md \
+            --verify-tag

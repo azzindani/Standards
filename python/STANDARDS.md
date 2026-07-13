@@ -1,796 +1,490 @@
 # Python Standards
 
-Language-specific rules for Python projects. Extends and specializes
-general standards from `architecture/`, `code_writing/`, `testing/`,
-and `dependencies/` — Python-specific tooling, idioms, anti-patterns here.
+> Idiomatic Python: style, typing, packaging, async, and the uv · ruff · mypy toolchain.
 
-Baseline: Python 3.11+. All rules assume modern Python unless noted.
+**ID** `python` · **Tier** Language · **Version** 1.0
+**Owns** Python style · identifier naming · type hints · uv packaging · import order · dataclass/Pydantic selection · asyncio idioms · pytest/ruff/mypy invocation · Python anti-patterns
+**Defers to** test strategy + coverage thresholds + mocking policy → [testing](../testing/STANDARDS.md) · error taxonomy + boundaries + recovery → [error_handling](../error_handling/STANDARDS.md) · lockfile + pinning + supply-chain policy → [dependencies](../dependencies/STANDARDS.md) · layering + dependency direction → [architecture](../architecture/STANDARDS.md) · file + directory naming → [directory](../directory/STANDARDS.md) · pipeline stages → [cicd](../cicd/STANDARDS.md) · budgets + profiling method → [performance](../performance/STANDARDS.md)
+**Load with** [architecture](../architecture/STANDARDS.md) · [code_writing](../code_writing/STANDARDS.md) · [testing](../testing/STANDARDS.md) · [error_handling](../error_handling/STANDARDS.md) · [dependencies](../dependencies/STANDARDS.md)
 
 ---
 
 ## Table of Contents
 
-1. [Style](#1-style)
-2. [Type Hints](#2-type-hints)
-3. [Project Structure](#3-project-structure)
-4. [Package Management](#4-package-management)
-5. [Virtual Environments](#5-virtual-environments)
-6. [Import Style](#6-import-style)
-7. [Data Classes & Models](#7-data-classes--models)
-8. [Error Handling](#8-error-handling)
-9. [String Formatting](#9-string-formatting)
-10. [Async Patterns](#10-async-patterns)
+1. [Baseline & Toolchain](#1-baseline--toolchain)
+2. [Style & Naming](#2-style--naming)
+3. [Type Hints](#3-type-hints)
+4. [Project Structure](#4-project-structure)
+5. [Packaging & Environments](#5-packaging--environments)
+6. [Imports](#6-imports)
+7. [Data Models](#7-data-models)
+8. [Exceptions](#8-exceptions)
+9. [Strings & Logging](#9-strings--logging)
+10. [Async](#10-async)
 11. [Testing Tools](#11-testing-tools)
-12. [Linting & Formatting](#12-linting--formatting)
-13. [Python-Specific Anti-Patterns](#13-python-specific-anti-patterns)
-14. [Performance](#14-performance)
+12. [Lint · Format · Typecheck](#12-lint--format--typecheck)
+13. [Performance Idioms](#13-performance-idioms)
+14. [Anti-Patterns](#14-anti-patterns)
 15. [Checklist](#15-checklist)
 
 ---
 
-## 1. Style
+## 1. Baseline & Toolchain
 
-PEP 8 as baseline with documented deviations.
+Baseline **Python 3.12**. 3.13 permitted once every pinned dependency publishes wheels for it.
 
-### Deviations from PEP 8
-
-| PEP 8 Default | Override | Rationale |
+| Job | Tool | ✗ Superseded |
 |---|---|---|
-| Line length 79 | **100** | Modern screens; 79 causes excessive wrapping |
-| `snake_case` class attrs | Preserved | No deviation |
-| Trailing comma optional | **Required** in multi-line collections | Cleaner diffs |
+| Package + env + Python version | `uv` | `pip` · `pip-tools` · `poetry` · `pipenv` · `conda` · `virtualenv` |
+| Lint + format + import sort | `ruff` | `black` · `isort` · `flake8` · `pylint` · `pyupgrade` |
+| Type check | `mypy --strict` \| `pyright` | — |
+| Test | `pytest` | `unittest` for new code · `nose` |
+| Build backend + metadata | `hatchling` + `pyproject.toml` | `setup.py` · `setup.cfg` · `requirements.txt` |
 
-### Naming Conventions
+One config file: `pyproject.toml`. ✗ scatter tool config across `.flake8`, `setup.cfg`, `tox.ini`.
+
+---
+
+## 2. Style & Naming
+
+PEP 8 baseline. Deviations below are the only ones permitted.
+
+| PEP 8 | Override |
+|---|---|
+| Line length 79 | **100** — ruff `line-length = 100` |
+| Trailing comma optional | **Required** in multi-line collections — stable diffs |
+| Quote style unspecified | Double quotes |
+
+### Identifier Naming
 
 | Construct | Convention | Example |
 |---|---|---|
-| Module | `snake_case` | `data_loader.py` |
-| Class | `PascalCase` | `DataLoader` |
-| Function / method | `snake_case` | `load_data()` |
+| Module | `snake_case` | `data_loader` |
+| Class · Exception · TypedDict | `PascalCase` | `DataLoader` · `ConfigError` |
+| Function · method · variable | `snake_case` | `load_data` |
 | Constant | `UPPER_SNAKE` | `MAX_RETRIES` |
 | Private | `_leading_underscore` | `_internal_cache` |
-| Name-mangled | `__double_leading` | `__secret` (rare; prefer `_single`) |
-| Type variable | `PascalCase` + `T` suffix | `ItemT`, `ResponseT` |
+| Name-mangled | `__double_leading` | Rare — prefer `_single` |
+| Type variable | `PascalCase` + `T` | `ItemT` · `ResponseT` |
 
-### Whitespace
-
-One blank line between methods. Two blank lines between top-level definitions.
-Trailing commas required in multi-line collections.
+File and directory naming → [directory](../directory/STANDARDS.md).
 
 ### Docstrings
 
-Google-style for all public functions, classes, modules.
+Google style on every public module, class, function. ✗ docstring on private helper unless logic non-obvious. ✗ restate type hints in the docstring — they are in the signature.
 
 ```python
 def fetch_records(query: str, limit: int = 100) -> list[Record]:
     """Fetch records matching query from primary store.
 
     Args:
-        query: SQL-compatible filter expression.
-        limit: Max rows returned. 0 → unlimited.
-
-    Returns:
-        Matching records ordered by creation time descending.
+        limit: Max rows. 0 → unlimited.
 
     Raises:
-        QueryError: If query syntax invalid.
+        QueryError: Query syntax invalid.
     """
 ```
 
-✗ Docstrings on private helpers unless logic non-obvious.
-✗ Restating type hints in docstring — types visible in signature.
-
 ---
 
-## 2. Type Hints
+## 3. Type Hints
 
-Required for all public API (functions, classes, module-level vars).
-Internal helpers: type hints strongly encouraged, enforced via mypy.
-
-### Core Rules
+Required on every public function, method, and module-level variable. Internal helpers typed too — `disallow_untyped_defs = true`.
 
 | Rule | Detail |
 |---|---|
-| Return type always explicit | Even `-> None` |
-| `Optional[X]` → `X \| None` | Modern union syntax (3.10+) |
-| `Dict/List/Tuple` → `dict/list/tuple` | Lowercase builtins (3.9+) |
-| `Any` requires comment | Explain why type unknown |
-| `cast()` requires comment | Explain why cast safe |
-| `# type: ignore` requires error code | `# type: ignore[attr-defined]` |
+| Return type always explicit | Including `-> None` |
+| `Optional[X]` → `X \| None` | PEP 604 union syntax |
+| `Dict`/`List`/`Tuple`/`Set` → `dict`/`list`/`tuple`/`set` | Lowercase builtins |
+| `Any` requires a comment | State why the type is unknowable |
+| `cast()` requires a comment | State why the cast is sound |
+| `# type: ignore` requires an error code | `# type: ignore[attr-defined]` — bare ignore ✗ |
+| `py.typed` marker in every distributed package | Otherwise consumers get no types |
+| Structural typing over ABC inheritance | `typing.Protocol` — `class Serializable(Protocol): def to_dict(self) -> dict[str, object]: ...` |
 
-### Protocols
+Gradual typing: new code fully typed from day one · untyped code typed on touch · mypy strict in CI · ✗ merge with type errors.
 
-```python
-from typing import Protocol
-
-class Serializable(Protocol):
-    def to_dict(self) -> dict[str, Any]: ...
-
-def serialize_all(items: list[Serializable]) -> list[dict[str, Any]]:
-    return [item.to_dict() for item in items]
-```
-
-### Gradual Typing Strategy
-
-1. All new code → fully typed from day one
-2. Existing untyped code → type on touch (modify function → add types)
-3. `py.typed` marker in all packages
-4. mypy strict mode in CI — ✗ merge with type errors
-
-```toml
-# pyproject.toml
-[tool.mypy]
-strict = true
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-```
+`[tool.mypy]` → `strict = true` · `warn_unreachable = true` · `disallow_untyped_defs = true`.
 
 ---
 
-## 3. Project Structure
+## 4. Project Structure
 
-Two layouts exist. Choose based on project type.
-
-### Layout Selection
-
-| Layout | When | Example |
+| Layout | When | Root |
 |---|---|---|
-| **src layout** | Libraries, packages published to PyPI, multi-package repos | `src/mylib/` |
-| **Flat layout** | Single-purpose apps, scripts, MCP servers, CLI tools | `myapp/` |
+| **src** | Library · PyPI package · multi-package repo | `src/mylib/` |
+| **flat** | App · script · CLI · MCP server | `myapp/` |
 
-### src Layout (libraries, PyPI packages)
+src layout is mandatory for anything published to an index — it prevents importing the working tree instead of the installed package.
 
-```
+```text
 project-root/
 ├── pyproject.toml · uv.lock · .python-version
-├── src/mylib/
-│   ├── __init__.py · py.typed
-│   ├── core.py · models.py · _internal.py
-├── tests/
-│   ├── conftest.py · test_core.py · test_models.py
+├── src/mylib/__init__.py · py.typed · core.py · models.py · _internal.py
+└── tests/conftest.py · test_core.py
 ```
 
-### Flat Layout (apps, scripts, MCP servers, CLI tools)
-
-```
-project-root/
-├── pyproject.toml · uv.lock · .python-version
-├── myapp/
-│   ├── __init__.py · main.py · config.py
-│   └── handlers/__init__.py · handlers/api.py
-├── tests/
-```
-
-### `__init__.py` Rules
+### `__init__.py`
 
 | Rule | Detail |
 |---|---|
-| Every package dir has `__init__.py` | Even if empty — explicit packages only |
-| Public API exported in `__init__.py` | `from .core import Engine` |
-| ✗ logic in `__init__.py` | Only imports + `__all__` |
-| `__all__` defined | Controls `from pkg import *` and documents public surface |
+| Every package directory has one | Explicit packages only — ✗ namespace packages by accident |
+| Contains imports + `__all__` only | ✗ logic · ✗ side effects · ✗ I/O at import time |
+| `__all__` defined | Declares public surface, controls `import *` |
 
 ```python
-# mylib/__init__.py
 from .core import Engine
 from .models import Config, Result
 
-__all__ = ["Engine", "Config", "Result"]
+__all__ = ["Config", "Engine", "Result"]
 ```
 
-See `architecture/STANDARDS.md` §5 for module boundary principles.
-See `directory/STANDARDS.md` for general project layout rules.
+Layering and dependency direction → [architecture](../architecture/STANDARDS.md).
 
 ---
 
-## 4. Package Management
+## 5. Packaging & Environments
 
-**uv** is the primary tool for all Python package operations.
-
-### Rules
+`uv` performs every package, environment, and interpreter operation.
 
 | Rule | Detail |
 |---|---|
-| ✗ `setup.py` | Dead format — `pyproject.toml` only |
-| ✗ `requirements.txt` for deps | Use `uv.lock` — deterministic, cross-platform |
-| ✗ `pip install` directly | Use `uv pip install` or `uv sync` |
-| ✗ `setup.cfg` | Migrate to `pyproject.toml` |
-| Lock file committed | `uv.lock` in version control always |
-
-### `pyproject.toml` Structure
+| ✗ `setup.py` · `setup.cfg` | Dead formats — `pyproject.toml` only |
+| ✗ `requirements.txt` as source of truth | `uv.lock` — deterministic, cross-platform, hash-verified |
+| ✗ bare `pip install` | `uv add` \| `uv sync` |
+| `uv.lock` committed | Always, including for applications |
+| `.python-version` committed | Pins interpreter; uv downloads it if absent |
+| `.venv/` gitignored | One venv per project, in project root |
+| ✗ system Python for project work | ✗ `conda` · ✗ `virtualenv` |
 
 ```toml
 [project]
 name = "myproject"
-version = "0.1.0"
-requires-python = ">=3.11"
-dependencies = ["httpx>=0.27", "pydantic>=2.0"]
+requires-python = ">=3.12"
+dependencies = ["httpx>=0.27", "pydantic>=2.7"]
 
 [build-system]
 requires = ["hatchling"]
-build-backend = "hatchling.backends"
+build-backend = "hatchling.build"
 
-[tool.uv]
-dev-dependencies = ["pytest>=8.0", "pytest-cov>=5.0", "mypy>=1.10", "ruff>=0.5", "pre-commit>=3.7"]
+[dependency-groups]
+dev = ["pytest>=8", "pytest-cov>=5", "mypy>=1.10", "ruff>=0.5"]
 ```
-
-### Common uv Commands
 
 ```bash
-uv init myproject              # new project
-uv add httpx pydantic          # add dependencies
-uv add --dev pytest ruff mypy  # add dev dependencies
-uv sync                        # install from lock file
-uv run pytest                  # run within venv
-uv run mypy src/               # type-check
-uv lock                        # regenerate lock file
+uv sync                  # install exactly what uv.lock says
+uv add httpx             # add dep + update lock
+uv add --dev pytest      # add dev dep
+uv run pytest -x         # run inside the venv without activating
+uv lock --upgrade        # deliberate lock refresh
 ```
 
-See `dependencies/STANDARDS.md` for general dependency management rules.
+Pinning policy, supply-chain review, and vulnerability scanning → [dependencies](../dependencies/STANDARDS.md).
 
 ---
 
-## 5. Virtual Environments
+## 6. Imports
 
-Every project runs in an isolated virtual environment. ✗ system Python for project work.
-
-### Rules
+Three groups, blank-line separated, enforced by ruff `I`: stdlib → third-party → first-party.
 
 | Rule | Detail |
 |---|---|
-| One venv per project | In project root as `.venv/` |
-| Created via `uv venv` | Or auto-created by `uv sync` |
-| `.venv/` in `.gitignore` | ✗ committed to version control |
-| `.python-version` committed | Pin Python version per project |
-| ✗ `conda` for app projects | uv manages Python versions directly |
-| ✗ `virtualenv` / `venv` module | Use `uv venv` — faster, consistent |
-
-```bash
-uv venv --python 3.12     # creates .venv/ with Python 3.12
-uv sync                    # install all deps from lock
-uv run pytest -x           # run within venv (preferred over activating)
-```
-
-Pin version in `.python-version` (just `3.12`). `uv` reads it automatically, downloads if missing.
-
----
-
-## 6. Import Style
-
-Three groups separated by blank line (enforced by ruff `I` rules):
-1. Standard library · 2. Third-party · 3. Internal / project
-
-```python
-import os                          # 1. stdlib
-from pathlib import Path
-
-import httpx                       # 2. third-party
-from pydantic import BaseModel
-
-from myapp.config import Settings  # 3. internal
-```
-
-### Rules
-
-| Rule | Detail |
-|---|---|
-| Absolute imports preferred | `from myapp.models import User` |
-| Relative imports allowed | Only within same package: `from .models import User` |
-| ✗ wildcard imports | `from module import *` — unpredictable namespace |
-| ✗ import aliasing | Unless name collision or established convention (`import numpy as np`) |
-| One import per line | `from x import a, b` acceptable; `import a, b` → split to two lines |
-| `TYPE_CHECKING` block for cycle-breaking | Runtime-free imports for type hints only |
-| `__future__` annotations first | `from __future__ import annotations` at top if needed |
-
-### Type-Checking Imports
+| Absolute imports | `from myapp.models import User` |
+| Relative imports | Permitted only within the same package: `from .models import User` |
+| ✗ wildcard imports | `from module import *` outside `__init__.py` |
+| ✗ aliasing | Except name collision or established convention (`import numpy as np`) |
+| ✗ `import a, b` on one line | One module per `import` statement |
+| ✗ side effects at import time | No I/O, no network, no mutation of global state |
+| `TYPE_CHECKING` block for cycle-breaking | Import used only in annotations |
 
 ```python
 from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from myapp.engine import Engine  # avoid circular import
-
-class Handler:
-    def __init__(self, engine: Engine) -> None:
-        self.engine = engine
+    from myapp.engine import Engine   # annotation-only → no runtime import → no cycle
 ```
 
 ---
 
-## 7. Data Classes & Models
+## 7. Data Models
 
-### Selection Criteria
+| Need | Use |
+|---|---|
+| Internal data container | `@dataclass` |
+| Immutable · hashable · dict key | `@dataclass(frozen=True, slots=True)` |
+| Untrusted external data (API · config · DB row) | `pydantic.BaseModel` |
+| Many instances, fixed attributes | `@dataclass(slots=True)` |
+| Lightweight positional record, tuple-compatible | `typing.NamedTuple` |
 
-| Need | Use | Why |
-|---|---|---|
-| Simple data container, internal | `dataclass` | Stdlib, zero deps, fast |
-| Immutable record, hashable | `NamedTuple` | Lightweight, tuple-compatible |
-| External data validation (API, config, DB) | `Pydantic BaseModel` | Validation, serialization, schema |
-| High-performance, many instances | `dataclass` + `__slots__` | Lower memory, faster attribute access |
-| Frozen/immutable internal data | `dataclass(frozen=True)` | Hashable, prevents mutation |
-
-### dataclass Examples
+Validation of external input is a security boundary — Pydantic (or equivalent) is mandatory there, never a raw `dict`.
 
 ```python
-from dataclasses import dataclass, field
+@dataclass(frozen=True, slots=True)
+class CacheKey:
+    namespace: str
+    key: str
 
 @dataclass
 class ServerConfig:
     host: str
     port: int = 8080
-    tags: list[str] = field(default_factory=list)  # ✓ factory for mutable
-
-@dataclass(frozen=True, slots=True)
-class CacheKey:
-    namespace: str
-    key: str
+    tags: list[str] = field(default_factory=list)   # ✓ factory — ✗ tags: list = []
 ```
 
-### Pydantic
-
 ```python
-from pydantic import BaseModel, Field, field_validator
-
 class CreateUserRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    email: str
     age: int = Field(ge=0, le=150)
 
     @field_validator("email")
     @classmethod
-    def validate_email(cls, v: str) -> str:
+    def normalize(cls, v: str) -> str:
         if "@" not in v:
-            raise ValueError("invalid email format")
+            raise ValueError("invalid email")   # → pydantic ValidationError at the boundary
         return v.lower()
 ```
 
-### NamedTuple
-
-```python
-from typing import NamedTuple
-
-class Coordinate(NamedTuple):
-    lat: float
-    lon: float
-    alt: float = 0.0  # unpacking works: lat, lon, alt = Coordinate(59.33, 18.07)
-```
-
-### ✗ Avoid
-
-| Anti-Pattern | Use Instead |
+| ✗ | → |
 |---|---|
-| Plain `dict` for structured data | `dataclass` or Pydantic model |
-| `TypedDict` for runtime validation | Pydantic model (TypedDict has no runtime checks) |
-| Pydantic for internal-only data | `dataclass` (less overhead) |
-| Mutable default on dataclass field | `field(default_factory=...)` |
+| Plain `dict` for structured data | `dataclass` \| Pydantic model |
+| `TypedDict` for runtime validation | Pydantic — `TypedDict` has zero runtime checks |
+| Pydantic for internal-only data | `dataclass` — lower overhead |
+| Mutable default on a field | `field(default_factory=...)` |
 
 ---
 
-## 8. Error Handling
+## 8. Exceptions
 
-See `architecture/STANDARDS.md` §7 for error architecture principles.
-
-### Rules
+Error taxonomy, boundary placement, and recovery policy → [error_handling](../error_handling/STANDARDS.md). Python mechanism below.
 
 | Rule | Detail |
 |---|---|
-| ✗ bare `except:` | Always specify exception type |
-| ✗ `except Exception:` at low level | Catch specific exceptions; broad catch only at boundary |
-| ✗ Pokemon exception handling | `except Exception as e: pass` — swallows all errors silently |
-| ✗ `except` + `return None` silently | Caller cannot distinguish "no result" from "error" |
-| Exception chains preserved | `raise NewError(...) from original` |
-| Custom exceptions per domain | Inherit from project base exception |
-
-### Exception Hierarchy Pattern
+| ✗ bare `except:` | Catches `SystemExit` · `KeyboardInterrupt` — name the type |
+| ✗ `except Exception` below the boundary | Broad catch only at the top-level boundary |
+| ✗ `except ...: pass` | Silent swallow — the failure becomes invisible |
+| ✗ `except ...: return None` | Caller cannot distinguish "absent" from "failed" |
+| Chain always | `raise NewError(...) from err` — ✗ drop `__cause__` |
+| One project base exception | Every custom exception inherits from it |
+| Resource cleanup via context manager | `contextlib.contextmanager` · `asynccontextmanager` — ✗ manual `try/finally` chains |
 
 ```python
-class AppError(Exception):
-    """Base for all project exceptions."""
-
-class ConfigError(AppError):
-    """Configuration loading or validation failed."""
-
-class StorageError(AppError):
-    """Database or file storage operation failed."""
-
-class ValidationError(AppError):
-    """Input data failed validation."""
+class AppError(Exception): ...
+class ConfigError(AppError): ...
+class ValidationError(AppError): ...
 ```
 
-### Patterns
-
 ```python
-# ✓ Specific catch + chain
 try:
     data = json.loads(raw)
 except json.JSONDecodeError as e:
-    raise ValidationError(f"invalid JSON: {e}") from e
+    raise ValidationError(f"invalid JSON: {e}") from e   # ✓ specific catch + chain
+```
 
-# ✓ Boundary-level broad catch (top of call stack only)
-async def handle_request(request: Request) -> Response:
+```python
+async def handle(request: Request) -> Response:          # ✓ boundary — the only broad catch
     try:
         return Response(data=await process(request))
     except AppError as e:
         return Response(error=str(e), status=400)
     except Exception:
-        logger.exception("unhandled error")
+        logger.exception("unhandled")
         return Response(error="internal error", status=500)
 ```
 
-Use `contextlib.contextmanager` / `asynccontextmanager` for resource cleanup.
-
 ---
 
-## 9. String Formatting
+## 9. Strings & Logging
 
-### Rules
-
-| Method | Status |
+| Form | Status |
 |---|---|
-| f-strings | **Preferred** for all new code |
-| `str.format()` | Acceptable only in logging lazy format: `logger.info("x=%s", val)` |
-| `%` formatting | ✗ Forbidden in new code |
-| `+` concatenation | ✗ Forbidden for >2 parts — use f-string or `join()` |
+| f-string | Default for all interpolation |
+| `%`-style args to `logger` | **Required** in logging calls — deferred formatting |
+| `str.format()` · `%` operator | ✗ new code |
+| `+` for 3+ parts | ✗ — use f-string \| `"".join(parts)` |
 
 ```python
-msg = f"processed {count} records in {elapsed:.2f}s"       # ✓ f-string
-logger.info("processed %d records in %.2fs", count, elapsed)  # ✓ lazy log format
-msg = "processed %d records" % count                        # ✗ forbidden
-msg = "processed {} records".format(count)                  # ✗ forbidden
+logger.info("processed %d records in %.2fs", count, elapsed)   # ✓ lazy — no cost if filtered
+logger.info(f"processed {count} records")                      # ✗ formats even when suppressed
 ```
+
+Log levels, structured fields, and correlation IDs → [observability](../observability/STANDARDS.md).
 
 ---
 
-## 10. Async Patterns
+## 10. Async
 
-### When to Use Async
-
-| Scenario | Sync or Async |
+| Workload | Model |
 |---|---|
-| I/O-bound: HTTP calls, DB queries, file I/O | Async |
-| CPU-bound: data crunching, parsing | Sync (offload to thread/process pool) |
-| CLI tools, simple scripts | Sync |
-| Web servers (FastAPI, Starlette) | Async |
-| MCP servers | Async |
-
-### Rules
+| I/O-bound: HTTP · DB · file | Async |
+| CPU-bound | Sync; offload to `ProcessPoolExecutor` |
+| CLI · scripts | Sync |
+| ASGI servers · MCP servers | Async |
 
 | Rule | Detail |
 |---|---|
-| ✗ mixing `asyncio.run()` inside async code | Nest → crash. Use `await` |
-| ✗ `time.sleep()` in async code | Use `await asyncio.sleep()` |
-| ✗ blocking I/O in async functions | Offload: `await asyncio.to_thread(blocking_fn)` |
-| Gather for concurrent I/O | `asyncio.gather(*tasks)` or `TaskGroup` (3.11+) |
-| `TaskGroup` preferred over `gather` | Structured concurrency, better error handling |
-| Async context managers for resources | `async with` for connections, sessions |
-
-### Patterns
+| ✗ `asyncio.run()` inside async code | Nested loop → `RuntimeError`. Use `await` |
+| ✗ `time.sleep()` in async code | `await asyncio.sleep()` |
+| ✗ blocking I/O in a coroutine | `await asyncio.to_thread(fn)` — a blocked loop stalls every task. Use `httpx.AsyncClient`, ✗ `requests` |
+| `asyncio.TaskGroup` over `gather` | Structured concurrency: cancels siblings on failure |
+| ✗ fire-and-forget `create_task` | Keep a reference; unreferenced tasks are garbage-collected mid-flight |
+| `async with` for connections and sessions | Deterministic teardown |
+| Entry point | `asyncio.run(main())` under `if __name__ == "__main__":` |
 
 ```python
-# ✓ TaskGroup (Python 3.11+) — structured concurrency
 async def fetch_all(urls: list[str]) -> list[Response]:
-    async with asyncio.TaskGroup() as tg:
-        tasks = [tg.create_task(fetch(url)) for url in urls]
+    async with asyncio.TaskGroup() as tg:                 # ✓ 3.11+
+        tasks = [tg.create_task(fetch(u)) for u in urls]
     return [t.result() for t in tasks]
 
-# ✓ Offload blocking work to thread
-async def process_file(path: Path) -> Data:
-    content = await asyncio.to_thread(path.read_bytes)
-    return parse(content)
-
-# ✗ Wrong — blocking in async
-async def bad_fetch(url: str) -> str:
-    return requests.get(url).text  # blocks event loop!
+async def bad(url: str) -> str:
+    return requests.get(url).text                         # ✗ blocks the event loop
 ```
-
-Entry point: `asyncio.run(main())` in `if __name__ == "__main__":` block.
 
 ---
 
 ## 11. Testing Tools
 
-See `testing/STANDARDS.md` for general test strategy. Python-specific tooling here.
-
-### Tool Stack
+Pyramid, coverage thresholds, mocking policy, and test classification → [testing](../testing/STANDARDS.md). Python tooling below.
 
 | Tool | Purpose |
 |---|---|
-| `pytest` | Test runner — ✗ `unittest` for new projects |
-| `pytest-cov` | Coverage reporting |
-| `pytest-asyncio` | Async test support |
-| `hypothesis` | Property-based / fuzz testing |
-| `time-machine` | Time mocking (✗ `freezegun` — slower) |
-| `respx` / `pytest-httpx` | HTTP mocking for `httpx` |
-| `factory_boy` | Test data factories |
-
-### pytest Configuration
+| `pytest` | Runner — ✗ `unittest` for new code |
+| `pytest-cov` | Coverage |
+| `pytest-asyncio` | Async tests (`asyncio_mode = "auto"`) |
+| `hypothesis` | Property-based testing |
+| `time-machine` | Time freezing — ✗ `freezegun` (slower) |
+| `respx` \| `pytest-httpx` | `httpx` transport mocking |
+| `testcontainers` | Real DB/broker in integration tests |
 
 ```toml
-# pyproject.toml
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
-addopts = [
-    "-ra",
-    "--strict-markers",
-    "--strict-config",
-    "-x",                  # stop on first failure during dev
-]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: requires external services",
-]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+markers = ["slow: deselect with -m 'not slow'", "integration: needs external services"]
 asyncio_mode = "auto"
 ```
 
-### Test Patterns
+| Rule | Detail |
+|---|---|
+| Test name states behavior | `test_empty_input_raises` — ✗ `test_1` · ✗ `test_it_works` |
+| `pytest.raises` with `match=` | Assert the message, not just the type |
+| `@pytest.mark.parametrize` over copy-pasted cases | One test body, N inputs |
+| Shared fixtures in `tests/conftest.py` | Yield-fixtures roll back and close |
 
 ```python
-import pytest
-from myapp.processor import Processor
+@pytest.mark.parametrize(("val", "expected"), [("a", 1), ("bb", 2)])
+def test_lengths(val: str, expected: int) -> None:
+    assert length(val) == expected
 
-class TestProcessor:
-    def test_valid_input(self) -> None:
-        assert Processor().run("valid data").status == "ok"
+def test_empty_input_raises() -> None:
+    with pytest.raises(ValidationError, match="must not be empty"):
+        Processor().run("")
 
-    def test_empty_input_raises(self) -> None:
-        with pytest.raises(ValidationError, match="must not be empty"):
-            Processor().run("")
-
-    @pytest.mark.parametrize(("val", "expected"), [("a", 1), ("bb", 2), ("ccc", 3)])
-    def test_lengths(self, val: str, expected: int) -> None:
-        assert Processor().length(val) == expected
-```
-
-### Fixtures in `tests/conftest.py`
-
-```python
-@pytest.fixture
-def sample_config() -> dict[str, str]:
-    return {"host": "localhost", "port": "8080"}
-
-@pytest.fixture
-async def db_session():
-    session = await create_test_session()
-    yield session
-    await session.rollback()
-    await session.close()
-```
-
-### Property-Based Testing
-
-```python
-from hypothesis import given, strategies as st
-
-@given(st.text(min_size=1, max_size=1000))
+@given(st.text(min_size=1, max_size=1000))          # property-based
 def test_roundtrip(text: str) -> None:
     assert decode(encode(text)) == text
 ```
 
-### Coverage
-
-Minimum 80% line coverage enforced in CI. Critical paths → 95%+.
-
-```bash
-uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=80
-```
-
 ---
 
-## 12. Linting & Formatting
+## 12. Lint · Format · Typecheck
 
-**ruff** handles both linting and formatting. **mypy** for type checking.
-✗ `black`, `isort`, `flake8`, `pylint` — ruff replaces all of them.
-
-### ruff Configuration
+`ruff` lints and formats. `mypy` (or `pyright`) type-checks. ✗ `black` · `isort` · `flake8` · `pylint` — ruff subsumes all four.
 
 ```toml
-# pyproject.toml
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 100
 
 [tool.ruff.lint]
-select = [
-    "E",    # pycodestyle errors
-    "W",    # pycodestyle warnings
-    "F",    # pyflakes
-    "I",    # isort
-    "N",    # pep8-naming
-    "UP",   # pyupgrade
-    "B",    # flake8-bugbear
-    "A",    # flake8-builtins
-    "SIM",  # flake8-simplify
-    "TCH",  # flake8-type-checking
-    "RUF",  # ruff-specific rules
-    "PTH",  # flake8-use-pathlib
-    "ERA",  # eradicate (commented-out code)
-    "S",    # flake8-bandit (security)
-]
-ignore = [
-    "E501",  # line length — formatter handles this
-]
-
-[tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101"]  # allow assert in tests
+select = ["E", "W", "F", "I", "N", "UP", "B", "A", "SIM", "TCH", "PTH", "ERA", "S", "ASYNC", "RUF"]
+ignore = ["E501"]                                  # formatter owns line length
+per-file-ignores = { "tests/**/*.py" = ["S101"] }  # assert allowed in tests
 
 [tool.ruff.format]
 quote-style = "double"
-indent-style = "space"
-skip-magic-trailing-comma = false
 ```
 
-### Pre-commit Hooks
+Rule set: `E`/`W` pycodestyle · `F` pyflakes · `I` isort · `N` naming · `UP` pyupgrade · `B` bugbear · `A` builtin shadowing · `SIM` simplify · `TCH` type-checking blocks · `PTH` pathlib · `ERA` dead code · `S` bandit · `ASYNC` async correctness · `RUF` ruff-specific.
 
-Use `ruff-pre-commit` for ruff check + format, `mirrors-mypy` for type checking.
-
-### CI Pipeline — All Must Pass Before Merge
+Local + CI gate — every command must exit 0 before merge:
 
 ```bash
-uv run ruff check .              # lint
-uv run ruff format --check .     # format check (no write)
-uv run mypy src/                 # type check
-uv run pytest --cov=src          # test + coverage
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src/
+uv run pytest --cov=src
 ```
 
-✗ disabling checks for convenience.
+Same commands run in pre-commit hooks and in CI — ✗ divergence between the two. Pipeline stages, caching, and gating → [cicd](../cicd/STANDARDS.md).
+
+✗ disable a check to make a build pass. Fix the code or record the suppression with an error code and a reason.
 
 ---
 
-## 13. Python-Specific Anti-Patterns
+## 13. Performance Idioms
 
-### Mutable Default Arguments
+Budgets, profiling methodology, and optimization order → [performance](../performance/STANDARDS.md). Python idioms below.
 
-```python
-# ✗ WRONG — list shared across all calls
-def append_item(item: str, items: list[str] = []) -> list[str]:
-    items.append(item)
-    return items
-
-# ✓ CORRECT — None sentinel + factory
-def append_item(item: str, items: list[str] | None = None) -> list[str]:
-    if items is None:
-        items = []
-    items.append(item)
-    return items
-```
-
-### Late Binding Closures
-
-```python
-# ✗ WRONG — all lambdas capture i=4 (last value)
-funcs = [lambda: i for i in range(5)]
-[f() for f in funcs]  # [4, 4, 4, 4, 4]
-
-# ✓ CORRECT — default argument captures current value
-funcs = [lambda i=i: i for i in range(5)]
-[f() for f in funcs]  # [0, 1, 2, 3, 4]
-```
-
-### Global State
-
-✗ Module-level mutable state (`_cache = {}`). Encapsulate in class or function scope.
-
-### Other Anti-Patterns
-
-| Anti-Pattern | Problem | Fix |
-|---|---|---|
-| `isinstance()` chains | Fragile, violates open-closed | Protocol / dispatch / match-case |
-| Nested `try/except` | Hard to reason about | Flatten; one try per operation |
-| `hasattr()` for flow control | Hides bugs, slow | Explicit check or Protocol |
-| `eval()` / `exec()` | Security hole | ✗ Never in production code |
-| Star imports in non-`__init__` | Namespace pollution | Explicit imports |
-| Catching `KeyboardInterrupt` | Prevents clean exit | Let it propagate |
-| `os.path` for new code | String-based, error-prone | `pathlib.Path` |
-| `open()` without encoding | Platform-dependent default | `open(f, encoding="utf-8")` |
-| `datetime.now()` without tz | Naive datetime bugs | `datetime.now(tz=UTC)` |
-
----
-
-## 14. Performance
-
-### General Rules
-
-| Pattern | When |
+| Idiom | When |
 |---|---|
-| List comprehension over `for`+`append` | All collection building |
-| Generator expression for large data | When full list not needed in memory |
-| `__slots__` on data-heavy classes | Many instances (>1000) with fixed attrs |
-| `dict` / `set` for membership tests | ✗ `if x in large_list` — O(n) vs O(1) |
-| `functools.lru_cache` | Pure functions with repeated inputs |
-| `itertools` over manual iteration | Chaining, grouping, combinations |
+| Comprehension over `for` + `.append()` | Building any collection |
+| Generator expression | Large or streamed data — full list not needed in memory |
+| `set` / `dict` for membership | `x in large_list` is O(n) → O(1) |
+| `@dataclass(slots=True)` | >1000 instances with fixed attributes — 40–50% less memory |
+| `functools.lru_cache(maxsize=N)` | Pure function, repeated inputs — bounded |
+| `functools.cache` | Unbounded — small, closed key space only |
+| `"".join(parts)` | Many strings — repeated `+=` is O(n²) |
+| `itertools` | Chaining · grouping · windowing |
+| `cProfile` \| `py-spy` | Before any optimization — ✗ optimize on intuition |
 
-### Comprehensions vs Loops
+Caches must be bounded in long-lived processes. ✗ `@cache` on a method taking `self` — it pins every instance forever.
 
-```python
-squares = [x * x for x in range(1000)]              # ✓ comprehension
-total = sum(x * x for x in range(1_000_000))         # ✓ generator for large data
-index = {item.id: item for item in items}             # ✓ dict comprehension
-# ✗ loop+append is slower and more verbose
-```
+---
 
-### `__slots__`
+## 14. Anti-Patterns
 
-```python
-# ✓ 40-50% less memory — use dataclass(slots=True) on 3.10+
-@dataclass(slots=True)
-class Point:
-    x: float
-    y: float
-    z: float
-```
-
-### Caching
-
-```python
-from functools import lru_cache, cache
-
-@lru_cache(maxsize=256)          # ✓ bounded — evicts LRU
-def expensive_lookup(key: str) -> Result: ...
-
-@cache                            # ✓ unbounded — small key spaces only
-def parse_config(path: str) -> Config: ...
-```
-
-### String Building
-
-`"".join(parts)` for many strings. `io.StringIO` for complex assembly. ✗ repeated `+=` — O(n^2).
-
-### Profiling
-
-Use `cProfile` / `py-spy` before optimizing. ✗ premature optimization.
+| Anti-pattern | Failure | Fix |
+|---|---|---|
+| Mutable default arg — `def f(x, items=[])` | Default is created once and shared across all calls | `items: list \| None = None` + `if items is None: items = []` |
+| Late-binding closure — `[lambda: i for i in range(5)]` | Every lambda returns 4 | `[lambda i=i: i for i in range(5)]` |
+| Module-level mutable state — `_cache = {}` | Import-order dependence · test pollution · races | Encapsulate in a class or pass explicitly |
+| `isinstance()` chains | Fragile, violates open-closed | Protocol · `match` · dispatch |
+| `hasattr()` for control flow | Hides bugs | Explicit check \| Protocol |
+| `eval()` · `exec()` on any external input | Remote code execution | ✗ never in production code |
+| Catching `KeyboardInterrupt` / `SystemExit` | Blocks clean shutdown | Let them propagate |
+| `os.path` string manipulation | Error-prone, platform-dependent | `pathlib.Path` |
+| `open(f)` without `encoding` | Platform-dependent default → mojibake | `open(f, encoding="utf-8")` |
+| `datetime.now()` without tz | Naive datetime compared to aware → `TypeError` | `datetime.now(tz=UTC)` |
+| Mutating a list while iterating it | Silently skipped elements | Iterate a copy \| build a new list |
+| `assert` for runtime validation | Stripped under `python -O` | `if not cond: raise ValidationError(...)` |
 
 ---
 
 ## 15. Checklist
 
-### New Project Setup
-
-- [ ] `pyproject.toml` with project metadata, dependencies, tool config
-- [ ] `uv.lock` committed
-- [ ] `.python-version` committed
-- [ ] `.venv/` in `.gitignore`
-- [ ] `py.typed` marker in package root
-- [ ] ruff + mypy configured in `pyproject.toml`
-- [ ] pre-commit hooks installed
-- [ ] src layout or flat layout chosen deliberately
-- [ ] `__init__.py` with `__all__` in every package
-
-### Every File
-
-- [ ] Type hints on all public functions (params + return)
-- [ ] Google-style docstring on public API
-- [ ] Imports ordered: stdlib → third-party → internal
-- [ ] ✗ wildcard imports
+- [ ] `requires-python = ">=3.12"` in `pyproject.toml`
+- [ ] `uv.lock` and `.python-version` committed; `.venv/` gitignored
+- [ ] ✗ `setup.py` · `setup.cfg` · `requirements.txt` as dependency source
+- [ ] `py.typed` marker present in every distributed package
+- [ ] src layout used for any package published to an index
+- [ ] `__init__.py` contains only imports + `__all__` — no logic, no side effects
+- [ ] Every public function annotated, including `-> None` returns
+- [ ] Every `# type: ignore` carries an error code; every `Any` carries a comment
+- [ ] Imports ordered stdlib → third-party → first-party; ✗ wildcard imports
+- [ ] External input parsed into a validated model, never a raw `dict`
 - [ ] ✗ mutable default arguments
-- [ ] ✗ bare `except:`
-- [ ] f-strings for formatting (except logging)
-- [ ] `pathlib.Path` over `os.path`
-- [ ] `encoding="utf-8"` on `open()` calls
-
-### Every PR
-
-- [ ] `ruff check` passes
-- [ ] `ruff format --check` passes
-- [ ] `mypy --strict` passes
-- [ ] `pytest` passes with ≥80% coverage
-- [ ] No new `# type: ignore` without error code + comment
-- [ ] No new `Any` without justification comment
-- [ ] Lock file updated if deps changed
-
-### Async Code
-
-- [ ] ✗ blocking calls in async functions
-- [ ] `TaskGroup` used over bare `gather` where possible
-- [ ] Async context managers for resource lifecycle
-- [ ] ✗ `time.sleep()` — use `asyncio.sleep()`
-
-### Cross-References
-
-- `architecture/STANDARDS.md` — tier model, function contracts, error architecture
-- `code_writing/STANDARDS.md` — general readability, function style
-- `testing/STANDARDS.md` — test pyramid, coverage strategy
-- `dependencies/STANDARDS.md` — dependency management principles
+- [ ] ✗ bare `except:`; broad `except Exception` only at the boundary
+- [ ] Every re-raise chains with `from`
+- [ ] Logging calls use `%`-style deferred args, ✗ f-strings
+- [ ] ✗ blocking calls inside coroutines; `asyncio.TaskGroup` over bare `gather`
+- [ ] `pathlib.Path` used; `encoding="utf-8"` on every `open()`
+- [ ] `datetime.now(tz=UTC)` — no naive datetimes
+- [ ] ✗ `assert` used for runtime validation
+- [ ] `ruff check .` exits 0
+- [ ] `ruff format --check .` exits 0
+- [ ] `mypy --strict` exits 0
+- [ ] `pytest` passes at the coverage threshold set in [testing](../testing/STANDARDS.md)
+- [ ] Pre-commit hooks run the identical commands CI runs
+- [ ] Lock file regenerated in the same commit as any dependency change

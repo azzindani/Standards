@@ -1,13 +1,11 @@
 # Web Application Standards
 
-Rules for structuring web applications — frontend, backend, and their integration.
-Language-agnostic. Applies to any framework or runtime.
+> Rules for structuring web applications — frontend, backend, their contract, accessibility, and internationalization.
 
-Composable with: architecture/STANDARDS.md (tier model), api/STANDARDS.md (API design),
-security/STANDARDS.md (XSS · CSRF · CSP), performance/STANDARDS.md (budgets · profiling).
-
-Web handlers = Tier 3 (Interface). Domain logic stays in Tier 1–2.
-See architecture/STANDARDS.md §2 for tier definitions.
+**ID** `web` · **Tier** Interface · **Version** 1.0
+**Owns** rendering strategy (SSR/CSR/SSG/hydration) · progressive enhancement · frontend routing + state · browser security (CSP · XSS escaping) · cookie attributes + CSRF + browser token storage + frontend route gating · Core Web Vitals · **accessibility (WCAG)** · **i18n/l10n** · HTTP/CDN caching + static-asset delivery
+**Defers to** authn/authz model + token lifetimes + secrets → [security](../security/STANDARDS.md) · API design + status codes + envelope + versioning → [api](../api/STANDARDS.md) · rate limiting → [api](../api/STANDARDS.md) · caching strategy + profiling → [performance](../performance/STANDARDS.md) · pagination mechanics → [database](../database/STANDARDS.md) · CDN/edge infra + deploy → [devops](../devops/STANDARDS.md) · alert thresholds → [observability](../observability/STANDARDS.md) · coverage + pyramid → [testing](../testing/STANDARDS.md) · pipeline stages → [cicd](../cicd/STANDARDS.md)
+**Load with** [architecture](../architecture/STANDARDS.md) · [api](../api/STANDARDS.md) · [security](../security/STANDARDS.md) · [performance](../performance/STANDARDS.md)
 
 ---
 
@@ -16,16 +14,16 @@ See architecture/STANDARDS.md §2 for tier definitions.
 1. [Web Architecture](#1-web-architecture)
 2. [Routing](#2-routing)
 3. [Middleware](#3-middleware)
-4. [Request Handling](#4-request-handling)
-5. [Response Design](#5-response-design)
-6. [State Management](#6-state-management)
-7. [Authentication](#7-authentication)
-8. [Authorization](#8-authorization)
+4. [Request & Response](#4-request--response)
+5. [Caching & Static Delivery](#5-caching--static-delivery)
+6. [Browser Security](#6-browser-security)
+7. [Session, Auth & CSRF](#7-session-auth--csrf)
+8. [State Management](#8-state-management)
 9. [Frontend Architecture](#9-frontend-architecture)
-10. [Static Assets](#10-static-assets)
-11. [WebSocket](#11-websocket)
-12. [CORS](#12-cors)
-13. [Performance](#13-performance)
+10. [Accessibility](#10-accessibility)
+11. [Internationalization](#11-internationalization)
+12. [Real-Time](#12-real-time)
+13. [Core Web Vitals & Performance](#13-core-web-vitals--performance)
 14. [Scale Matrix](#14-scale-matrix)
 15. [Checklist](#15-checklist)
 
@@ -33,603 +31,465 @@ See architecture/STANDARDS.md §2 for tier definitions.
 
 ## 1. Web Architecture
 
-### Rendering Strategy Selection
+Web handlers = Tier 3 Interface. Domain logic stays in Tier 1–2. See [architecture](../architecture/STANDARDS.md).
 
-| Strategy | Use When | Trade-off |
+### Rendering Strategy
+
+| Strategy | Use when | Trade-off |
 |---|---|---|
-| Server-Side Rendering (SSR) | SEO required · first-paint critical · dynamic per-request data | Higher server cost · full roundtrip per navigation |
-| Static Site Generation (SSG) | Content changes infrequently · marketing pages · docs | Build-time cost · stale until rebuild |
-| Client-Side Rendering (CSR) | Authenticated apps · rich interactivity · real-time updates | Poor SEO · blank initial paint · JS dependency |
-| Hybrid (SSR + CSR hydration) | SEO + interactivity both required | Complexity · hydration mismatch bugs |
+| SSR | SEO required · first-paint critical · per-request dynamic data | Higher server cost · full roundtrip per navigation |
+| SSG | Content changes infrequently · marketing · docs | Build-time cost · stale until rebuild |
+| CSR | Authenticated apps · rich interactivity · real-time | Poor SEO · blank first paint · hard JS dependency |
+| Hybrid (SSR + CSR hydration) | SEO **and** interactivity both required | Hydration-mismatch bugs · complexity |
 
-Pick one primary strategy per application. ✗ mixing strategies without explicit boundary per route.
+Pick one primary strategy per app. ✗ mix without an explicit per-route boundary.
 
-### API-First Rule
-
-Backend exposes API (REST | GraphQL | gRPC). Frontend consumes API. ✗ server-rendered HTML that embeds business logic in templates. Templates render data — they do not compute it.
-
-### Backend Tier Mapping
-
-| Web Layer | Architecture Tier | Responsibility |
-|---|---|---|
-| Route handler / controller | Tier 3 (Interface) | Parse request → call service → format response |
-| Service / use case | Tier 2 (Service) | Orchestrate domain operations |
-| Domain logic | Tier 1 (Engine) | Business rules · validation · transforms |
-| Types · constants | Tier 0 (Kernel) | Shared data structures |
-| Database / external API | Tier 3 (Interface) | I/O adapters |
-
-Route handlers: thin. Extract params → delegate → return response. ✗ business logic in handlers.
-
-### Frontend/Backend Separation
+### Progressive Enhancement
 
 | Rule | Detail |
 |---|---|
-| Separate deployable units | Frontend and backend deploy independently |
-| Contract-first | API schema defined before implementation on either side |
-| ✗ shared runtime state | Frontend and backend share nothing at runtime except API calls |
-| Versioned API | Backend supports ≥1 previous API version during frontend rollout |
+| Core function without JS | Content readable and primary actions work as plain HTML forms; JS enhances, ✗ gates. A CDN miss or script error degrades, ✗ blanks the page |
+| Server-rendered baseline | Meaningful first paint before hydration for content routes |
+| Feature-detect | Detect capabilities, ✗ sniff user-agent strings |
+
+### Tier Mapping & Separation
+
+| Web layer | Tier | Responsibility |
+|---|---|---|
+| Route handler / controller | 3 Interface | Parse request → call service → format response |
+| Service / use case | 2 Service | Orchestrate domain operations |
+| Domain logic | 1 Engine | Business rules · validation · transforms |
+| Types · constants | 0 Kernel | Shared data structures |
+| DB / external API adapter | 3 Interface | I/O |
+
+Handlers stay thin: extract → delegate → return. ✗ business logic in handlers. Frontend and backend deploy as separate units, share nothing at runtime except the versioned API contract → [api](../api/STANDARDS.md).
 
 ---
 
 ## 2. Routing
 
-### URL Design
-
-| Rule | Example | Violation |
+| Rule | Example | ✗ Violation |
 |---|---|---|
-| Lowercase, hyphen-separated | `/user-profiles` | `/UserProfiles` `/user_profiles` |
+| Lowercase, hyphen-separated | `/user-profiles` | `/UserProfiles` · `/user_profiles` |
 | Nouns for resources | `/orders/123` | `/getOrder/123` |
-| Verbs for actions (non-CRUD) | `/orders/123/cancel` | `/orders/123/cancelled` |
-| Plural collection names | `/users` `/users/42` | `/user` `/user/42` |
-| Max 3 nesting levels | `/users/42/orders` | `/users/42/orders/7/items/3/tags` |
+| Verbs only for non-CRUD actions | `/orders/123/cancel` | `/orders/123/cancelled` |
+| Plural collections | `/users` · `/users/42` | `/user/42` |
+| Nesting ≤ 3 levels | `/users/42/orders` | `/users/42/orders/7/items/3/tags` |
 | No trailing slash | `/users` | `/users/` |
-| No file extensions in API routes | `/users/42` | `/users/42.json` |
+| No file extension in API routes | `/users/42` | `/users/42.json` |
 
-### Path Parameter Conventions
+Path parameters carry resource identifiers only; filter · sort · pagination · sparse-field selection live in the query string.
 
-| Parameter Type | Format | Example |
-|---|---|---|
-| Resource identifier | Numeric or UUID in path | `/users/42` `/users/a1b2-...` |
-| Filter / search | Query string | `/users?role=admin&active=true` |
-| Pagination | Query string | `/users?page=2&limit=20` |
-| Sort | Query string | `/users?sort=-created_at` |
-| Partial response | Query string | `/users?fields=id,name,email` |
-
-### Redirect Rules
-
-| Scenario | Status Code | Rule |
-|---|---|---|
-| Permanent move | 301 | Use only when URL permanently changes. Browsers cache aggressively |
-| Temporary redirect | 302/307 | Prefer 307 (preserves HTTP method) |
-| POST → GET after submit | 303 | Post/Redirect/Get pattern — prevents duplicate submissions |
-| ✗ redirect chains | — | Max 1 redirect hop. ✗ A→B→C chains |
-| ✗ redirect loops | — | Validate redirect targets before deploying |
+Redirects: 301 permanent (browsers cache hard, use only for a permanent URL change) · 307 temporary (preserves the method, prefer over 302) · 303 after a form POST (Post/Redirect/Get, prevents duplicate submission). Max 1 hop — ✗ A→B→C chains, ✗ loops; validate targets before deploy.
 
 ---
 
 ## 3. Middleware
 
-### Ordering
+Executes in declared order. Order is a security control — wrong order = a gap.
 
-Middleware executes in declared order. Order matters — incorrect ordering = security gaps.
-
-| Position | Middleware | Reason |
+| # | Middleware | Reason |
 |---|---|---|
-| 1 | Request ID / correlation ID | Tag every log entry from request start |
-| 2 | Logging (request start) | Record incoming request before any processing |
-| 3 | Security headers | Set CSP · HSTS · X-Frame-Options early |
-| 4 | CORS | Reject disallowed origins before further processing |
-| 5 | Rate limiting | Block abusive traffic before auth cost |
-| 6 | Body parsing | Parse request body (JSON · form · multipart) |
-| 7 | Authentication | Identify caller |
-| 8 | Authorization | Verify permissions |
+| 1 | Request ID / correlation ID | Tag every log line from the first byte |
+| 2 | Request logging (start) | Record the request before processing |
+| 3 | Security headers | CSP · HSTS · `X-Content-Type-Options` set early (§6) |
+| 4 | CORS | Reject disallowed origins before spending further cost (§6) |
+| 5 | Rate limiting | Shed abusive traffic before auth cost. Rules → [api](../api/STANDARDS.md) |
+| 6 | Body parsing | Parse JSON · form · multipart |
+| 7 | Authentication | Identify the caller → [security](../security/STANDARDS.md) |
+| 8 | Authorization | Verify permission → [security](../security/STANDARDS.md) |
 | 9 | Validation | Validate parsed input against schema |
-| 10 | Route handler | Business logic delegation |
-| 11 | Error handling | Catch + format all uncaught errors |
-| 12 | Logging (request end) | Record response status · duration |
-
-### Middleware Responsibility Rules
+| 10 | Route handler | Delegate to the service layer |
+| 11 | Error handling | Catch + format every uncaught error |
+| 12 | Request logging (end) | Record status + duration |
 
 | Rule | Detail |
 |---|---|
-| Single purpose | Each middleware does exactly one thing |
-| ✗ business logic in middleware | Middleware handles cross-cutting concerns only |
-| Pass or reject | Middleware either passes request to next handler or returns error response |
-| ✗ modify response body | Middleware sets headers · status. ✗ rewrite response payloads (exception: compression) |
-| Configurable | Middleware accepts configuration — ✗ hardcoded values |
-| Skippable per route | Route-level opt-out for specific middleware when justified |
-
-### Error Handling Middleware
-
-- Sits at outer edge — catches all unhandled errors from inner middleware + handlers
-- Maps domain errors → HTTP status codes. See §5 Response Design
-- ✗ expose stack traces in production. Log full trace server-side → return sanitized message to client
-- Return consistent error envelope format for all error responses
+| Single purpose · pass or reject | Each middleware does one thing — cross-cutting concerns only — and either forwards or returns an error |
+| ✗ business logic · ✗ rewrite bodies | Sets headers/status only ; compression |
+| Error middleware at the outer edge | Catches everything inner. Maps domain errors → status (§4). ✗ leak stack traces — log server-side, return a sanitized envelope |
 
 ---
 
-## 4. Request Handling
+## 4. Request & Response
 
-### Validation at Boundary
-
-All input validation occurs in Tier 3 (Interface) before data reaches Tier 2.
-See architecture/STANDARDS.md §2.
-
-| Validation Layer | What | When |
-|---|---|---|
-| Schema validation | Structure · required fields · types · formats | Before handler logic |
-| Business validation | Domain rules · cross-field constraints · uniqueness | In Tier 1 (Engine) |
-| ✗ trusted input | Never trust client-provided data — validate everything | Always |
-
-### Request Parsing Rules
+HTTP status codes, error envelope shape, and versioning are owned by [api](../api/STANDARDS.md). This section covers browser-facing handling. ✗ restate the status table.
 
 | Rule | Detail |
 |---|---|
-| Content-Type enforcement | Reject requests with wrong/missing Content-Type. Return 415 |
-| Size limits | Enforce max body size per route. Default: 1MB JSON · 10MB file upload |
-| Charset | Accept UTF-8 only unless explicit multi-charset requirement |
-| Path parameters | Validate format (UUID, integer) before database lookup |
-| Query parameters | Whitelist known params. ✗ pass unknown params through silently |
-| Header extraction | Validate required headers (Authorization · Accept · Content-Type) |
-
-### Content Negotiation
-
-| Accept Header | Server Response |
-|---|---|
-| `application/json` | JSON response (default for APIs) |
-| `text/html` | HTML response (server-rendered pages) |
-| `*/*` or missing | Default to JSON for API routes · HTML for page routes |
-| Unsupported type | Return 406 Not Acceptable |
-
-### Request ID
-
-- Generate unique request ID at edge (middleware position 1)
-- Propagate through all service calls · log entries · downstream API requests
-- Return in response header (`X-Request-Id`)
-- If client sends `X-Request-Id`, use it (enables end-to-end tracing)
+| Validate at the boundary | All input validated in Tier 3 before Tier 2 — schema (structure · types · formats) at the edge, business rules in Tier 1. ✗ trust client input, ever |
+| `Content-Type` enforced | Wrong/missing on a body → 415 |
+| Body size limits | Per route. Default 1 MB JSON · 10 MB upload → 413 on exceed |
+| Charset | UTF-8 only unless a multi-charset requirement is explicit |
+| Params | Path params (UUID/integer) format-checked before any lookup; query params allowlisted, unknown → reject |
+| Content negotiation | `application/json` → JSON · `text/html` → page · unsupported → 406 |
+| Request ID | Generated at the edge, propagated through every call and log, returned as `X-Request-Id`; reuse a client-supplied value for tracing |
+| Response envelope | One consistent shape across the app → [api](../api/STANDARDS.md); timestamps ISO 8601 UTC (`Z`); empty collections `[]`, ✗ `null` |
 
 ---
 
-## 5. Response Design
+## 5. Caching & Static Delivery
 
-### HTTP Status Code Usage
-
-| Category | Code | Use |
-|---|---|---|
-| Success | 200 | GET · PUT · PATCH successful |
-| Success | 201 | POST created new resource. Include `Location` header |
-| Success | 204 | DELETE successful · no response body |
-| Client error | 400 | Malformed request · validation failure |
-| Client error | 401 | Missing or invalid authentication |
-| Client error | 403 | Authenticated but insufficient permissions |
-| Client error | 404 | Resource not found |
-| Client error | 409 | Conflict (duplicate · concurrent modification) |
-| Client error | 415 | Unsupported Content-Type |
-| Client error | 422 | Request well-formed but semantically invalid |
-| Client error | 429 | Rate limit exceeded. Include `Retry-After` header |
-| Server error | 500 | Unhandled server error — log full context server-side |
-| Server error | 502 | Upstream dependency failure |
-| Server error | 503 | Service unavailable. Include `Retry-After` header |
-
-### Response Envelope
-
-All API responses use consistent envelope structure.
-
-| Field | Present | Purpose |
-|---|---|---|
-| `data` | Success responses | Payload — object or array |
-| `error` | Error responses | Error object with `code` · `message` |
-| `meta` | When applicable | Pagination · timing · request ID |
-
-✗ mix envelope shapes across endpoints. One format, entire API.
-
-### Caching Headers
+The HTTP/CDN layer only. Caching **strategy** (what to cache, invalidation policy, cache tiers) → [performance](../performance/STANDARDS.md).
 
 | Header | Rule |
 |---|---|
 | `Cache-Control` | Set explicitly on every response. ✗ rely on browser defaults |
-| `ETag` | Use for resource versioning — enables conditional requests (304) |
-| `Last-Modified` | Set for resources with known modification timestamps |
-| `Vary` | Include when response varies by Accept · Authorization · Accept-Encoding |
-| API responses | `Cache-Control: no-store` for authenticated/dynamic data |
-| Static assets | `Cache-Control: public, max-age=31536000, immutable` (with content-hashed filenames) |
+| `ETag` | On versionable resources → enables conditional requests → 304 |
+| `Last-Modified` | On resources with a known modification time |
+| `Vary` | When the response varies by `Accept` · `Authorization` · `Accept-Encoding` · `Accept-Language` |
 
-### Response Rules
+| Asset | `Cache-Control` | Filename |
+|---|---|---|
+| JS · CSS bundles | `public, max-age=31536000, immutable` | Content hash — `app.a3f9c2.js` |
+| Images · fonts | `public, max-age=31536000, immutable` | Content-hashed or versioned |
+| HTML entry point | `no-cache` (revalidate every request) | No hash — always latest |
+| Authenticated / dynamic API | `no-store` | — |
+| Service worker | `no-cache` | Fixed name; the browser manages updates |
 
 | Rule | Detail |
 |---|---|
-| Consistent content type | Response Content-Type matches what was negotiated |
-| No null fields | Omit absent fields from response. ✗ `"field": null` unless schema requires it |
-| Timestamps | ISO 8601 · UTC · include timezone offset (`Z` or `+00:00`) |
-| Pagination | Cursor-based for large datasets. Offset-based acceptable for ≤10K total records |
-| Empty collections | Return `[]` not `null` · not omitted |
+| CDN serves static assets in production | ✗ from the app server. Content-hashed filenames → new deploy = new URL → ✗ manual purge |
+| ✗ CDN for authenticated content | Bypass the CDN or use signed URLs; app server serves assets if the CDN fails |
+| Compression | Brotli preferred → gzip fallback, pre-compressed at build (`.br` + `.gz`), ✗ on the fly. ✗ compress files < 1 KB or already-compressed formats (JPEG · PNG · WOFF2) |
+| Protocol | HTTP/2 or HTTP/3 — multiplexing + header compression |
+
+CDN edge/region topology and deploy mechanics → [devops](../devops/STANDARDS.md).
 
 ---
 
-## 6. State Management
+## 6. Browser Security
 
-### Stateless Server Preference
+XSS injection vectors and CSP are web's to own. The validation boundary + secrets are owned by [security](../security/STANDARDS.md).
+
+### Security Headers
+
+| Header | Value | Purpose |
+|---|---|---|
+| `Content-Security-Policy` | Explicit allowlist; `default-src 'self'` baseline | Primary XSS defense — restrict script/style/connect origins |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | Force HTTPS |
+| `X-Content-Type-Options` | `nosniff` | Stop MIME sniffing |
+| `X-Frame-Options` / CSP `frame-ancestors` | `DENY` \| explicit allowlist | Clickjacking defense |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Limit referrer leakage |
+
+CSP: ✗ `unsafe-inline` (nonce/hash any inline script) · ✗ `unsafe-eval` · ship `Content-Security-Policy-Report-Only` first, enforce once clean.
+
+### XSS Escaping
+
+| Context | Encoding |
+|---|---|
+| HTML body | HTML-entity encode |
+| HTML attribute | Attribute-encode + always quote |
+| JS string / JSON in page | JS-encode; ✗ interpolate untrusted data into a `<script>` |
+| URL parameter | URL-encode; validate the scheme — ✗ `javascript:` |
+| CSS value | CSS-encode |
+
+Encode on output per context (auto-escaping template engine, encoding matches the sink). ✗ raw HTML injection — `innerHTML` / `dangerouslySetInnerHTML` only through a sanitizer allowlist; build DOM via framework binding or `textContent`, ✗ from strings.
+
+### CORS
+
+Runs at middleware position 4 (§3) — before authentication.
 
 | Rule | Detail |
 |---|---|
-| Default stateless | Servers store no per-request state between requests |
-| State in backing store | Session data → database | cache (Redis). ✗ in-memory server state |
-| Horizontal scaling | Stateless servers = add instances without session affinity |
-| ✗ sticky sessions | If session affinity required, architecture needs re-evaluation |
+| Explicit allowed origins | Allowlist specific origins. ✗ `Access-Control-Allow-Origin: *` for authenticated APIs — wildcard only for public, unauthenticated, read-only APIs |
+| Credentials mode | `Access-Control-Allow-Credentials: true` requires a specific origin — ✗ wildcard |
+| Methods + headers | List only what the API uses. ✗ allow-all |
+| Preflight | Cache with `Access-Control-Max-Age` ≥ 7200 · respond 204 · ✗ require auth on OPTIONS · exempt from rate limiting |
+
+---
+
+## 7. Session, Auth & CSRF
+
+The authn/authz model — RBAC/ABAC, default-deny, resource-level checks, least privilege, **token lifetimes**, secret rotation — is owned by [security](../security/STANDARDS.md). This section covers the web delta only: how credentials live in the browser and how requests are protected. ✗ restate a token lifetime number — token lifetimes (browser-facing and service-to-service classes) are stated in [security](../security/STANDARDS.md).
+
+### Browser Token Storage
+
+| Store | Verdict |
+|---|---|
+| `HttpOnly` cookie | Preferred for session credentials — unreachable from JS |
+| In-memory (JS variable) | Acceptable for a short-lived access token in an SPA — lost on reload, refreshed via cookie |
+| `localStorage` / `sessionStorage` | ✗ for auth tokens — any XSS reads them |
+
+Rely on refresh-token rotation (one-time use) for session continuity; lifetimes and rotation policy → [security](../security/STANDARDS.md).
+
+### Cookie Attributes
+
+| Attribute | Value | Reason |
+|---|---|---|
+| `HttpOnly` | `true` | ✗ JavaScript access to auth cookies |
+| `Secure` | `true` | HTTPS transmission only |
+| `SameSite` | `Lax` minimum · `Strict` for sensitive operations | CSRF mitigation |
+| `Domain` | Narrowest explicit scope | ✗ overly broad |
+| `Path` | `/` or narrower | Limit scope |
+| `Max-Age` / `Expires` | Explicit, matching session policy | ✗ non-expiring session cookies |
+| `__Host-` prefix | For host-locked session cookies | Binds the cookie to the exact host + path |
 
 ### Session Handling
 
-| Aspect | Rule |
+| Rule | Detail |
 |---|---|
-| Storage | Server-side session store (database | encrypted cache). ✗ store session data in cookie payload |
-| Cookie | Session ID only. `HttpOnly` · `Secure` · `SameSite=Lax` minimum |
-| Expiry | Absolute expiry (max 24h default) + sliding window on activity |
-| Rotation | Rotate session ID on privilege escalation (login · role change) |
-| Invalidation | Explicit logout destroys server-side session. ✗ rely on cookie expiry alone |
-| Cleanup | Expired sessions purged on schedule — ✗ unbounded session store growth |
+| Store server-side | Session data in a database or encrypted cache. ✗ store session state in the cookie payload |
+| Cookie carries the ID only | Opaque session identifier |
+| Rotate on privilege change | New session ID on login and on role change — defeats fixation |
+| Absolute + idle expiry | Absolute cap (24 h default) + sliding idle window |
+| Explicit logout | Destroys the server-side session. ✗ rely on cookie expiry alone |
+| Purge expired sessions | Scheduled cleanup. ✗ unbounded store growth |
 
-### Client-Side State Rules
+### CSRF
 
 | Rule | Detail |
 |---|---|
-| Minimal client state | Store only what's needed for current view. ✗ cache entire backend state client-side |
-| Single source of truth | Each piece of state owned by exactly one store/component |
-| URL as state | Shareable/bookmarkable state encoded in URL (filters · pagination · selected tab) |
-| ✗ sensitive data in client state | Tokens in memory only — ✗ localStorage for auth tokens (XSS risk) |
-| Derived state | Compute from source state — ✗ duplicate/sync separate copies |
+| Synchronizer token | Per-session token embedded in forms, validated on every state-changing submit |
+| Double-submit cookie | Alternative: random value in a cookie + matching header, server compares |
+| `SameSite` is defense-in-depth | ✗ sole CSRF defense — legacy browsers and some flows bypass it |
+| Safe methods exempt | GET · HEAD · OPTIONS carry no CSRF token — they must not mutate state |
+| ✗ state mutation via GET | ✗ `/delete?id=5` over GET |
+
+### Frontend Route Gating
+
+| Rule | Detail |
+|---|---|
+| UI gating is UX, not security | Hide/disable what the user can't use — the server re-authorizes every request regardless |
+| Route guards | Auth/permission checks before a route renders; unauthenticated → redirect to login |
+| ✗ permission logic in components | Centralize evaluation → components consume boolean results |
 
 ---
 
-## 7. Authentication
-
-### Strategy Selection
-
-| Strategy | Use When | ✗ Use When |
-|---|---|---|
-| Session cookie | Server-rendered apps · same-origin frontend | Third-party API consumers |
-| JWT (access token) | Stateless APIs · cross-origin · mobile clients | Long-lived sessions (JWT can't be revoked without infra) |
-| OAuth 2.0 + OIDC | Third-party login · SSO · delegated access | Simple internal tools |
-| API key | Machine-to-machine · server-to-server | Browser-based user auth |
-
-### Token Rules
+## 8. State Management
 
 | Rule | Detail |
 |---|---|
-| Access token lifetime | Short: 5–15 minutes |
-| Refresh token lifetime | Moderate: 1–14 days. Rotate on use (one-time use) |
-| ✗ JWT in localStorage | XSS exposes tokens. Use `HttpOnly` cookies or in-memory only |
-| Token payload | Minimal claims: sub · exp · iat · roles. ✗ embed sensitive data |
-| Signature algorithm | RS256 or ES256 for production. ✗ HS256 with shared secrets across services |
-| Token revocation | Maintain server-side deny list for compromised tokens |
+| Stateless servers | No per-request state between requests → horizontal scaling without affinity. ✗ sticky sessions — they signal a state-ownership problem |
+| State in a backing store | Session/shared state → database or cache. ✗ in-memory server state |
+| Minimal client state | Only what the current view needs; ✗ mirror the whole backend client-side |
+| Single source of truth · derived state | Each piece owned by one store; compute from source, ✗ duplicate and sync copies |
+| URL as state | Shareable/bookmarkable state (filters · pagination · active tab) encoded in the URL |
+| ✗ sensitive data client-side | See §7 token storage |
 
-### Cookie Security
-
-| Attribute | Required Value | Reason |
-|---|---|---|
-| `HttpOnly` | `true` | ✗ JavaScript access to auth cookies |
-| `Secure` | `true` | Transmit over HTTPS only |
-| `SameSite` | `Lax` minimum · `Strict` for sensitive ops | CSRF mitigation |
-| `Domain` | Explicit, narrowest scope | ✗ overly broad domain |
-| `Path` | `/` or narrowest applicable path | Limit cookie scope |
-| `Max-Age` / `Expires` | Explicit. Match session policy | ✗ session cookies without expiry |
-
-### CSRF Protection
-
-| Rule | Detail |
-|---|---|
-| Synchronizer token | Server generates unique token per session → embedded in forms → validated on submit |
-| Double-submit cookie | Alternative: random value in cookie + request header/body → server compares |
-| `SameSite` cookies | Defense-in-depth — ✗ sole CSRF protection (older browsers lack support) |
-| Safe methods exempt | GET · HEAD · OPTIONS ✗ mutate state → no CSRF token needed |
-| ✗ state mutation via GET | GET requests are idempotent + safe. ✗ `/delete?id=5` via GET |
-
----
-
-## 8. Authorization
-
-### Model Selection
-
-| Model | Use When | Complexity |
-|---|---|---|
-| Role-Based (RBAC) | Fixed permission sets per role (admin · editor · viewer) | Low |
-| Permission-Based | Granular: `orders.create` · `orders.delete` per user | Medium |
-| Attribute-Based (ABAC) | Context-dependent: time · IP · resource owner · department | High |
-| Relationship-Based (ReBAC) | "User X can edit because they own resource Y" | High |
-
-Start with RBAC. Move to permission-based when roles become insufficient. ABAC/ReBAC only when ownership or context rules dominate.
-
-### Authorization Rules
-
-| Rule | Detail |
-|---|---|
-| Server-side enforcement | All authorization checks on server. ✗ client-side auth checks as sole protection |
-| Middleware placement | Authorization middleware runs after authentication (position 8 in §3) |
-| Default deny | Unauthenticated requests → 401. Unauthorized requests → 403 |
-| Resource-level checks | Verify caller has access to specific resource, not just endpoint. ✗ "can access /orders" without checking order ownership |
-| ✗ role checks in business logic | Use middleware or decorators. Domain logic receives pre-authorized context |
-| Audit trail | Log authorization decisions (granted + denied) with caller identity · resource · action |
-| Principle of least privilege | Grant minimum permissions required. Expand only when justified |
-
-### Frontend Authorization
-
-| Rule | Detail |
-|---|---|
-| UI gating | Hide/disable UI elements user cannot access — for UX, not security |
-| ✗ client-only enforcement | Server re-validates every request regardless of frontend checks |
-| Permission-aware components | Components receive permission set → render conditionally |
-| ✗ embed permission logic in components | Centralize permission evaluation → components consume boolean results |
+State placement: server state → cache layer with stale-while-revalidate · UI state → component-local · URL state → query string/path · form state → component or form library · global app state (auth · theme · feature flags) → single store. ✗ put everything in the global store — most state is local or server-derived.
 
 ---
 
 ## 9. Frontend Architecture
 
-### Component Design
-
 | Rule | Detail |
 |---|---|
-| Single responsibility | One component = one purpose. Split when component handles >1 concern |
-| Presentational vs container | Separate data-fetching components from rendering components |
-| Props down, events up | Parent → child via props/attributes. Child → parent via events/callbacks |
-| ✗ prop drilling >3 levels | Use context/state management for deeply nested data |
-| Composition over inheritance | Build complex components by composing simple ones |
-| Deterministic rendering | Same props + same state = same output. ✗ side effects in render path |
+| Single responsibility | One component = one purpose; separate data-fetching (container) from rendering (presentational) |
+| Props down, events up | Parent → child via props · child → parent via callbacks. ✗ prop drilling > 3 levels — use context or a store |
+| Composition over inheritance | Build complex UI from simple pieces |
+| Deterministic render | Same props + state → same output. ✗ side effects in the render path |
 
-### Frontend State Management
-
-| State Type | Storage | Example |
-|---|---|---|
-| Server state | Cache layer with stale/revalidate | API responses · user profile |
-| UI state | Component-local state | Dropdown open · modal visible |
-| URL state | URL params / query string | Active tab · filters · page number |
-| Form state | Component or form library | Input values · validation errors |
-| Global app state | State store (single source of truth) | Auth status · theme · feature flags |
-
-✗ put everything in global store. Most state is local or server-derived.
-
-### Frontend Routing
-
-| Rule | Detail |
+| Build rule | Detail |
 |---|---|
-| Declarative route config | Routes defined as data structure — ✗ scattered across components |
-| Code splitting per route | Each route loads its own bundle. ✗ single monolithic bundle |
-| Route guards | Auth/permission checks before route renders |
-| 404 fallback | Unmatched routes → dedicated not-found page |
-| URL reflects state | Back button · bookmark · share URL all work correctly |
-| ✗ hash routing in production | Use history API (clean URLs). Hash routing = legacy fallback only |
-
-### Build Optimization
-
-| Rule | Detail |
-|---|---|
-| Tree shaking | Dead code elimination enabled. ✗ import entire libraries for one function |
-| Code splitting | Route-based + component-based lazy loading |
-| Bundle analysis | Run bundle analyzer in CI. Fail build if bundle exceeds budget (see §13) |
-| Source maps | Generate for production but ✗ serve publicly. Upload to error tracking service |
-| Minification | HTML · CSS · JS all minified in production builds |
-| Environment variables | Inject at build time. ✗ runtime environment checks in client bundle |
+| Tree shaking · code splitting | Dead-code elimination on (✗ import a whole library for one function); split per route + lazy-load heavy components |
+| Bundle budget in CI | Fail the build when a bundle exceeds its budget (§13) |
+| Source maps · minification | Maps generated but ✗ served publicly (upload to the error tracker); HTML · CSS · JS minified in production |
+| Env injection at build | ✗ runtime environment branching in the client bundle |
+| Declarative routes · History API | Route config as data (✗ scattered), clean URLs (hash routing legacy-only), unmatched route → 404 page |
 
 ---
 
-## 10. Static Assets
+## 10. Accessibility
 
-### Caching Strategy
+Target: **WCAG 2.2 Level AA**. Accessibility is a correctness requirement, ✗ an enhancement.
 
-| Asset Type | Cache-Control | Filename Strategy |
-|---|---|---|
-| JS · CSS bundles | `public, max-age=31536000, immutable` | Content hash in filename (`app.a3f9c2.js`) |
-| Images · fonts | `public, max-age=31536000, immutable` | Content hash or versioned path |
-| HTML entry point | `no-cache` (revalidate every request) | No hash — always latest |
-| API responses | `no-store` or short `max-age` | N/A |
-| Service worker | `no-cache` | Fixed filename, browser handles updates |
-
-### CDN Rules
+### Semantic Structure
 
 | Rule | Detail |
 |---|---|
-| Static assets served via CDN | ✗ serve static files from application server in production |
-| Origin shield | CDN caches pull from single origin — reduces origin load |
-| Cache invalidation | Use content-hashed filenames → ✗ manual cache purge needed |
-| Geographic distribution | CDN edge nodes close to users. Measure TTFB per region |
-| ✗ CDN for authenticated content | Authenticated responses bypass CDN or use signed URLs |
-| Fallback | Application server serves assets if CDN fails (graceful degradation) |
+| Semantic HTML first | Native `<button>` · `<a>` · `<nav>` · `<main>` · `<label>` · `<table>` before any ARIA. They ship focus, keyboard, and role behavior free |
+| One `<h1>` per page · ordered headings | ✗ skip levels — headings are the screen-reader outline |
+| Landmark regions | `<header>` · `<nav>` · `<main>` · `<footer>` for navigation-by-region |
+| `lang` attribute | `<html lang>` set, and per-element when content language changes |
+| `<a>` vs `<button>` | Link navigates to a URL · button performs an action. ✗ a `<div>` with a click handler |
 
-### Compression
+### Keyboard & Focus
 
 | Rule | Detail |
 |---|---|
-| Brotli preferred | Brotli (br) for text assets — 15-25% smaller than gzip |
-| Gzip fallback | Serve gzip when client doesn't support Brotli |
-| Pre-compressed | Build step generates `.br` + `.gz` files. ✗ on-the-fly compression for static assets |
-| Minimum size | ✗ compress files <1KB — overhead exceeds savings |
-| Binary assets | ✗ compress already-compressed formats (JPEG · PNG · WOFF2) |
+| Everything operable by keyboard | Every interactive element reachable and activatable with Tab · Enter · Space · arrows. ✗ mouse-only controls |
+| Visible focus indicator | Never remove the focus ring without a stronger replacement — WCAG 2.2 requires a visible, non-obscured focus state |
+| Logical focus order | Tab order follows reading order; ✗ positive `tabindex` |
+| Focus management | Move focus into an opened modal, trap it there, restore it to the trigger on close |
+| Skip link | "Skip to content" as the first focusable element |
+| ✗ keyboard traps | Focus can always leave a component |
+
+### Perceivable
+
+| Rule | Threshold |
+|---|---|
+| Text contrast | ≥ **4.5:1** normal text · ≥ **3:1** large text (≥ 24px, or ≥ 19px bold) |
+| Non-text contrast | ≥ **3:1** for UI components, focus indicators, and meaningful graphics |
+| ✗ color as the sole signal | Pair color with text, icon, or pattern — error states never rely on red alone |
+| Images | Informative → descriptive `alt`; decorative → `alt=""`; ✗ omit the attribute |
+| Media | Captions for audio; text alternative for video |
+| `prefers-reduced-motion` | Honor it — disable non-essential animation, parallax, autoplay |
+| Text resize | Usable at 200% zoom and at 320px width without loss of content or horizontal scroll |
+
+### Forms
+
+| Rule | Detail |
+|---|---|
+| Every input labelled | A programmatic `<label for>` (or `aria-label` where no visible label exists). ✗ placeholder-as-label |
+| Errors associated | Link the message to the field via `aria-describedby`; mark invalid fields `aria-invalid` |
+| Errors announced | Validation summary in an `aria-live` region · move focus to the first error |
+| Group related controls | `<fieldset>` + `<legend>` for radio/checkbox groups |
+| Required marked | Programmatically (`required` / `aria-required`), ✗ by color or asterisk alone |
+
+### ARIA & Testing
+
+| Rule | Detail |
+|---|---|
+| "No ARIA is better than bad ARIA" | Reach for ARIA only when semantic HTML cannot express the pattern; wrong ARIA is worse than none |
+| Dynamic updates | Announce async changes through `aria-live` regions |
+| Automated axe in CI | An axe-core (or equivalent) scan gates the build — a **floor**, not a ceiling; it catches ~30–40% of issues |
+| Manual verification | Keyboard-only walkthrough + one screen reader (NVDA · VoiceOver · JAWS) on primary flows — automation cannot confirm operability |
 
 ---
 
-## 11. WebSocket
+## 11. Internationalization
 
-### When to Use
+i18n = the app is *translatable and locale-aware*; l10n = a specific locale is *supplied*. Build for i18n from the first screen — retrofitting is a rewrite.
 
-| Use WebSocket | Use HTTP Polling | Use Server-Sent Events (SSE) |
+### Text
+
+| Rule | Detail |
+|---|---|
+| Externalize every string | User-visible text lives in translation resources keyed by ID. ✗ hard-coded literals in components |
+| ✗ concatenate translated fragments | Grammar and word order differ per language — one key per complete message with interpolated variables |
+| ICU MessageFormat | Plurals, gender, and select handled by ICU — ✗ `if (count === 1)` branching in code |
+| Interpolate, don't splice | `"Hello, {name}"` as one message. ✗ `"Hello, " + name` |
+| Translator context | Provide a description + max length per key |
+| Missing translation | Fall back to a default locale and surface it in QA. ✗ render a raw key to the user |
+
+### Locale-Aware Formatting
+
+| Data | Rule |
+|---|---|
+| Dates · times | Format per locale (order, separators, calendar) — ✗ a hard-coded `MM/DD/YYYY` |
+| Numbers | Locale decimal + grouping separators (`1,234.5` vs `1.234,5`) |
+| Currency | Format for the locale **and** show the currency explicitly; ✗ assume `$`. Money value handling → [database](../database/STANDARDS.md) · [api](../api/STANDARDS.md) |
+| Collation / sorting | Locale-aware collation — ✗ raw byte/codepoint sort for display lists |
+| Names · addresses | ✗ assume first/last order or a US address shape |
+
+### Time Zones
+
+| Rule | Detail |
+|---|---|
+| Store UTC | Persist and transmit timestamps in UTC → [api](../api/STANDARDS.md) · [database](../database/STANDARDS.md) |
+| Render local | Convert to the user's time zone at display time |
+| Carry the zone for future events | A future local appointment stores its IANA zone (`Europe/Paris`), not a fixed offset — offsets shift with DST |
+
+### Layout & Negotiation
+
+| Rule | Detail |
+|---|---|
+| RTL support | Logical CSS properties (`margin-inline-start`, not `margin-left`) + `dir="rtl"`; mirror layout, icons, and progress direction |
+| Text-expansion tolerance | Design for ~30–40% growth from English; ✗ fixed-width buttons that clip translations · ✗ text baked into images |
+| `Accept-Language` negotiation | Default from the header, matched against supported locales |
+| Explicit user override | A user-chosen locale beats the header and persists across sessions |
+| Locale in the URL or profile | Reflect the active locale (`/fr/…` or a stored preference) so it is shareable and cacheable; add `Vary: Accept-Language` |
+
+---
+
+## 12. Real-Time
+
+| Use WebSocket | Use SSE | Use polling |
 |---|---|---|
-| Bidirectional real-time (chat · collaborative editing) | Infrequent updates (<1/min) | Server → client only (notifications · feeds) |
-| Low-latency required (<100ms) | Simple infrastructure required | One-way push sufficient |
-| High-frequency messages | WebSocket infra unavailable | Auto-reconnect built in |
-
-### Connection Lifecycle
+| Bidirectional (chat · collaborative editing) | Server → client only (feeds · notifications) | Infrequent updates (< 1/min) |
+| Sub-100ms latency required | One-way push sufficient · auto-reconnect built in | WebSocket infra unavailable |
 
 | Phase | Rule |
 |---|---|
-| Connect | Authenticate during handshake (token in query param or first message). ✗ unauthenticated WebSocket connections |
-| Heartbeat | Client + server send ping/pong every 30s. Detect dead connections within 60s |
-| Reconnect | Client implements exponential backoff: 1s → 2s → 4s → 8s → max 30s |
-| Message format | Structured messages with `type` field for routing. ✗ untyped string messages |
-| Close | Clean close with status code. Server broadcasts disconnect to relevant parties |
-| ✗ large payloads | Keep messages <64KB. Large data → HTTP endpoint + notify via WebSocket |
-
-### WebSocket State Rules
-
-| Rule | Detail |
-|---|---|
-| Server authoritative | Server state = source of truth. Client state = optimistic projection |
-| Idempotent messages | Client may resend on reconnect — server handles duplicates |
-| Sequence tracking | Messages carry sequence numbers for ordering + gap detection |
-| Connection limit | Budget max concurrent connections per server instance |
-| ✗ session state in WS only | Persist critical state to database. WebSocket connection is ephemeral |
+| Connect | Authenticate during the handshake. ✗ unauthenticated connections |
+| Heartbeat · reconnect | ping/pong every 30 s (dead within 60 s); client exponential backoff 1s → 2s → 4s → 8s → max 30s |
+| Message format · size | Structured with a `type` field, ✗ untyped strings; keep < 64 KB, large payloads go over HTTP + a notify message |
+| Authority | Server state is the source of truth; client state is an optimistic projection |
+| Idempotent + ordered | Handle client resends on reconnect; sequence numbers for ordering + gap detection |
+| ✗ WS-only critical state | Persist to the database — the connection is ephemeral |
 
 ---
 
-## 12. CORS
+## 13. Core Web Vitals & Performance
 
-### Policy Rules
+Profiling methodology and budget enforcement → [performance](../performance/STANDARDS.md). Server response-time budgets → [api](../api/STANDARDS.md) · [performance](../performance/STANDARDS.md). Web owns the browser-experience metrics.
 
-| Rule | Detail |
+### Core Web Vitals
+
+INP **replaced FID** as a Core Web Vital in March 2024. Thresholds are the "good" bar at the 75th percentile of field data:
+
+| Metric | Good | Measures |
+|---|---|---|
+| Largest Contentful Paint (LCP) | ≤ **2.5 s** | Loading — largest element painted |
+| Interaction to Next Paint (INP) | ≤ **200 ms** | Responsiveness — worst interaction latency across the visit |
+| Cumulative Layout Shift (CLS) | ≤ **0.1** | Visual stability — unexpected layout movement |
+
+Supporting: First Contentful Paint ≤ 1.8 s · Time to First Byte ≤ 0.8 s.
+
+### Frontend Budgets
+
+| Metric | Budget | Enforcement |
+|---|---|---|
+| Initial JS per route (compressed) | < 100 KB | Build-time bundle analysis |
+| Total JS all routes (compressed) | < 300 KB | Build-time |
+| CWV | Meet the thresholds above | Field data (RUM) + Lighthouse in CI |
+
+| Technique | Rule |
 |---|---|
-| Explicit allowed origins | Whitelist specific origins. ✗ `Access-Control-Allow-Origin: *` for authenticated APIs |
-| Wildcard acceptable for | Public read-only APIs with no authentication |
-| Credentials mode | `Access-Control-Allow-Credentials: true` requires specific origin (✗ wildcard) |
-| Allowed methods | List only methods the API uses. ✗ allow all methods |
-| Allowed headers | List only headers the API expects. ✗ allow all headers |
-| Expose headers | Explicitly expose custom response headers client needs (e.g., `X-Request-Id`) |
-
-### Preflight Handling
-
-| Rule | Detail |
-|---|---|
-| Cache preflight | `Access-Control-Max-Age: 7200` (2h) minimum — reduces OPTIONS requests |
-| OPTIONS response | Return 204 with CORS headers. ✗ process body on preflight |
-| ✗ auth on preflight | OPTIONS requests carry no credentials — ✗ require auth |
-| Rate limiting | Exempt preflight OPTIONS from rate limiting |
-
-### CORS Middleware Placement
-
-Position 4 in middleware stack (see §3). CORS rejection occurs before authentication — saves processing cost for disallowed origins.
-
----
-
-## 13. Performance
-
-### Server Response Time Budgets
-
-| Endpoint Type | Budget (p95) | Action on Breach |
-|---|---|---|
-| Health check | <10ms | Investigate immediately |
-| Simple read (by ID) | <50ms | Add caching or index |
-| List/search | <200ms | Paginate · optimize query · add cache |
-| Write (create/update) | <200ms | Async processing if >200ms |
-| Complex aggregation | <500ms | Pre-compute or background job |
-| File upload | <2s (excluding transfer) | Stream processing · async |
-
-### Frontend Performance Budgets
-
-| Metric | Budget | Measurement |
-|---|---|---|
-| Initial JS bundle (compressed) | <100KB per route | Build-time bundle analysis |
-| Total JS (all routes, compressed) | <300KB | Build-time |
-| First Contentful Paint (FCP) | <1.5s | Lighthouse / field data |
-| Largest Contentful Paint (LCP) | <2.5s | Core Web Vitals |
-| Cumulative Layout Shift (CLS) | <0.1 | Core Web Vitals |
-| Interaction to Next Paint (INP) | <200ms | Core Web Vitals |
-| Time to Interactive (TTI) | <3.5s | Lighthouse |
-
-### Optimization Rules
-
-| Technique | When | Rule |
-|---|---|---|
-| Lazy loading | Below-fold images · non-critical routes | Load on scroll/navigate — ✗ load everything upfront |
-| Preloading | Critical resources (fonts · above-fold images) | `<link rel="preload">` for render-critical assets |
-| SSR/SSG | SEO pages · landing pages | Server-render critical path — hydrate interactivity |
-| Database query optimization | Every query | Index lookup ✗ table scan. Explain plan in review |
-| Connection pooling | All database connections | Pool size = (cores × 2) + spindle_count as starting point |
-| Response compression | All text responses >1KB | Brotli preferred → gzip fallback |
-| HTTP/2+ | All production deployments | Multiplexed connections · header compression · server push |
-| Request collapsing | Duplicate concurrent requests | Deduplicate identical in-flight requests |
-
-### Caching Strategy
-
-| Layer | Cache | TTL | Invalidation |
-|---|---|---|---|
-| Browser | HTTP cache headers | Per-resource (see §5 · §10) | Content-hashed URLs |
-| CDN edge | Static assets · public pages | Long (immutable for hashed assets) | Deploy new hashed filenames |
-| Application | Computed results · API responses | Short (seconds to minutes) | Event-driven or TTL expiry |
-| Database | Query results | Short | Write-through or cache-aside pattern |
-
-See performance/STANDARDS.md for profiling methodology · budget enforcement.
+| Reserve space for media | Width/height or `aspect-ratio` on images/embeds → protects CLS |
+| Break up long tasks | Yield to the main thread; defer non-critical JS → protects INP |
+| Lazy-load below the fold | Images and non-critical routes load on demand |
+| Preload render-critical assets | `<link rel="preload">` for fonts + above-fold hero |
+| Prioritize the LCP element | ✗ lazy-load the LCP image; preconnect to its origin |
+| Optimize queries behind pages | Index lookups, ✗ table scans → [database](../database/STANDARDS.md) |
 
 ---
 
 ## 14. Scale Matrix
 
-| Aspect | Solo/Prototype | Small Team (2–5) | Production | Large Scale |
-|---|---|---|---|---|
-| **Rendering** | CSR (SPA) | SSR or CSR based on need | Hybrid SSR + CSR | SSR + CDN edge rendering |
-| **API** | REST, single version | REST with versioning | REST or GraphQL + versioning | API gateway + multiple backends |
-| **State** | In-memory | Database sessions | Distributed cache (Redis) | Distributed cache + partitioned state |
-| **Auth** | Session cookie | JWT or session + CSRF | OAuth 2.0 + OIDC | Federated identity + SSO |
-| **Authorization** | Simple role check | RBAC | Permission-based | ABAC or ReBAC |
-| **Static assets** | Serve from app server | CDN for production | CDN + content hashing | Multi-region CDN + edge caching |
-| **WebSocket** | Direct connection | Direct + heartbeat | Load-balanced + pub/sub | Dedicated WS cluster + message broker |
-| **Middleware** | Minimal (logging + errors) | Standard stack (§3 full list) | Full stack + APM | Full stack + distributed tracing |
-| **CORS** | Wildcard for dev | Explicit origin list | Strict origin whitelist | Per-service CORS policy |
-| **Monitoring** | Console logging | Structured logging | APM + error tracking + alerts | Distributed tracing + real-time dashboards |
-| **Performance** | No budgets | Bundle size budget | Full budget enforcement in CI | Per-region performance monitoring |
-| **Deployment** | Manual | CI/CD single region | Blue-green or canary | Multi-region + traffic shifting |
+| Dimension | Prototype | Production | Scale |
+|---|---|---|---|
+| Rendering | CSR SPA | SSR or hybrid by need | SSR + CDN edge rendering |
+| Auth | Session cookie | Cookie/token + CSRF (model → [security](../security/STANDARDS.md)) | OAuth 2.0 / OIDC + SSO |
+| State | In-memory dev only | DB / distributed cache | Partitioned distributed state |
+| Static assets | App server | CDN + content hashing | Multi-region CDN + edge cache |
+| Security headers | HTTPS + basic CSP | Full header set + enforced CSP | Per-service CSP + report pipeline |
+| Accessibility | Semantic HTML + labels | WCAG 2.2 AA + axe in CI | AA + manual audit + screen-reader QA per release |
+| i18n | Externalized strings, one locale | ICU + locale formatting + `Accept-Language` | Full RTL + N locales + translation pipeline |
+| Performance | No budgets | CWV + bundle budgets in CI | Per-region RUM monitoring |
+| Real-time | Direct connection | Load-balanced + pub/sub | Dedicated WS cluster + broker |
 
 ---
 
 ## 15. Checklist
 
-### Backend
-
-- [ ] Route handlers are thin — delegate to service layer (Tier 2)
-- [ ] ✗ business logic in handlers or middleware
-- [ ] All input validated at boundary (Tier 3) before reaching domain logic
-- [ ] Consistent response envelope across all endpoints
-- [ ] Correct HTTP status codes per §5 table
-- [ ] Request ID generated + propagated + returned in response
-- [ ] Error handling middleware catches all unhandled errors
-- [ ] ✗ stack traces exposed to client in production
-- [ ] Content-Type enforcement on all routes accepting body
-- [ ] Body size limits set per route
-- [ ] Cache-Control headers set explicitly on every response
-
-### Authentication + Authorization
-
-- [ ] Auth cookies: `HttpOnly` · `Secure` · `SameSite`
-- [ ] CSRF protection on all state-mutating endpoints
-- [ ] ✗ state mutation via GET
-- [ ] Session ID rotated on privilege change
-- [ ] Access tokens short-lived (5–15 min)
-- [ ] Authorization enforced server-side on every request
-- [ ] Default deny — unauthenticated → 401, unauthorized → 403
-- [ ] Resource-level permission checks (not just endpoint-level)
-
-### Frontend
-
-- [ ] Single source of truth per state type (§9)
-- [ ] Code splitting per route
-- [ ] Bundle size within budget (§13)
-- [ ] Core Web Vitals within budget (§13)
-- [ ] Tree shaking enabled · ✗ unused imports
-- [ ] ✗ auth tokens in localStorage
-- [ ] URL state supports bookmarking + back button
-- [ ] Permission-aware UI gating (UX only — ✗ sole enforcement)
-
-### Infrastructure
-
-- [ ] CORS explicit origin whitelist (✗ wildcard for authenticated APIs)
-- [ ] Preflight caching enabled (max-age ≥ 2h)
-- [ ] Static assets: content-hashed filenames + immutable cache headers
-- [ ] HTML entry point: `no-cache`
-- [ ] Compression: Brotli preferred + gzip fallback
-- [ ] CDN serves static assets in production
-- [ ] HTTP/2+ enabled
-- [ ] Server response time budgets monitored (§13)
-
-### WebSocket (if applicable)
-
-- [ ] Authenticated during handshake
-- [ ] Heartbeat ping/pong every 30s
-- [ ] Client reconnect with exponential backoff
-- [ ] Messages structured with `type` field
-- [ ] Message size <64KB
-- [ ] Critical state persisted to database (✗ WS-only state)
+- [ ] One primary rendering strategy per app; per-route exceptions explicit
+- [ ] Core content and primary actions work without JavaScript
+- [ ] Route handlers thin — no business logic in handlers or middleware
+- [ ] Middleware ordered per §3; error middleware at the outer edge
+- [ ] All input validated at the boundary before reaching domain logic
+- [ ] `Content-Type` enforced · body size limits set → 415 / 413
+- [ ] `X-Request-Id` generated, propagated, and returned
+- [ ] `Cache-Control` set explicitly on every response
+- [ ] Static assets content-hashed + immutable; HTML entry point `no-cache`; served via CDN
+- [ ] CSP enforced without `unsafe-inline` / `unsafe-eval`; HSTS + `nosniff` set
+- [ ] Output context-encoded against XSS; no raw HTML injection without a sanitizer
+- [ ] CORS uses an explicit origin allowlist (no wildcard for authenticated APIs)
+- [ ] Auth cookies `HttpOnly` · `Secure` · `SameSite`; auth tokens never in `localStorage`
+- [ ] CSRF protection on every state-changing request; no state mutation via GET
+- [ ] Session ID rotated on login and privilege change; explicit logout destroys it
+- [ ] Server re-authorizes every request; frontend gating is UX only
+- [ ] Single source of truth per state type; shareable state encoded in the URL
+- [ ] Bundle sizes within budget; tree shaking on; code split per route
+- [ ] Semantic HTML first; every interactive element keyboard-operable with a visible focus indicator
+- [ ] Text contrast ≥ 4.5:1 (normal) / 3:1 (large + UI); color never the sole signal
+- [ ] Every form input has an associated label and programmatically linked errors
+- [ ] `prefers-reduced-motion` honored; ARIA only where semantic HTML cannot express it
+- [ ] axe check gates CI; keyboard + screen-reader walkthrough on primary flows
+- [ ] All user-facing strings externalized; plurals/gender via ICU; no concatenated fragments
+- [ ] Dates, numbers, and currency formatted per locale; timestamps stored UTC, rendered local
+- [ ] RTL supported via logical CSS; layout tolerates ~30-40% text expansion
+- [ ] `Accept-Language` negotiated with a persisted explicit user override
+- [ ] LCP ≤ 2.5s · INP ≤ 200ms · CLS ≤ 0.1 met on field data
+- [ ] Real-time connections authenticated at handshake; critical state persisted, not WS-only

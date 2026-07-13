@@ -15,128 +15,140 @@
 
 ## Repository Purpose
 
-Central standards library for all projects. Each standard = one directory + one `STANDARDS.md`. Standards are composable — projects load multiple standards by combining relevant files. All standards language-agnostic ; language-specific standards in dedicated directories.
+Central standards library for all projects. Each standard = one directory + one `STANDARDS.md` (+ optional split files). Standards are composable — projects **route** to a subset, never load everything.
+
+Three meta files govern the repo. Read them before touching any standard:
+
+| File | Role |
+|---|---|
+| [TEMPLATE.md](TEMPLATE.md) | Canonical structure every standard follows. CI-enforced contract |
+| [ROUTER.md](ROUTER.md) | Catalog · tier model · which standards a given project loads |
+| `CLAUDE.md` | This file — how to write standards in this repo |
+
+---
 
 ## Writing Rules
 
-- Target 400–500 lines per standard. Hard cap 800.
-- Zero code examples — pure rules, patterns, tables. Language-specific examples → language-specific standards only.
+- **Hard cap 499 lines per file. Target 400–480.** Over cap → split at a natural seam per [TEMPLATE.md](TEMPLATE.md) §8. CI fails the build over cap.
+- **Zero code examples** — pure rules, patterns, tables. Exception: language standards (`python/` `rust/` `go/` `typescript/` `shell/` `sql/`) may and should carry code. CI enforces this.
 - Every sentence = rule | clarification of rule. ✗ motivation paragraphs · ✗ tutorials · ✗ "why this matters"
 - Tables over prose. One-liner rules over paragraphs.
-- Cross-reference other standards by relative path: `See architecture/STANDARDS.md §4`
-- Every standard has: TOC · numbered sections · checklist at end · scale matrix if applicable
-- Brainstorm with user before writing. Explore prior art, extract principles from proven systems, identify what belongs vs what belongs in other standards.
+- **One owner per topic.** Each standard declares `**Owns**` in its header. A rule lives in exactly one file. Every other standard that touches it declares `**Defers to**` and cross-references. ✗ restate another standard's rules.
+- Cross-reference by relative link: `[architecture §4](../architecture/STANDARDS.md#4-function-placement)`. Dead links fail CI.
+- Every standard has the full header schema · TOC · numbered sections · checklist at end · scale matrix if applicable. See [TEMPLATE.md](TEMPLATE.md) §3–§6.
 - Write incrementally — section by section, not full file in one shot. ✗ write long content in single tool call — breaks on timeout. Write header + first sections → edit/append remaining sections in subsequent calls.
+- Every new standard is registered in [ROUTER.md](ROUTER.md) §4 catalog **and** at least one route (§5/§6). An unrouted standard is never loaded.
+
+## Conformance
+
+```bash
+python3 tools/validate.py
+```
+
+Checks: line cap · header schema · ID↔directory match · tier validity · TOC↔section parity · sequential numbering · checklist present and unticked · code-block policy · dead cross-references · router registration.
+
+Must pass before every commit. CI runs it on push and PR — see `.github/workflows/standards.yml`.
+
+---
 
 ## Standards Catalog
 
-### General (language-agnostic)
+All standards are complete. Tier determines when a project loads them — see [ROUTER.md](ROUTER.md) §2.
 
-| # | Directory | Standard | Status |
-|---|---|---|---|
-| 1 | `architecture/` | System structure · tier model · 29 core principles | Done |
-| 2 | `design/` | Design patterns · module design · abstraction rules | Planned |
-| 3 | `directory/` | Project layout · file organization · naming | Done |
-| 4 | `code_writing/` | Clean code · readability · function style · naming | Planned |
-| 5 | `testing/` | Test pyramid · contract · coverage · reality dimensions (STANDARDS.md) · pressure · survival · penetration (PRESSURE.md) | Done |
-| 6 | `error_handling/` | Error types · boundaries · recovery · reporting | Done |
-| 7 | `observability/` | Structured logging · receipts · metrics · health | Done |
-| 8 | `security/` | Validation boundary · secrets · access control · input | Done |
-| 9 | `api/` | API design · protocols · contracts · versioning · serialization | Done |
-| 10 | `database/` | Schema design · migrations · queries · transactions | Done |
-| 11 | `configuration/` | Cascade · environment · secrets · feature flags | Planned |
-| 12 | `dependencies/` | Versioning · isolation · wrappers · lock files | Done |
-| 13 | `git/` | Branching · commits · tags · workflows · history | Done |
-| 14 | `cicd/` | Build · test · lint · deploy · release stages | Done |
-| 15 | `documentation/` | Code docs · API docs · decision records · runbooks | Planned |
-| 16 | `performance/` | Profiling · budgets · optimization · caching | Done |
-| 17 | `devops/` | Infrastructure · containers · deployment · monitoring | Planned |
-| 18 | `code_review/` | Review criteria · approval flow · feedback style | Planned |
-| 19 | `workflow/` | Idea → PoC → production lifecycle · task management | Planned |
+### Meta
 
-### Language-Specific
+| Directory | Standard |
+|---|---|
+| — | `TEMPLATE.md` · `ROUTER.md` · `CLAUDE.md` |
 
-| # | Directory | Standard | Status |
-|---|---|---|---|
-| 20 | `python/` | Style · typing · packaging · virtual envs · tooling | Done |
-| 21 | `rust/` | Ownership idioms · crate structure · error handling · unsafe | Done |
-| 22 | `go/` | Package layout · interfaces · error returns · concurrency | Done |
-| 23 | `typescript/` | Types · modules · async patterns · build config | Planned |
-| 24 | `shell/` | Script structure · error handling · portability | Planned |
-| 25 | `sql/` | Query style · schema conventions · migration format | Done |
+### Foundation — always loaded
 
-### Domain-Specific
+| # | Directory | Standard |
+|---|---|---|
+| 1 | `architecture/` | Layer model · dependency rules · state · concurrency · extension · evolution |
+| 2 | `design/` | Design patterns · module design · abstraction rules |
+| 3 | `directory/` | Project layout · file organization · naming |
+| 4 | `code_writing/` | Clean code · readability · function style · identifier naming |
 
-| # | Directory | Standard | Status |
-|---|---|---|---|
-| 26 | `local_mcp/` | MCP server development · tool design · engine/server split | Done |
-| 27 | `html_generation/` | Charts · dashboards · theming · offline-first output | Done |
-| 28 | `data_pipeline/` | ETL · data validation · schema enforcement · batch | Done |
-| 29 | `cli/` | Argument parsing · output format · exit codes · help | Done |
-| 30 | `web/` | Routing · middleware · state · auth · frontend/backend | Planned |
-| 31 | `ml/` | Model lifecycle · experiment tracking · data versioning | Done |
-| 32 | `agent/` | CLAUDE.md · AGENTS.md · context engineering · density rules | Done |
-| 33 | `expectation/` | Peak comparator model · quality dimensions · failure taxonomy · benchmarks | Done |
+### Core — always loaded
+
+| # | Directory | Standard |
+|---|---|---|
+| 5 | `testing/` | Pyramid · coverage · mocking (STANDARDS.md) · reality dimensions (REALITY.md) · pressure · survival · penetration (PRESSURE.md) |
+| 6 | `error_handling/` | Error types · boundaries · recovery · reporting |
+| 7 | `security/` | Validation boundary · secrets · access control · supply chain |
+| 8 | `observability/` | Structured logging · metrics · traces · SLOs · health |
+| 9 | `performance/` | Budgets · profiling · caching · optimization |
+| 10 | `configuration/` | Cascade · environment · secrets · feature flags |
+| 11 | `dependencies/` | Versioning · isolation · wrappers · lock files |
+| 12 | `documentation/` | Code docs · API docs · ADRs · runbooks |
+| 13 | `expectation/` | Peak comparator model · quality dimensions · failure taxonomy · benchmarks |
+
+### Delivery — always loaded
+
+| # | Directory | Standard |
+|---|---|---|
+| 14 | `git/` | Branching · commits · tags · workflows · history |
+| 15 | `cicd/` | Build · test · lint · deploy · release stages |
+| 16 | `code_review/` | Review criteria · approval flow · feedback style |
+| 17 | `devops/` | Infrastructure · containers · deployment · monitoring |
+| 18 | `workflow/` | Idea → PoC → production lifecycle · task management |
+
+### Interface — loaded per surface
+
+| # | Directory | Standard |
+|---|---|---|
+| 19 | `api/` | API design · protocols · contracts · versioning · serialization |
+| 20 | `database/` | Schema design · migrations · queries · transactions |
+| 21 | `cli/` | Argument parsing · output format · exit codes · help |
+| 22 | `web/` | Routing · middleware · state · auth · frontend/backend |
+
+### Domain — loaded per domain
+
+| # | Directory | Standard |
+|---|---|---|
+| 23 | `local_mcp/` | MCP architecture · engine/server split (STANDARDS.md) · tool design (TOOLS.md) · state · transports (RUNTIME.md) · install · distribution (DELIVERY.md) |
+| 24 | `data_pipeline/` | ETL · data validation · schema enforcement · batch |
+| 25 | `ml/` | Model lifecycle · experiment tracking · data versioning |
+| 26 | `agent/` | CLAUDE.md · AGENTS.md · context engineering · density rules |
+| 27 | `html_generation/` | Offline-first output (STANDARDS.md) · theming · CSS (THEMING.md) · charts · controls (CHARTS.md) |
+
+### Language — loaded per language
+
+| # | Directory | Standard |
+|---|---|---|
+| 28 | `python/` | Style · typing · packaging · virtual envs · tooling |
+| 29 | `rust/` | Ownership idioms · crate structure · error handling · unsafe |
+| 30 | `go/` | Package layout · interfaces · error returns · concurrency |
+| 31 | `typescript/` | Types · modules · async (STANDARDS.md) · build · lint (TOOLING.md) |
+| 32 | `shell/` | Script structure · error handling (STANDARDS.md) · portability · security (HARDENING.md) |
+| 33 | `sql/` | Query style · schema conventions · migration format |
+
+---
 
 ## Cross-Reference Map
 
-```
+```text
 architecture ← foundation for all standards
-├── design ← code_writing · testing · error_handling
-├── directory ← all language-specific · all domain-specific
+├── design · code_writing · directory ← structure the code itself
+├── error_handling ← boundaries referenced by every tier
 ├── api ← database · web · local_mcp
-├── testing ← cicd · code_review
-├── security ← api · database · web · devops
+├── testing ← cicd · code_review · expectation
+├── security ← api · database · web · devops · dependencies
+├── observability ← devops · data_pipeline · ml
 ├── git ← cicd · workflow · code_review
 └── workflow ← references all standards as lifecycle phases
 ```
 
-## File Structure
+Authoritative version: [ROUTER.md](ROUTER.md) §4–§6.
 
-```
-Standards/
-├── CLAUDE.md                    ← this file
-├── README.md
-├── architecture/STANDARDS.md    ← done
-├── design/STANDARDS.md
-├── directory/STANDARDS.md
-├── code_writing/STANDARDS.md
-├── testing/
-│   ├── STANDARDS.md             ← done (pyramid + reality dimensions)
-│   └── PRESSURE.md              ← done (pressure · survival · penetration)
-├── error_handling/STANDARDS.md
-├── observability/STANDARDS.md
-├── security/STANDARDS.md
-├── api/STANDARDS.md
-├── database/STANDARDS.md
-├── configuration/STANDARDS.md
-├── dependencies/STANDARDS.md
-├── git/STANDARDS.md
-├── cicd/STANDARDS.md            ← done
-├── documentation/STANDARDS.md
-├── performance/STANDARDS.md
-├── devops/STANDARDS.md
-├── code_review/STANDARDS.md
-├── workflow/STANDARDS.md
-├── python/STANDARDS.md
-├── rust/STANDARDS.md
-├── go/STANDARDS.md
-├── typescript/STANDARDS.md
-├── shell/STANDARDS.md
-├── sql/STANDARDS.md
-├── local_mcp/STANDARDS.md       ← done
-├── html_generation/STANDARDS.md ← done
-├── data_pipeline/STANDARDS.md
-├── cli/STANDARDS.md
-├── web/STANDARDS.md
-├── ml/STANDARDS.md
-├── agent/STANDARDS.md         ← done
-└── expectation/STANDARDS.md   ← done
-```
+---
 
 ## Git
 
-- Branch: `claude/project-coding-standards-ByG4r`
-- Commit after each standard completed or significantly updated
-- Push after commit
-- ✗ create PR unless user explicitly asks
+- Branch off `main`. ✗ commit directly to `main` for multi-file changes.
+- Commit after each standard completed or significantly updated.
+- `python3 tools/validate.py` must pass before every commit.
+- Push after commit.
+- ✗ create PR unless user explicitly asks.
+- Release: tag `vX.Y.Z` on `main` → CI publishes a GitHub release from `CHANGELOG.md`.

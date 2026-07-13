@@ -1,545 +1,385 @@
 # Documentation Standards
 
-Rules for all project documentation — README, API docs, ADRs, runbooks,
-changelogs, inline comments, and operational procedures. Language-agnostic.
+> How a project writes, places, and maintains every document — README, API docs, ADRs, runbooks, and comments — so the docs stay true to the code.
 
-Documentation is a deliverable, not an afterthought. Stale docs are bugs.
-Undocumented public APIs are incomplete features.
-
-Composable with: Code Writing Standards (§6 comments), API Standards,
-Git Standards (changelog from history), Architecture Standards.
+**ID** `documentation` · **Tier** Core · **Version** 1.0
+**Owns** Diátaxis mode discipline · README contract · API-doc sourcing · ADR format + lifecycle · runbook format · doc comments · inline comments · docs-as-code · doc-rot prevention · doc location
+**Defers to** semver + changelog format + categories → [git](../git/STANDARDS.md) · release automation → [cicd](../cicd/STANDARDS.md) · API contract design → [api](../api/STANDARDS.md) · in-function comment mechanics → [code_writing](../code_writing/STANDARDS.md) · architecture principles ADRs cite → [architecture](../architecture/STANDARDS.md) · runbook alert thresholds → [observability](../observability/STANDARDS.md) · file placement → [directory](../directory/STANDARDS.md)
+**Load with** [git](../git/STANDARDS.md) · [api](../api/STANDARDS.md) · [code_writing](../code_writing/STANDARDS.md)
 
 ---
 
 ## Table of Contents
 
-1. [Documentation Types](#1-documentation-types)
-2. [README Standards](#2-readme-standards)
-3. [API Documentation](#3-api-documentation)
-4. [Architecture Decision Records](#4-architecture-decision-records)
-5. [Runbooks](#5-runbooks)
-6. [Code Documentation](#6-code-documentation)
-7. [Changelog](#7-changelog)
-8. [Inline Documentation](#8-inline-documentation)
-9. [Documentation Maintenance](#9-documentation-maintenance)
-10. [Documentation Location](#10-documentation-location)
-11. [Scale Matrix](#11-scale-matrix)
-12. [Documentation Checklist](#12-documentation-checklist)
+1. [Principles](#1-principles)
+2. [Diátaxis: The Four Modes](#2-diátaxis-the-four-modes)
+3. [Documentation Types by Scale](#3-documentation-types-by-scale)
+4. [README Contract](#4-readme-contract)
+5. [API Documentation](#5-api-documentation)
+6. [Architecture Decision Records](#6-architecture-decision-records)
+7. [Runbooks](#7-runbooks)
+8. [Doc Comments](#8-doc-comments)
+9. [Inline Comments](#9-inline-comments)
+10. [Changelog and Release Notes](#10-changelog-and-release-notes)
+11. [Docs-as-Code and Maintenance](#11-docs-as-code-and-maintenance)
+12. [Documentation Location](#12-documentation-location)
+13. [Anti-Patterns](#13-anti-patterns)
+14. [Scale Matrix](#14-scale-matrix)
+15. [Checklist](#15-checklist)
 
 ---
 
-## 1. Documentation Types
+## 1. Principles
 
-Every project produces a subset of these document types based on scale.
-
-| Type | Audience | Location | Update Trigger |
-|---|---|---|---|
-| README | New contributors · evaluators | Repo root | Project scope change |
-| API docs | Consumers of public interfaces | Co-located with code | Interface change |
-| ADR | Future maintainers · architects | `docs/adr/` | Architectural decision made |
-| Runbook | Operators · on-call engineers | `docs/runbooks/` | Operational procedure change |
-| Code docs | Developers reading source | Inline with code | Public API change |
-| Changelog | Users · upgraders | Repo root `CHANGELOG.md` | Every release |
-| Inline comments | Developers reading source | Inline with code | Logic change in commented area |
-
-### Required by Scale
-
-| Type | PoC / Script | Small Project | Production System |
-|---|---|---|---|
-| README | Minimal (purpose + run) | Full structure | Full structure + badges |
-| API docs | ✗ | Public API only | All public interfaces |
-| ADR | ✗ | ✗ | Required for every architectural choice |
-| Runbook | ✗ | ✗ | Required for every operational procedure |
-| Code docs | ✗ | Public functions | All public API surface |
-| Changelog | ✗ | Recommended | Required |
-| Inline comments | Only for non-obvious logic | Non-obvious logic | Non-obvious logic + cross-references |
+| # | Rule |
+|---|---|
+| 1 | Documentation is a deliverable, ✗ an afterthought |
+| 2 | A doc that lies is worse than no doc — it costs a reader trust and time |
+| 3 | Docs live with the code and change in the same commit — proximity fights drift |
+| 4 | Docs are reviewed in the diff, like code |
+| 5 | An undocumented public API is an incomplete feature — ✗ merge it |
+| 6 | Derive from the source of truth (schema, code, history); ✗ hand-maintain what can be generated |
+| 7 | One document serves one Diátaxis mode — mixing modes is the core failure (§2) |
 
 ---
 
-## 2. README Standards
+## 2. Diátaxis: The Four Modes
 
-README is the entry point. Reader decides in 30 seconds whether project is relevant.
+Every document serves exactly one of four user needs. Mixing modes in one document is the central documentation failure — it serves none of them well.
 
-### Required Sections (in order)
+| Mode | Serves | User is | Answers | Example |
+|---|---|---|---|---|
+| Tutorial | Learning | A newcomer, being taught | "Teach me by doing" | Getting-started walkthrough |
+| How-to guide | A task | A user with a goal | "How do I achieve X?" | "How to rotate the signing key" |
+| Reference | Looking up | A user who knows the goal | "What exactly is X?" | API reference, config keys |
+| Explanation | Understanding | A user who wants context | "Why is it this way?" | ADR, architecture overview |
+
+### Mode Rules
+
+| Rule | Detail |
+|---|---|
+| One mode per document | ✗ a tutorial that drifts into API reference; ✗ a reference padded with rationale |
+| Learning vs doing are separate | A tutorial teaches; a how-to executes a known task — ✗ conflate them |
+| Reference is dry and complete | Describes the machinery; ✗ teaches, ✗ persuades |
+| Explanation carries the "why" | Rationale, trade-offs, and history go here (and in ADRs, §6), ✗ in reference |
+| Link across modes | A how-to links to the reference it uses; a tutorial links to explanation — ✗ inline the other mode |
+
+---
+
+## 3. Documentation Types by Scale
+
+| Type | Mode | Audience | Location | Update trigger |
+|---|---|---|---|---|
+| README | Mixed entry point | Contributors · evaluators | Repo root | Project scope change |
+| API docs | Reference | Interface consumers | Co-located with code | Interface change |
+| ADR | Explanation | Future maintainers | `docs/adr/` | Architectural decision |
+| Runbook | How-to | Operators · on-call | `docs/runbooks/` | Ops procedure change |
+| Doc comment | Reference | Developers reading source | Inline | Public API change |
+| Changelog | Reference | Users · upgraders | Repo root `CHANGELOG.md` | Every release |
+| Inline comment | Explanation | Developers reading source | Inline | Logic change |
+
+| Type | Prototype | Production | Scale |
+|---|---|---|---|
+| README | Purpose + run | Full structure | Full + badges |
+| API docs | ✗ | Public API | All public interfaces |
+| ADR | ✗ | Every architectural choice | + backfilled decisions |
+| Runbook | ✗ | Every ops procedure | + tested quarterly |
+| Doc comments | ✗ | Public functions | Full public surface |
+| Changelog | ✗ | Recommended | Required, CI-enforced |
+
+---
+
+## 4. README Contract
+
+The README is the entry point. A reader decides in 30 seconds whether the project is relevant.
+
+### Sections, in order
 
 | # | Section | Content |
 |---|---|---|
-| 1 | Title + one-line description | What this project does — one sentence |
-| 2 | Status badges | Build · coverage · version · license (production only) |
-| 3 | Overview | 2–5 sentences expanding the one-liner. Problem → solution |
-| 4 | Quick Start | Minimum steps from clone to working state. ≤ 5 commands |
-| 5 | Installation | Full installation with prerequisites, all platforms |
-| 6 | Usage | Primary use cases with commands/invocations |
-| 7 | Configuration | All configurable values, defaults, environment variables |
-| 8 | Architecture | Brief system description; link to ADRs for depth |
-| 9 | Contributing | How to set up dev environment, run tests, submit changes |
-| 10 | License | License type + link to LICENSE file |
+| 1 | Title + one-liner | What it does — one sentence, directly under the title |
+| 2 | Badges | Build · coverage · version · license (production only) |
+| 3 | Overview | 2–5 sentences: problem → solution |
+| 4 | Quick Start | Clone to working state in ≤ 5 commands, copy-paste-able |
+| 5 | Installation | Full install: prerequisites with min versions, all platforms |
+| 6 | Usage | Primary use cases with commands |
+| 7 | Configuration | Configurable values, defaults, env vars |
+| 8 | Architecture | Brief; links to ADRs for depth |
+| 9 | Contributing | Dev setup, tests, how to submit changes |
+| 10 | License | Type + link to LICENSE |
 
-### README Rules
+### Rules
 
-- Title = project name. ✗ marketing taglines · ✗ version numbers in title.
-- One-liner goes directly under title — no blank lines, no badges between.
-- Quick Start must work with copy-paste. Every command tested on clean machine.
-- ✗ "TODO" sections in committed README. Incomplete = not committed.
-- Prerequisites listed explicitly with minimum version numbers.
-- All paths in README relative to repo root.
-- Links to headings within same file use anchor references.
-- External links use full URLs; check annually for rot.
-
-### Badge Rules (Production Only)
-
-| Badge | Required | Source |
-|---|---|---|
-| Build status | Yes | CI system |
-| Test coverage | Yes | Coverage tool |
-| Version/release | Yes | Package registry or Git tag |
-| License | Yes | LICENSE file |
-| Dependencies status | Recommended | Dependency checker |
-
-Badges appear on one line, immediately after title + one-liner.
-✗ decorative badges (stars, downloads) unless project is a public library.
+- Title = project name. ✗ marketing taglines · ✗ version numbers in the title.
+- One-liner directly under the title — no blank line, no badge between.
+- Quick Start works by copy-paste, tested on a clean machine.
+- ✗ "TODO" sections in a committed README — incomplete = not committed.
+- Prerequisites list explicit minimum version numbers. Paths relative to repo root.
+- Badges on one line after the one-liner. ✗ decorative badges (stars, downloads) unless a public library.
 
 ---
 
-## 3. API Documentation
+## 5. API Documentation
 
-API docs describe contracts consumers depend on. See `api/STANDARDS.md` for
-full API design rules.
+API docs are **reference mode** and describe contracts consumers depend on. API contract design → [api](../api/STANDARDS.md).
 
-### Schema-First Principle
+### Schema-First
 
-Documentation derives from the contract, not the implementation.
-Source of truth = schema definition (OpenAPI, protobuf, GraphQL SDL, type signatures).
+Documentation derives from the contract, ✗ the implementation. Source of truth = the schema (OpenAPI · protobuf · GraphQL SDL · type signatures).
 
-| Approach | Rule |
+| Rule | Detail |
 |---|---|
 | Schema-first | Define schema → generate docs → implement code |
-| Auto-generated | Docs generated from schema/types at build time |
+| Auto-generated | Docs regenerate from schema/types at build time |
 | Manual supplement | Only for concepts, guides, examples — never for endpoint signatures |
-| Version-coupled | Docs version matches API version exactly |
+| Version-coupled | Doc version matches API version exactly |
 
-### Required Per Endpoint/Interface
+### Required per Endpoint/Interface
 
-| Element | Required | Notes |
-|---|---|---|
-| Method + path / function signature | Yes | Exact contract |
-| Description | Yes | One sentence: what it does |
-| Parameters (name, type, required, default) | Yes | Table format |
-| Request body schema | If applicable | With required fields marked |
-| Response schema | Yes | Success + error shapes |
-| Error codes | Yes | All possible error responses |
-| Authentication | Yes | What credentials required |
-| Rate limits | If applicable | Requests per window |
-| Deprecation notice | If deprecated | Migration path included |
+Method + path / signature · one-sentence description · parameters (name · type · required · default) · request body schema (required fields marked) · response schema (success + error shapes) · error codes · authentication · rate limits (if any) · deprecation notice with migration path (if deprecated).
 
-### API Doc Rules
+### Rules
 
-- Generated docs rebuild on every CI run. ✗ manually maintained endpoint lists.
+- Generated docs rebuild every CI run — ✗ hand-maintained endpoint lists. Doc-generation failure = build failure.
 - Every breaking change reflected in docs before merge.
-- Doc generation failure = build failure.
-- Examples live in a dedicated section, not inline with schema definitions.
-- Versioned APIs maintain docs for all supported versions.
-- Deprecated endpoints display prominently with sunset date + replacement.
+- Examples live in a dedicated section, ✗ inline with schema definitions.
+- Versioned APIs keep docs for every supported version; deprecated endpoints show a sunset date + replacement.
 
 ---
 
-## 4. Architecture Decision Records
+## 6. Architecture Decision Records
 
-ADRs capture the *why* behind architectural choices. They are immutable once
-accepted — superseded by new ADRs, never edited retroactively.
+ADRs are **explanation mode** — they capture the *why* behind an architectural choice. Immutable once accepted: superseded by a new ADR, ✗ edited retroactively.
 
-### When to Write an ADR
+### When to Write
 
 | Trigger | Example |
 |---|---|
-| Technology selection | Chose PostgreSQL over SQLite for multi-user |
-| Pattern adoption | Adopted event sourcing for audit trail |
+| Technology selection | PostgreSQL over SQLite for multi-user |
+| Pattern adoption | Event sourcing for the audit trail |
 | Structural decision | Split monolith into 3 services |
 | Rejected alternative | Evaluated GraphQL, stayed with REST |
-| Constraint acceptance | Accepted 5s cold start for serverless |
-| Security boundary change | Moved auth from app layer to gateway |
+| Constraint acceptance | Accept 5 s cold start for serverless |
+| Security boundary change | Move auth from app to gateway |
 
-Rule: if you debated it for more than 15 minutes, write an ADR.
-
-### ADR Format
-
-Every ADR follows this exact structure:
-
-| Section | Content |
-|---|---|
-| Title | `ADR-NNNN: <decision title>` — sequential numbering |
-| Date | ISO 8601 date of decision |
-| Status | `proposed` → `accepted` → `deprecated` or `superseded by ADR-NNNN` |
-| Context | Problem or situation forcing the decision. Facts only, no opinion |
-| Decision | What was decided. One clear statement |
-| Consequences | Positive, negative, and neutral outcomes. All three required |
-| Alternatives | Options considered and why rejected. Minimum one alternative |
-
-### ADR Rules
-
-- File naming: `docs/adr/NNNN-short-title.md` — zero-padded 4-digit number.
-- ✗ edit accepted ADRs. Write new ADR that supersedes. Update status of old.
-- ADRs are reviewed in code review like any other code artifact.
-- Status lifecycle: `proposed` → `accepted` → optionally `deprecated` | `superseded`.
-- ✗ ADRs without alternatives section. Every decision has alternatives — document them.
-- Link ADRs from README architecture section.
-- ADRs reference architecture principles (see `architecture/STANDARDS.md §1`).
-
-### Status Lifecycle
-
-```
-proposed ──→ accepted ──→ [active indefinitely]
-                │
-                ├──→ deprecated (no longer relevant)
-                │
-                └──→ superseded by ADR-NNNN (replaced by new decision)
-```
-
-✗ `rejected` status. Rejected proposals are not ADRs — they are discussion artifacts.
-If a proposal is not accepted, it does not enter the ADR log.
-
----
-
-## 5. Runbooks
-
-Runbooks document operational procedures for production systems.
-Written for the operator who is responding at 3 AM, not the architect.
-
-### When to Write a Runbook
-
-| Trigger | Example |
-|---|---|
-| New deployment procedure | Deploy service X to production |
-| Known failure mode | Database connection pool exhaustion |
-| Incident response | Service returns 503 for > 5 minutes |
-| Data operation | Backfill missing records from backup |
-| Scaling procedure | Scale service from 2 to 8 replicas |
-| Secret rotation | Rotate API keys for external service |
-
-### Runbook Format
-
-| Section | Content |
-|---|---|
-| Title | Exact procedure name — searchable |
-| Severity | `P1` (immediate) · `P2` (hours) · `P3` (days) |
-| Symptoms | Observable indicators that trigger this runbook |
-| Prerequisites | Access, tools, permissions required before starting |
-| Steps | Numbered, copy-paste commands. Each step = one action |
-| Verification | How to confirm each step succeeded |
-| Rollback | How to undo if procedure fails. Required for every destructive step |
-| Escalation | Who to contact if runbook does not resolve the issue |
-
-### Runbook Rules
-
-- Every step is one atomic action. ✗ compound steps ("do X then Y").
-- Commands are literal copy-paste. ✗ pseudocode · ✗ "run the usual deploy".
-- Every destructive step has a rollback step immediately following it.
-- Variables in commands use `${PLACEHOLDER}` with a legend at the top.
-- Runbooks tested quarterly on staging. Untested runbook = no runbook.
-- Version-stamped — runbook states which system version it applies to.
-- ✗ runbooks that require reading external docs to execute. Self-contained.
-- Time estimates per step. Total estimated time at the top.
-- Runbooks link to monitoring dashboards for verification steps.
-
----
-
-## 6. Code Documentation
-
-Doc comments exist for the public API surface. Internal implementation
-does not require doc comments — clean code is self-documenting.
-See `code_writing/STANDARDS.md §6` for comment rules within function bodies.
-
-### What to Document
-
-| Element | Doc Comment Required | Notes |
-|---|---|---|
-| Public function/method | Yes | Contract: inputs, outputs, errors, side effects |
-| Public type/struct/class | Yes | Purpose + invariants |
-| Public constant | Yes, if non-obvious | What it controls |
-| Module/package | Yes | One-line purpose + responsibility boundary |
-| Private function | ✗ | Only if algorithm is non-obvious |
-| Private type | ✗ | Only if invariants are complex |
-| Test function | ✗ | Test name describes intent |
-
-### Doc Comment Content
-
-| Element | Required | Example Content |
-|---|---|---|
-| Summary | Yes | One sentence: what it does (not how) |
-| Parameters | Yes, if any | Name, type, constraints, defaults |
-| Returns | Yes, if non-void | Type + what it represents |
-| Errors/Exceptions | Yes, if any | Each error condition + type |
-| Side effects | Yes, if any | I/O, state mutation, network calls |
-| Thread safety | If concurrent | Safe/unsafe + conditions |
-| Panics/aborts | If applicable | Conditions that cause hard failure |
-
-### Doc Comment Rules
-
-- First sentence = complete summary. Tools extract this as the short description.
-- ✗ restating the function name. `/// Gets the user` on `get_user()` = waste.
-- ✗ restating types. `/// Takes a string and returns an int` = waste.
-- Document *why* and *when*, not *what* — the signature already says *what*.
-- Doc comments describe the contract from the caller's perspective.
-- ✗ implementation details in doc comments. Implementation changes; contracts persist.
-- Empty doc comments (`///` with no content) are worse than no doc comment.
-- Link related functions/types in doc comments using language-appropriate syntax.
-
----
-
-## 7. Changelog
-
-Track user-visible changes across releases. Follows Keep a Changelog format.
+Rule: debated for more than 15 minutes → write an ADR.
 
 ### Format
 
-File: `CHANGELOG.md` at repo root.
+Every ADR has these fields: **Title** (`ADR-NNNN: <decision>`, sequential) · **Date** (ISO 8601) · **Status** · **Context** (the forcing problem, facts only) · **Decision** (one clear statement) · **Consequences** (positive, negative, and neutral — all three) · **Alternatives** (options considered and why rejected, minimum one).
 
-Structure per version:
+### Rules
 
-```
-## [X.Y.Z] - YYYY-MM-DD
-
-### Added
-- New feature description
-
-### Changed
-- Existing behavior modification
-
-### Deprecated
-- Feature marked for removal
-
-### Removed
-- Feature removed in this release
-
-### Fixed
-- Bug fix description
-
-### Security
-- Vulnerability fix description
-```
-
-### Changelog Rules
-
-- Newest version at top. Unreleased changes under `## [Unreleased]` heading.
-- Every entry = one user-visible change. One line per change.
-- Version numbers follow SemVer: `MAJOR.MINOR.PATCH`.
-- ✗ commit hashes in changelog entries. Changelog is for humans, not machines.
-- ✗ internal refactors in changelog. Only user-visible changes.
-- ✗ vague entries ("various improvements", "bug fixes"). Name the specific change.
-- Each entry starts with a verb: Added, Changed, Fixed, Removed, Deprecated.
-- Link version headings to Git comparison URLs when hosted.
-- See `git/STANDARDS.md` for deriving changelog entries from commit history.
-
-### Version-to-Changelog Mapping
-
-| Version Bump | Changelog Sections Expected |
+| Rule | Detail |
 |---|---|
-| MAJOR (breaking) | Changed or Removed (with migration notes) |
-| MINOR (feature) | Added, possibly Changed |
-| PATCH (fix) | Fixed, possibly Security |
-
-### What to Include vs Exclude
-
-| Include | Exclude |
-|---|---|
-| New features | Internal refactors |
-| Breaking changes | Dependency updates (unless user-visible) |
-| Bug fixes | Test additions |
-| Deprecations | CI/CD changes |
-| Security patches | Code style changes |
-| Performance improvements (user-visible) | Documentation-only changes |
+| File naming | `docs/adr/NNNN-short-title.md`, zero-padded 4 digits |
+| Immutable | ✗ edit an accepted ADR — write a superseding ADR, update the old one's status |
+| Reviewed like code | ADRs go through code review |
+| Status lifecycle | `proposed` → `accepted` → optionally `deprecated` \| `superseded by ADR-NNNN` |
+| ✗ rejected status | A non-accepted proposal never enters the ADR log — it is a discussion artifact |
+| Alternatives mandatory | ✗ an ADR without an alternatives section |
+| Linked | Referenced from the README architecture section; cites [architecture](../architecture/STANDARDS.md) principles |
 
 ---
 
-## 8. Inline Documentation
+## 7. Runbooks
 
-Comments within function bodies and code blocks. Complementary to
-doc comments (§6). See `code_writing/STANDARDS.md §6` for full rules.
+Runbooks are **how-to mode**, written for the operator responding at 3 AM, ✗ the architect. Every alert links to a runbook — an alert with no runbook is an incomplete alert. Alert thresholds → [observability](../observability/STANDARDS.md).
 
-### When Comments Add Value
+### When to Write
 
-| Scenario | Comment Type | Example Reason |
+New deployment procedure · known failure mode (pool exhaustion) · incident response (503 > 5 min) · data operation (backfill from backup) · scaling procedure · secret rotation.
+
+### Format
+
+Fields: **Title** (searchable) · **Severity** (`P1` immediate · `P2` hours · `P3` days) · **Symptoms** (observable triggers) · **Prerequisites** (access, tools) · **Steps** (numbered, one atomic action each) · **Verification** (how to confirm each step) · **Rollback** (undo for every destructive step) · **Escalation** (who to contact).
+
+### Rules
+
+- Every step is one atomic action — ✗ compound steps ("do X then Y").
+- Commands are literal copy-paste — ✗ pseudocode, ✗ "run the usual deploy".
+- Every destructive step is immediately followed by its rollback step.
+- Variables use `${PLACEHOLDER}` with a legend at the top.
+- Tested quarterly on staging — an untested runbook is not a runbook.
+- Self-contained — ✗ require reading external docs to execute. Version-stamped; links to monitoring dashboards for verification.
+
+---
+
+## 8. Doc Comments
+
+Doc comments document the **public API surface** (reference mode). Internal implementation is self-documenting through clean code. In-function comment mechanics → [code_writing](../code_writing/STANDARDS.md).
+
+| Element | Doc comment | Notes |
 |---|---|---|
-| Non-obvious algorithm | Explanatory | Why this approach over simpler one |
-| Business rule encoding | Intent | Links to spec or requirement |
-| Workaround for external bug | Context | References issue tracker |
-| Performance-critical choice | Justification | Why O(n) scan instead of hash lookup |
-| Regex or complex expression | Translation | Human-readable description |
-| Magic number | Definition | What the value represents and why |
-| Intentional fallthrough | Confirmation | `// intentional: handles both cases` |
-| Cross-module dependency | Warning | "This order matters because X depends on Y" |
+| Public function/method | Yes | Contract: inputs, outputs, errors, side effects |
+| Public type/class | Yes | Purpose + invariants |
+| Public constant | If non-obvious | What it controls |
+| Module/package | Yes | One-line purpose + responsibility boundary |
+| Private function/type | ✗ | Only if the algorithm/invariant is non-obvious |
+| Test function | ✗ | The name states the intent |
 
-### When Comments Destroy Value
+Content, when present: summary (one sentence, what not how) · parameters · returns · errors/exceptions · side effects · thread safety (if concurrent) · panic/abort conditions.
 
-| Anti-pattern | Problem |
-|---|---|
-| Restating code in English | Noise; drifts from code |
-| Commented-out code | Use version control instead |
-| TODO without issue link | Becomes permanent dead comment |
-| Journal comments ("changed X on date") | Use version control history |
-| Closing-brace comments (`// end if`) | Indicates function too long — refactor |
-| Obvious variable narration | `x = x + 1  // increment x` |
-| Apology comments ("sorry for this hack") | Fix the hack or file an issue |
+### Rules
 
-### Inline Comment Rules
-
-- Comments explain *why*, not *what*. Code explains *what*.
-- TODO format: `TODO(owner): description — ISSUE-NNN`. ✗ untracked TODOs.
-- FIXME format: `FIXME(owner): description — ISSUE-NNN`. Same tracking requirement.
-- ✗ HACK/XXX/TEMP comments. Either fix it or file an issue with a TODO.
-- Comment goes on the line *before* the code it explains. ✗ trailing comments
-  unless single-line annotation (e.g., struct field description).
-- Commented-out code must not survive code review. Remove or restore.
-- Long comments (>3 lines) → consider extracting to doc comment or ADR.
+- First sentence = a complete summary; tools extract it as the short description.
+- ✗ restate the name (`/// Gets the user` on `get_user()`) · ✗ restate types.
+- Document *why* and *when*, ✗ *what* — the signature already says what.
+- Describe the contract from the caller's perspective; ✗ implementation details (they change, contracts persist).
+- An empty doc comment is worse than none. Link related functions/types.
 
 ---
 
-## 9. Documentation Maintenance
+## 9. Inline Comments
 
-Docs updated with code changes in the same commit. Stale docs = bugs.
+Comments inside function bodies (explanation mode). Full mechanics → [code_writing](../code_writing/STANDARDS.md).
 
-### Core Rules
+| Comment adds value | Comment destroys value |
+|---|---|
+| Non-obvious algorithm — why this approach | Restating code in English |
+| Business rule — links to spec | Commented-out code (use version control) |
+| Workaround — references the issue tracker | TODO without an issue link |
+| Performance choice — why O(n) over a hash | Journal comments ("changed X on date") |
+| Magic number — what it means and why | Closing-brace comments (`// end if`) |
+| Intentional fallthrough — confirmation | Apology comments ("sorry for this hack") |
 
-- Documentation changes are part of the definition of done for every feature.
-- Code review checks documentation alongside code. Missing doc update = review blocker.
-- Every public API change triggers doc comment update (§6) + changelog entry (§7).
-- Breaking changes require: doc comment update + changelog entry + migration guide.
-- Stale documentation filed as bugs with same priority as code bugs.
-- Docs are tested: links validated in CI, generated docs build successfully.
+### Rules
+
+- Comments explain *why*; code explains *what*.
+- `TODO(owner): description — ISSUE-NNN` and `FIXME(owner): … — ISSUE-NNN`. ✗ untracked TODOs.
+- ✗ HACK/XXX/TEMP comments — fix it or file an issue with a TODO.
+- Comment on the line *before* the code, ✗ trailing (except a single-line field annotation).
+- Commented-out code must not survive review. A comment over 3 lines → consider a doc comment or an ADR.
+
+---
+
+## 10. Changelog and Release Notes
+
+The changelog **format** — semver bands, and the Added/Changed/Deprecated/Removed/Fixed/Security categories — is owned by [git](../git/STANDARDS.md). ✗ restate the taxonomy here. This section covers only the documentation-side concerns.
+
+| Concern | Rule |
+|---|---|
+| Location | `CHANGELOG.md` at the repo root — the conventional path tools expect |
+| Who updates it | The author of a user-visible change, in the same PR — ✗ a release-time scramble |
+| When | Every entry lands under `## [Unreleased]`; a release renames that heading to the version + date |
+| Audience | Written for humans — ✗ commit hashes, ✗ internal refactors, ✗ vague "various improvements" |
+| Release notes rendering | Generated from the changelog; each version heading links to the git comparison URL |
+| Migration notes | A breaking change ships with an upgrade path in the release notes |
+| Source | Entries derived from history — see [git](../git/STANDARDS.md) for deriving them from commits |
+
+Every entry names one user-visible change in one line, starting with a verb. Deriving categories and version bands → [git](../git/STANDARDS.md).
+
+---
+
+## 11. Docs-as-Code and Maintenance
+
+Docs are updated in the same commit as the code. Stale docs are bugs.
+
+| Rule | Detail |
+|---|---|
+| Definition of done | A feature is not done until its docs are updated |
+| Reviewed in the diff | Missing doc update blocks the review |
+| Public API change → doc + changelog | Both, in the same PR |
+| Breaking change → doc + changelog + migration guide | All three |
+| Stale docs filed as bugs | Same priority as code bugs |
+| Docs are tested | CI validates links; generated docs must build |
 
 ### Staleness Detection
 
-| Method | What It Catches |
+| Method | Catches |
 |---|---|
 | CI link checker | Broken internal/external links |
-| Doc generation build | Schema drift between code and docs |
+| Doc-generation build | Schema drift between code and docs |
 | PR template checkbox | "Docs updated?" — forces author awareness |
-| Quarterly review | Runbooks, README accuracy, ADR relevance |
-| Automated diff check | Public API changed without doc comment change |
+| Automated diff check | Public API changed without a doc-comment change |
+| Quarterly review | Runbook, README, and ADR accuracy |
 
-### Documentation Debt Rules
-
-- ✗ "we'll document it later" — document now or file a tracked issue.
-- Documentation issues tracked in same system as code issues.
-- Documentation debt counted toward technical debt metrics.
-- Undocumented public API = incomplete feature. ✗ merge without docs.
+Debt rules: ✗ "document it later" — document now or file a tracked issue. Doc debt counts toward technical debt. An undocumented public API is an incomplete feature.
 
 ---
 
-## 10. Documentation Location
+## 12. Documentation Location
 
-Co-locate docs with the code they describe. Proximity reduces drift.
+Co-locate docs with the code they describe; proximity reduces drift. File placement conventions → [directory](../directory/STANDARDS.md).
 
-### Location Rules
-
-| Document Type | Location | Rationale |
-|---|---|---|
-| README | Repo root | First file visitors see |
-| API docs (source) | Inline with code (doc comments) | Changes with code in same commit |
-| API docs (generated) | Build output · hosted site | Auto-generated, not committed |
-| ADRs | `docs/adr/` | Separate from code, versioned with repo |
-| Runbooks | `docs/runbooks/` | Operators know where to look |
-| Changelog | Repo root `CHANGELOG.md` | Convention; tools expect this location |
-| Module docs | Module directory | Co-located with module code |
-| Configuration docs | README §Configuration or dedicated file | Near config definitions |
-| Contribution guide | Repo root `CONTRIBUTING.md` | Convention; GitHub/GitLab auto-links |
-| License | Repo root `LICENSE` | Convention; package managers expect this |
-
-### Anti-patterns
+| Document | Location |
+|---|---|
+| README | Repo root |
+| API docs (source) | Inline doc comments |
+| API docs (generated) | Build output / hosted site (✗ committed) |
+| ADRs | `docs/adr/` |
+| Runbooks | `docs/runbooks/` |
+| Changelog | Repo root `CHANGELOG.md` |
+| Contribution guide | Repo root `CONTRIBUTING.md` |
+| License | Repo root `LICENSE` |
 
 | Anti-pattern | Problem | Fix |
 |---|---|---|
-| Separate wiki | Drifts from code; not versioned | Move to repo `docs/` |
-| Confluence/Notion as source of truth | No version control; no review process | Repo docs with links from wiki |
-| Docs in different repo | Separate commit history; easy to forget | Co-locate or use submodules |
-| Google Docs for technical specs | No version control; access control issues | ADRs in repo |
+| Separate wiki as source of truth | Drifts; not versioned; no review | Repo `docs/`, link from the wiki |
+| Google Docs for technical specs | No version control, access issues | ADRs in the repo |
+| Docs in a different repo | Separate history; easy to forget | Co-locate or use submodules |
 | README as the only doc | Grows unbounded; mixes audiences | Split into dedicated files |
-| Docs committed in build output dir | Regenerated on build; causes merge conflicts | Add to `.gitignore` |
+| Docs committed in the build output dir | Regenerated on build; merge conflicts | `.gitignore` it |
 
-### Monorepo Documentation
-
-- Root README: project overview + navigation to packages.
-- Each package: own README with package-specific docs.
-- Shared ADRs at root `docs/adr/` for cross-cutting decisions.
-- Package-specific ADRs at `packages/<name>/docs/adr/`.
-- ✗ duplicating information between root and package docs. Link instead.
+Monorepo: root README gives overview + navigation; each package has its own README; cross-cutting ADRs at root `docs/adr/`, package-specific at `packages/<name>/docs/adr/`. ✗ duplicate between root and package docs — link instead.
 
 ---
 
-## 11. Scale Matrix
+## 13. Anti-Patterns
 
-Apply documentation rules proportionally to project scale.
+| Anti-pattern | Problem | Fix |
+|---|---|---|
+| Mixing Diátaxis modes | A doc serving four needs serves none | One mode per document (§2) |
+| Hand-maintained API endpoint list | Drifts from the real contract | Generate from the schema (§5) |
+| Editing an accepted ADR | Rewrites history; loses the decision trail | Supersede with a new ADR (§6) |
+| Runbook with no runbook link on the alert | On-call has no procedure at 3 AM | Every alert links to a runbook (§7) |
+| Restating semver/changelog taxonomy here | Duplicates the owner; the two drift | Cross-reference [git](../git/STANDARDS.md) (§10) |
+| Doc comment restating the signature | Pure noise; drifts from code | Document why/when, not what (§8) |
+| "Document it later" | Later never comes; the API ships undocumented | Document now or file an issue (§11) |
+| Wiki as source of truth | Unversioned, unreviewed, drifts | Repo docs, link from the wiki (§12) |
 
-| Rule | PoC / Script | Small Project | Production System |
+---
+
+## 14. Scale Matrix
+
+| Dimension | Prototype | Production | Scale |
 |---|---|---|---|
-| README | Purpose + how to run | Full structure (§2) | Full structure + badges |
-| API docs | ✗ | Public API doc comments | Full generated docs + portal |
-| ADRs | ✗ | ✗ | Required for every arch decision |
-| Runbooks | ✗ | ✗ | Required for every ops procedure |
-| Code docs | ✗ | Public function doc comments | Full public API surface |
-| Changelog | ✗ | Recommended | Required; enforced in CI |
-| Inline comments | Non-obvious logic only | Non-obvious logic | Non-obvious + cross-references |
+| README | Purpose + run | Full structure (§4) | Full + badges |
+| API docs | ✗ | Public API doc comments | Generated docs + portal |
+| ADRs | ✗ | Every architectural decision | + backfilled decisions |
+| Runbooks | ✗ | Every ops procedure | + tested quarterly |
+| Doc comments | ✗ | Public functions | Full public surface |
+| Changelog | ✗ | Recommended | Required, CI-enforced |
 | Link checking | ✗ | Manual | Automated in CI |
 | Doc generation | ✗ | Optional | Required; failure = build failure |
-| Quarterly review | ✗ | ✗ | Required; tracked |
-| PR doc checkbox | ✗ | Recommended | Required in PR template |
-| Contribution guide | ✗ | Recommended | Required |
+| PR doc checkbox | ✗ | Recommended | Required in the PR template |
 
-### Scale Transitions
-
-- PoC → Small: add README full structure, public API doc comments, CHANGELOG.
-- Small → Production: add ADRs, runbooks, CI doc validation, PR template
-  doc checkbox, quarterly review cadence. Backfill existing undocumented
-  decisions as ADRs.
+Transitions: PoC → Production — add full README, public API doc comments, CHANGELOG, ADRs, runbooks, CI doc validation, PR doc checkbox, quarterly review; backfill undocumented decisions as ADRs.
 
 ---
 
-## 12. Documentation Checklist
+## 15. Checklist
 
-### New Project
-
-- [ ] README created with all required sections (§2)
-- [ ] LICENSE file present
-- [ ] Quick Start tested on clean machine
-- [ ] All prerequisites listed with version numbers
-- [ ] CHANGELOG.md initialized (if small+ scale)
-- [ ] CONTRIBUTING.md created (if production scale)
-- [ ] `docs/` directory structure established
-- [ ] Doc generation configured in build (if production scale)
-
-### New Feature
-
-- [ ] Public API doc comments written (§6)
-- [ ] README updated if feature changes usage or configuration
-- [ ] CHANGELOG.md `[Unreleased]` section updated
-- [ ] ADR written if architectural decision was made (§4)
-- [ ] Runbook written if new operational procedure introduced (§5)
-- [ ] Existing docs reviewed for accuracy after change
-
-### New Release
-
-- [ ] `[Unreleased]` section renamed to version number + date
-- [ ] All changelog entries are specific (✗ vague descriptions)
-- [ ] Breaking changes have migration notes
-- [ ] API docs regenerated and published
-- [ ] Runbooks verified against current system version
-- [ ] README badges reflect current state
-
-### Code Review — Documentation Check
-
-- [ ] Public API changes have doc comment updates
-- [ ] No commented-out code surviving review
-- [ ] TODOs/FIXMEs have issue tracker links
-- [ ] Inline comments explain *why*, not *what*
-- [ ] No stale docs introduced by the change
-- [ ] Links tested (internal anchors + external URLs)
-- [ ] Changelog entry present for user-visible changes
-
-### Quarterly Maintenance
-
-- [ ] All external links validated (automated or manual)
-- [ ] Runbooks tested on staging environment
-- [ ] ADRs reviewed — deprecated decisions marked
-- [ ] README accuracy verified against current state
-- [ ] Generated docs match current codebase
-- [ ] Documentation debt issues triaged
+- [ ] Every document serves exactly one Diátaxis mode
+- [ ] README present with all required sections in order
+- [ ] README Quick Start works by copy-paste on a clean machine
+- [ ] No "TODO" sections in the committed README
+- [ ] API docs generated from the schema; the endpoint list is not hand-maintained
+- [ ] Doc-generation failure fails the build
+- [ ] Every breaking API change reflected in docs before merge
+- [ ] ADR written for every decision debated more than 15 minutes
+- [ ] ADRs carry context, decision, all-three consequences, and alternatives
+- [ ] Accepted ADRs are never edited — superseded instead
+- [ ] Every alert links to a runbook
+- [ ] Runbook steps are atomic, copy-paste literal, with a rollback per destructive step
+- [ ] Runbooks tested quarterly on staging
+- [ ] Every public function, type, and module has a doc comment
+- [ ] Doc comments state why/when, never restate the signature
+- [ ] Inline comments explain why; TODOs/FIXMEs carry an issue link
+- [ ] No commented-out code survives review
+- [ ] Changelog lives at repo root and is updated by the change author in the same PR
+- [ ] Changelog defers semver bands and categories to git; no taxonomy restated here
+- [ ] Breaking changes ship with migration notes
+- [ ] Docs updated in the same commit as the code; reviewed in the diff
+- [ ] CI validates all links; generated docs build successfully
+- [ ] Docs co-located with code; no external wiki as source of truth

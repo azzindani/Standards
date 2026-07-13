@@ -1,0 +1,22 @@
+{
+  "config": {
+    "default": true,
+
+    // Standards are dense reference documents, not prose articles.
+    "MD013": false, // line length — tables and rule lines exceed 80 by design
+    "MD024": false, // duplicate headings — "Checklist" recurs across files by design
+    "MD033": false, // inline HTML — permitted in html_generation examples
+    "MD041": false, // first line H1 — enforced more precisely by tools/validate.py
+    "MD060": false, // table pipe spacing — fights dense compact tables, purely cosmetic
+
+    "MD004": { "style": "dash" },
+    "MD007": { "indent": 2 },
+    "MD029": { "style": "ordered" },
+    "MD035": { "style": "---" },
+    "MD048": { "style": "backtick" },
+    "MD049": { "style": "asterisk" },
+    "MD050": { "style": "asterisk" }
+  },
+  "globs": ["**/*.md"],
+  "ignores": ["node_modules/**", ".git/**"]
+}

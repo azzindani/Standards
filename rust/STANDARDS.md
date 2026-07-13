@@ -1,220 +1,168 @@
 # Rust Standards
 
-Idiomatic Rust rules for ownership, error handling, crate design, traits,
-concurrency, unsafe, and tooling. Language-specific companion to the general
-standards library.
+> Idiomatic Rust: ownership, the Result/panic error mechanism, crate structure, traits, unsafe, async, and the cargo toolchain.
 
-Composable with: architecture/STANDARDS.md, error_handling/STANDARDS.md,
-testing/STANDARDS.md, performance/STANDARDS.md, code_writing/STANDARDS.md.
+**ID** `rust` · **Tier** Language · **Version** 1.0
+**Owns** ownership + borrowing idioms · `Result`/`Option`/`?` mechanism · thiserror/anyhow selection · crate + module layout · trait design · type-state + newtype patterns · unsafe rules · tokio async idioms · cargo + workspace config · clippy + rustfmt invocation
+**Defers to** test strategy + coverage thresholds + mocking policy → [testing](../testing/STANDARDS.md) · error taxonomy + boundaries + recovery → [error_handling](../error_handling/STANDARDS.md) · lockfile + pinning + supply-chain policy → [dependencies](../dependencies/STANDARDS.md) · layering + dependency direction → [architecture](../architecture/STANDARDS.md) · file + directory naming → [directory](../directory/STANDARDS.md) · pipeline stages → [cicd](../cicd/STANDARDS.md) · budgets + profiling method → [performance](../performance/STANDARDS.md)
+**Load with** [architecture](../architecture/STANDARDS.md) · [code_writing](../code_writing/STANDARDS.md) · [error_handling](../error_handling/STANDARDS.md) · [testing](../testing/STANDARDS.md) · [dependencies](../dependencies/STANDARDS.md)
 
 ---
 
 ## Table of Contents
 
-1. [Ownership & Borrowing](#1-ownership--borrowing)
-2. [Error Handling](#2-error-handling)
-3. [Crate Structure](#3-crate-structure)
-4. [Type System](#4-type-system)
-5. [Trait Design](#5-trait-design)
-6. [Pattern Matching](#6-pattern-matching)
-7. [Unsafe Rules](#7-unsafe-rules)
-8. [Concurrency](#8-concurrency)
-9. [Memory](#9-memory)
-10. [Cargo & Dependencies](#10-cargo--dependencies)
-11. [Testing](#11-testing)
-12. [Clippy & Formatting](#12-clippy--formatting)
-13. [Performance](#13-performance)
-14. [Idiomatic Patterns](#14-idiomatic-patterns)
+1. [Baseline & Toolchain](#1-baseline--toolchain)
+2. [Ownership & Borrowing](#2-ownership--borrowing)
+3. [Error Handling](#3-error-handling)
+4. [Crate & Module Structure](#4-crate--module-structure)
+5. [Type System](#5-type-system)
+6. [Trait Design](#6-trait-design)
+7. [Pattern Matching](#7-pattern-matching)
+8. [Unsafe](#8-unsafe)
+9. [Concurrency & Async](#9-concurrency--async)
+10. [Memory](#10-memory)
+11. [Cargo & Workspaces](#11-cargo--workspaces)
+12. [Testing Tools](#12-testing-tools)
+13. [Clippy & rustfmt](#13-clippy--rustfmt)
+14. [Performance Idioms](#14-performance-idioms)
 15. [Checklist](#15-checklist)
 
 ---
 
-## 1. Ownership & Borrowing
+## 1. Baseline & Toolchain
 
-See architecture/STANDARDS.md §1 — principle #14 (every resource has exactly one owner).
-
-### Borrow by Default
-
-| Situation | Use | Why |
-|---|---|---|
-| Reading data | `&T` | Zero-cost, no ownership transfer |
-| Mutating caller's data | `&mut T` | Single-writer guarantee |
-| Transferring ownership | `T` (move) | Caller done with value |
-| Shared read across threads | `Arc<T>` | Thread-safe ref counting |
-| Need owned copy, source still needed | `.clone()` | Explicit cost |
-
-**Rule:** prefer `&T` → `&mut T` → `T` (move) → `.clone()`. Clone is last resort, never default.
-
-### Lifetime Annotations
-
-| Rule | Example |
+| Item | Value |
 |---|---|
-| Elision covers most cases — ✗ annotate when compiler infers correctly | `fn first(s: &str) -> &str` |
-| Annotate when multiple input lifetimes → ambiguous output | `fn longest<'a>(a: &'a str, b: &'a str) -> &'a str` |
-| ✗ `'static` unless data truly lives for entire program | String literals, leaked boxes only |
-| Struct holding references → explicit lifetime | `struct Cursor<'a> { data: &'a [u8] }` |
-| ✗ lifetime annotations on owned types | `struct Config { name: String }` — no lifetime needed |
+| Edition | **2024** for new crates. 2021 permitted only for crates with an MSRV below 1.85 |
+| MSRV | Declared in `Cargo.toml` as `rust-version`, tested in CI |
+| Toolchain pin | `rust-toolchain.toml` — stable channel, same version everywhere |
+| Format | `rustfmt` |
+| Lint | `clippy` |
+| Errors — library | `thiserror` |
+| Errors — binary | `anyhow` |
+| Async runtime | `tokio` |
+| Serialization | `serde` |
+| Supply chain | `cargo deny` (licenses + advisories) |
 
-### Common Anti-Patterns
-
-| Anti-pattern | Fix |
-|---|---|
-| `&String` in function params | Use `&str` — accepts both `String` and `&str` |
-| `&Vec<T>` in function params | Use `&[T]` — accepts arrays, slices, Vec |
-| `&Box<T>` in function params | Use `&T` — Box is transparent |
-| Cloning inside loops to satisfy borrow checker | Restructure: collect refs first, process second |
-| Returning references to local variables | Return owned data or use lifetime-bound structs |
+`Cargo.lock` committed for binaries **and** libraries — it pins the CI build, and consumers ignore it. Pinning policy → [dependencies](../dependencies/STANDARDS.md).
 
 ---
 
-## 2. Error Handling
+## 2. Ownership & Borrowing
 
-See architecture/STANDARDS.md §7 — error architecture.
-See architecture/STANDARDS.md §1 — principle #15 (represent absence explicitly, never null → `Option<T>`).
+Preference order: `&T` → `&mut T` → `T` (move) → `.clone()`. Clone is the last resort, never the default.
 
-### Result vs Option
-
-| Type | Use for |
+| Situation | Take |
 |---|---|
-| `Result<T, E>` | Operations that can fail — caller needs to know why |
-| `Option<T>` | Value presence/absence — no error context needed |
-| ✗ `panic!()` | Only in tests, prototypes, or truly unrecoverable invariant violations |
-| ✗ `.unwrap()` in production | Use `.expect("context")` at minimum; prefer `?` or match |
+| Read the value | `&T` |
+| Mutate the caller's value | `&mut T` |
+| Consume / store the value | `T` |
+| Share reads across threads | `Arc<T>` |
+| Caller still needs it and no borrow works | `.clone()` — justify at the call site |
 
-### The `?` Operator
+### Parameter Types
 
-```rust
-// ✓ propagate with ? — clean, composable
-fn load_config(path: &Path) -> Result<Config, AppError> {
-    let contents = fs::read_to_string(path)?;
-    let config: Config = toml::from_str(&contents)?;
-    Ok(config)
-}
-```
-
-✗ manual match chains for simple propagation — `?` does the same with `From` conversion.
-
-### Error Type Selection
-
-| Crate type | Error strategy | Crate |
+| ✗ | → | Why |
 |---|---|---|
-| Library | Custom enum implementing `std::error::Error` | `thiserror` |
-| Application binary | Opaque error with context chain | `anyhow` |
-| Mixed (lib + bin) | `thiserror` in lib, `anyhow` in `main.rs` | Both |
+| `&String` | `&str` | Accepts `String`, `&str`, literals |
+| `&Vec<T>` | `&[T]` | Accepts arrays, slices, `Vec` |
+| `&Box<T>` | `&T` | `Box` derefs transparently |
+| `&PathBuf` | `&Path` | Same relationship |
+| `String` when only read | `&str` | ✗ force the caller to allocate |
 
-### Custom Error Types with `thiserror`
+### Lifetimes
+
+| Rule | Detail |
+|---|---|
+| ✗ annotate what elision infers | `fn first(s: &str) -> &str` needs nothing |
+| Annotate when multiple inputs make the output ambiguous | `fn longest<'a>(a: &'a str, b: &'a str) -> &'a str` |
+| ✗ `'static` unless the data truly lives for the whole program | Literals, leaked boxes only |
+| Struct holding a reference declares a lifetime | `struct Cursor<'a> { data: &'a [u8] }` |
+| ✗ lifetimes on owned types | `struct Config { name: String }` |
+| ✗ clone inside a loop to appease the borrow checker | Restructure: collect references first, mutate second |
+
+---
+
+## 3. Error Handling
+
+Error taxonomy, boundary placement, and recovery policy → [error_handling](../error_handling/STANDARDS.md). Rust mechanism below.
+
+| Type | For |
+|---|---|
+| `Result<T, E>` | Fallible operation — the caller needs to know why |
+| `Option<T>` | Presence/absence — no failure reason exists |
+| `panic!` | Unrecoverable invariant violation only. ✗ in library code |
+
+| Rule | Detail |
+|---|---|
+| ✗ `.unwrap()` outside tests | `?` \| `match` \| `.expect("invariant: ...")` stating the invariant |
+| ✗ `Result<T, String>` | Unstructured, unmatchable |
+| ✗ `Box<dyn Error>` in a library's public API | Callers cannot match variants |
+| Library errors | Enum implementing `std::error::Error` via `thiserror` |
+| Binary errors | `anyhow::Result` + `.context("...")` at each layer |
+| Every variant carries diagnostic context | Path, offset, id — enough to debug without a debugger |
+| `#[from]` for automatic `?` conversion | ✗ hand-written `From` boilerplate |
+| ✗ silent discard | `let _ = fallible();` requires a `// intentional:` comment |
+| `#[non_exhaustive]` on public error enums | Adding a variant stays non-breaking |
 
 ```rust
-use thiserror::Error;
-
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum StorageError {
     #[error("file not found: {path}")]
     NotFound { path: PathBuf },
-
-    #[error("permission denied: {path}")]
-    PermissionDenied { path: PathBuf },
-
-    #[error("corrupt data at offset {offset}")]
+    #[error("corrupt record at offset {offset}")]
     Corrupt { offset: u64 },
-
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
+
+fn load_config(path: &Path) -> Result<Config, StorageError> {
+    let text = fs::read_to_string(path)?;      // ✓ ? + From — ✗ manual match chain
+    Ok(toml::from_str(&text)?)
+}
 ```
-
-### Error Rules
-
-| Rule |
-|---|
-| ✗ string errors (`Result<T, String>`) — unstructured, unmatchable |
-| ✗ `Box<dyn Error>` in library public API — callers can't match variants |
-| Every error variant carries enough context to diagnose without a debugger |
-| Implement `From<SourceError>` for automatic `?` conversion |
-| Log errors at the boundary where they're handled, not where created |
-| ✗ discard errors silently — `let _ = fallible()` requires `// intentional` comment |
 
 ---
 
-## 3. Crate Structure
+## 4. Crate & Module Structure
 
-### Workspace Layout
-
-```
+```text
 my-project/
-├── Cargo.toml          ← [workspace] root
+├── Cargo.toml            ← [workspace] root, [workspace.dependencies]
 ├── crates/
-│   ├── core/           ← domain logic, zero I/O (Tier 0–1)
-│   ├── storage/        ← I/O adapters (Tier 3)
-│   └── api/            ← HTTP/gRPC surface (Tier 3)
-├── src/main.rs         ← binary entry, wiring only
-└── tests/              ← cross-crate integration tests
+│   ├── core/             ← domain logic, zero I/O
+│   ├── storage/          ← I/O adapters
+│   └── api/              ← HTTP/gRPC surface
+└── src/main.rs           ← binary: parse args, wire, run
 ```
 
-### lib.rs vs main.rs
+| Rule | Detail |
+|---|---|
+| `main.rs` holds wiring only | >50 lines of logic in a binary → extract `lib.rs`. Logic in `lib.rs` is testable without running the binary |
+| `lib.rs` re-exports the public API | Callers write `crate::Engine`, ✗ `crate::deep::nested::Engine` |
+| Private by default | `pub` only for what callers need. Ladder: private → `pub(crate)` → `pub(super)` → `pub` |
+| ✗ `pub` struct fields | Except plain data carriers — public fields are a permanent contract |
+| One concept per module | ✗ a multi-thousand-line `lib.rs` |
+| `module.rs` + `module/` directory | Preferred over `mod.rs` |
 
-| File | Purpose | Contains |
-|---|---|---|
-| `lib.rs` | Reusable library logic | Types, traits, impls, public API |
-| `main.rs` | Binary entry point | CLI parsing, wiring, startup only |
-| ✗ `main.rs` with logic | Move logic to `lib.rs` — enables testing without binary |
-
-**Rule:** binary crates with >50 lines of logic → extract `lib.rs`.
-
-### Module Organization
-
-```rust
-// src/lib.rs — re-export public API, hide internal modules
-mod parser;
-mod validator;
-mod engine;
-
-pub use parser::Parser;
-pub use validator::{Validator, ValidationError};
-pub use engine::Engine;
-```
-
-| Rule |
-|---|
-| One module per concept — ✗ multi-thousand-line `lib.rs` |
-| `mod.rs` acceptable but prefer `module_name.rs` + `module_name/` directory |
-| Private by default — `pub` only for items callers need |
-| `pub(crate)` for internal cross-module access |
-| ✗ `pub` on struct fields unless struct is a plain data carrier |
-| Re-export public API from `lib.rs` root — callers use `crate::Type`, not `crate::deep::nested::Type` |
-
-### Visibility Ladder
-
-`fn private()` → `pub(crate)` → `pub(super)` → `pub fn public()`
-
-**Rule:** start private, widen only when needed. Every `pub` item = API contract you must maintain.
+Layering and dependency direction → [architecture](../architecture/STANDARDS.md).
 
 ---
 
-## 4. Type System
+## 5. Type System
 
-### Newtype Pattern
+Make illegal states unrepresentable. If a combination of values is invalid, the type must not be able to express it.
 
-Wrap primitive types to prevent mixing semantically different values.
+### Newtypes
 
 ```rust
-// ✗ type aliases — compiler treats them as identical
-type UserId = u64;
-type OrderId = u64;
-fn process(user: UserId, order: OrderId) {} // can swap args — no compiler error
-
-// ✓ newtypes — compiler enforces distinction
-struct UserId(u64);
-struct OrderId(u64);
-fn process(user: UserId, order: OrderId) {} // swapped args → compile error
+type UserId = u64;                                   // ✗ alias — u64 and UserId interchangeable
+struct UserId(u64);                                  // ✓ newtype — swapping args is a compile error
+struct Email(String);                                // ✓ validate in the constructor, parse once
 ```
 
-| When to newtype |
-|---|
-| IDs, indices, keys — any semantically distinct integer/string |
-| Units: `Meters(f64)`, `Seconds(u64)`, `Bytes(usize)` |
-| Validated strings: `Email(String)`, `Hostname(String)` — validate in constructor |
-| Foreign types needing local trait impls (orphan rule workaround) |
+Newtype every semantically distinct primitive: IDs · indices · units (`Meters(f64)`, `Bytes(usize)`) · validated strings.
 
 ### Enums as State Machines
 
@@ -225,85 +173,55 @@ enum Connection {
     Connected { stream: TcpStream },
     Failed { error: io::Error, retries: u32 },
 }
-// Each variant carries only data valid for that state
-// Transitions are functions: connect(self) -> Connection — ✗ invalid states
 ```
 
-See architecture/STANDARDS.md §6 — state architecture (states as types, transitions as functions).
+Each variant carries only the data valid in that state; transitions consume `self` and return the next state. An invalid state has no constructor.
 
-### Type System Rules
-
-| Rule |
-|---|
-| Make illegal states unrepresentable — if a combination is invalid, the type system prevents it |
-| ✗ boolean parameters — use enums: `enum Mode { Read, Write }` not `fn open(writable: bool)` |
-| ✗ stringly-typed APIs — `fn set_level(level: &str)` → `fn set_level(level: Level)` |
-| Zero-sized types (ZST) for type-level markers: `struct Validated;` `struct Unvalidated;` |
-| `PhantomData<T>` when type parameter needed without storing T |
+| Rule | Detail |
+|---|---|
+| ✗ boolean parameters | `fn open(writable: bool)` → `fn open(mode: Mode)` — a bare `true` at the call site is unreadable |
+| ✗ stringly-typed APIs | `fn set_level(level: &str)` → `fn set_level(level: Level)` |
+| Zero-sized markers for type-state | `struct Validated;` · `struct Unvalidated;` |
+| `PhantomData<T>` | Type parameter needed without storing a `T` |
+| `#[must_use]` on constructors + builders | An ignored return value is a bug |
 
 ---
 
-## 5. Trait Design
+## 6. Trait Design
 
-### When to Define Traits
+| Scenario | Trait? |
+|---|---|
+| Two or more real implementations exist now | Yes |
+| Test doubles required | Yes — or swap the module under `cfg(test)` |
+| Shared behavior across unrelated types | Yes |
+| One implementation, "future flexibility" | ✗ No — use the concrete type; add the trait when the second impl appears |
 
-| Scenario | Trait? | Alternative |
-|---|---|---|
-| Multiple concrete implementations needed now | Yes | — |
-| Mocking for tests | Yes, or use `cfg(test)` module swap | Function pointers |
-| Single implementation, future flexibility | ✗ No | Concrete type; add trait when second impl appears |
-| Shared behavior across unrelated types | Yes | — |
-| Marker for type-level constraints | Yes (empty trait) | — |
+✗ trait-per-struct. A trait with one implementor is indirection with no abstraction.
 
-**Rule:** ✗ trait-per-struct. Traits are abstractions — don't create them for a single impl unless testing demands it.
-
-### Trait Bound Rules
-
-| Rule |
-|---|
-| `impl Trait` in arg position → monomorphized, zero-cost dispatch |
-| `dyn Trait` → dynamic dispatch, heap allocation — use when types vary at runtime |
-| ✗ `dyn Trait` in hot paths without measuring — vtable call overhead |
-| `where` clause for complex bounds — `fn merge<T>(a: T, b: T) -> T where T: Clone + Ord` |
-| Bound only on traits actually used — ✗ `T: Clone + Debug + Send + Sync` if only `Clone` is called |
-| Supertraits (`trait A: B`) only when every implementor of A must also implement B |
-
-### Blanket and Extension Traits
-
-```rust
-// ✓ blanket impl — universally derivable behavior
-impl<T: Display> Loggable for T {
-    fn log(&self) { println!("{}", self); }
-}
-
-// ✓ extension trait — add methods to foreign types (suffix Ext)
-trait StrExt {
-    fn is_blank(&self) -> bool;
-}
-impl StrExt for str {
-    fn is_blank(&self) -> bool { self.trim().is_empty() }
-}
-```
-
-✗ blanket impls that conflict with user-defined impls. Test with concrete types before publishing.
+| Rule | Detail |
+|---|---|
+| `impl Trait` in argument position | Monomorphized, static dispatch, zero cost |
+| `dyn Trait` | Dynamic dispatch + heap. Use when the concrete type varies at runtime; ✗ in a hot path without measuring |
+| `where` clause for complex bounds | Keeps the signature readable |
+| Bound only on what is called | ✗ `T: Clone + Debug + Send + Sync` when only `Clone` is used |
+| Supertrait | Only when every implementor genuinely must implement the parent |
+| Extension traits carry the `Ext` suffix | `trait StrExt { fn is_blank(&self) -> bool; }` |
+| Sealed trait for public traits not meant to be implemented downstream | Private supertrait — keeps adding methods non-breaking |
 
 ---
 
-## 6. Pattern Matching
+## 7. Pattern Matching
 
-### Rules
-
-| Rule |
-|---|
-| ✗ `_ =>` on enums you control — add explicit arms for each variant |
-| `_ =>` acceptable for `#[non_exhaustive]` foreign enums and integer/string ranges |
-| Compiler error on missed variant = free correctness — don't silence it |
-| `if let` for single-variant interest; `let-else` for early exit |
-| Destructure in match arms — access fields directly: `Ok(Config { port, .. })` |
-| ✗ complex logic in guards — extract to named function if guard exceeds one condition |
+| Rule | Detail |
+|---|---|
+| ✗ `_ =>` on an enum you own | Add an arm per variant — a compiler error on a new variant is free correctness. ✗ silence it |
+| `_ =>` permitted | `#[non_exhaustive]` foreign enums · integer and string ranges |
+| `if let` | Single variant of interest |
+| `let ... else` | Early exit without nesting |
+| Destructure in the arm | `Ok(Config { port, .. })` |
+| ✗ complex guards | More than one condition → extract a named predicate |
 
 ```rust
-// ✓ let-else for early exit (Rust 1.65+)
 let Some(config) = load_config() else {
     return Err(AppError::NoConfig);
 };
@@ -311,426 +229,243 @@ let Some(config) = load_config() else {
 
 ---
 
-## 7. Unsafe Rules
+## 8. Unsafe
 
-### When Unsafe is Justified
-
-| Justified | Not Justified |
+| Justified | Not justified |
 |---|---|
-| FFI calls to C libraries | Bypassing borrow checker "because it's hard" |
-| SIMD intrinsics | Performance optimization without benchmarks proving need |
-| Implementing `Send`/`Sync` for types with manual invariants | Convenience — "safe version is verbose" |
-| Lock-free data structures with proven algorithms | "I know this pointer is valid" without proof |
-| Platform-specific syscalls | ✗ ever in application code if safe alternative exists |
+| FFI to C libraries | "The borrow checker was in the way" |
+| SIMD intrinsics | Optimization with no benchmark proving the need |
+| Manual `Send`/`Sync` on types with hand-proved invariants | "The safe version is verbose" |
+| Lock-free structures implementing a published algorithm | "I know this pointer is valid" |
+| Platform syscalls with no safe wrapper | Anything with a safe alternative |
 
-### Unsafe Block Rules
+| Rule | Detail |
+|---|---|
+| `unsafe_code = "forbid"` in `[lints.rust]` | Default for every crate that does not need unsafe |
+| Every `unsafe` block carries a `// SAFETY:` comment | States which invariant holds and who guarantees it |
+| Minimal scope | One operation per block. ✗ safe code inside an unsafe block |
+| Safe public API over unsafe internals | Callers never write `unsafe` |
+| ✗ `unsafe impl` without written reasoning | Send/Sync claims are proofs, not preferences |
+| Miri in CI | `cargo +nightly miri test` over all unsafe paths |
+| Fuzz the unsafe boundary | `cargo-fuzz` \| `proptest` |
+| Unsafe code gets a dedicated review | Flag it in the PR description |
 
 ```rust
-// ✓ minimal scope, mandatory SAFETY comment
 let value = unsafe {
-    // SAFETY: pointer non-null and aligned, validated by caller contract.
+    // SAFETY: ptr is non-null and aligned; the caller contract guarantees it
+    // points to an initialized T that outlives this borrow.
     ptr.read()
 };
 ```
 
-| Rule |
-|---|
-| Every `unsafe` block requires `// SAFETY:` comment explaining why invariants hold |
-| Minimize unsafe scope — one operation per block; ✗ safe code inside unsafe blocks |
-| Encapsulate unsafe behind safe public API — callers never write `unsafe` |
-| ✗ `unsafe impl` without formal reasoning about invariants |
-| Unsafe code requires dedicated review — tag in PR description |
-| Run Miri (`cargo +nightly miri test`) on all unsafe code in CI |
-| Fuzz unsafe boundary functions with `cargo-fuzz` or `proptest` |
-
-**Rule:** safe public API + unsafe private internals = safe abstraction.
-
 ---
 
-## 8. Concurrency
+## 9. Concurrency & Async
 
-See architecture/STANDARDS.md §9 — concurrency architecture.
+Compiler-derived `Send`/`Sync` is correct for every safe type. ✗ implement either manually unless building a synchronization primitive.
 
-### Send and Sync
-
-| Trait | Meaning | Auto-derived when |
-|---|---|---|
-| `Send` | Safe to transfer to another thread | All fields are `Send` |
-| `Sync` | Safe to share `&T` across threads | All fields are `Sync` |
-| `!Send` | ✗ move between threads | Contains `Rc`, raw pointers, etc. |
-| `!Sync` | ✗ shared references across threads | Contains `Cell`, `RefCell`, etc. |
-
-**Rule:** ✗ implement `Send`/`Sync` manually unless building a sync primitive. Compiler auto-derives correctly for safe types.
-
-### Concurrency Primitive Selection
-
-| Need | Primitive | When |
-|---|---|---|
-| Shared read-only data | `Arc<T>` | Immutable data across tasks/threads |
-| Shared mutable data (low contention) | `Arc<Mutex<T>>` | Short critical sections, infrequent writes |
-| Shared mutable data (read-heavy) | `Arc<RwLock<T>>` | Many readers, few writers |
-| One-shot value passing | `oneshot` channel | Single result from spawned task |
-| Stream of values | `mpsc` channel | Producer-consumer pipelines |
-| Many producers, many consumers | `crossbeam::channel` | Fan-in or work distribution |
-| Lock-free counters | `AtomicU64`, `AtomicBool` | Metrics, flags, reference counts |
-
-### Async Rust (Tokio)
-
-| Rule |
-|---|
-| Tokio for I/O-bound work (network, file, DB) |
-| `std::thread` for CPU-bound work — ✗ block tokio runtime with CPU tasks |
-| `tokio::task::spawn_blocking` to bridge CPU work into async context |
-| ✗ hold `Mutex` guard across `.await` — use `tokio::sync::Mutex` if unavoidable |
-| ✗ `async` on functions that don't `.await` — just make them sync |
-| Prefer structured concurrency: `tokio::select!`, `JoinSet` over unbounded `spawn` |
-| ✗ `tokio::sync::Mutex` when `std::sync::Mutex` suffices (no await while locked) |
-| Cancel safety: every `.await` = potential cancellation — hold no invariants across awaits |
-
----
-
-## 9. Memory
-
-### Stack vs Heap
-
-| Allocation | When | Cost |
-|---|---|---|
-| Stack | Fixed-size, short-lived, function-local | ~0 (pointer bump) |
-| Heap (`Box`, `Vec`, `String`) | Dynamic size, shared ownership, long-lived | Allocator call + potential fragmentation |
-
-**Rule:** default to stack. Heap when size unknown at compile time or data must outlive current scope.
-
-### Smart Pointer Selection
-
-| Type | Ownership | Thread-safe | Use case |
-|---|---|---|---|
-| `Box<T>` | Single owner | Depends on T | Large structs, trait objects, recursive types |
-| `Rc<T>` | Shared, ref-counted | ✗ No | Single-thread shared ownership (trees, graphs) |
-| `Arc<T>` | Shared, ref-counted | Yes | Cross-thread shared data |
-| `Cow<'a, T>` | Borrowed or owned | Depends on T | Avoid cloning when original might suffice |
-
-Use `Cow<'a, T>` when data is usually borrowed but occasionally needs mutation/ownership.
-
-### Allocation Anti-Patterns
-
-| Anti-pattern | Fix |
+| Need | Use |
 |---|---|
-| `Vec::new()` in loop body, same capacity each iteration | Allocate once before loop, `.clear()` and reuse |
-| `format!()` for static strings | Use `&str` literals directly |
-| `to_string()` on string literals at every call site | Accept `&str`, let caller own if needed |
-| `collect::<Vec<_>>()` then immediate iteration | Chain iterators — skip intermediate allocation |
-| `Box<dyn Trait>` when enum with 2–3 variants suffices | Use enum dispatch — stack-allocated, no vtable |
+| Shared immutable data | `Arc<T>` |
+| Shared mutable, low contention | `Arc<Mutex<T>>` |
+| Shared mutable, read-heavy | `Arc<RwLock<T>>` |
+| Single result from a task | `oneshot` channel |
+| Producer → consumer stream | `mpsc` channel (bounded — an unbounded queue is an OOM waiting to happen) |
+| Many producers, many consumers | `crossbeam::channel` |
+| Counters and flags | `AtomicU64` · `AtomicBool` |
+
+### Async (Tokio)
+
+| Rule | Detail |
+|---|---|
+| Tokio for I/O-bound work | Network · file · DB |
+| CPU-bound work off the runtime | `tokio::task::spawn_blocking` \| a `rayon` pool — a blocking task starves every other task on the worker |
+| ✗ hold a `std::sync::Mutex` guard across `.await` | Not `Send` → compile error, or a deadlock with a re-entrant lock. Restructure, or use `tokio::sync::Mutex` |
+| ✗ `tokio::sync::Mutex` when nothing awaits under the lock | `std::sync::Mutex` is faster |
+| ✗ `async fn` that never awaits | Make it sync |
+| Structured concurrency | `JoinSet` · `tokio::select!` — ✗ unbounded detached `spawn` |
+| Cancel safety | Every `.await` is a cancellation point — hold no broken invariant across one |
+| ✗ blocking I/O (`std::fs`, `std::net`) in a coroutine | `tokio::fs` · `tokio::net` |
 
 ---
 
-## 10. Cargo & Dependencies
+## 10. Memory
 
-### Cargo.toml Conventions
+Default to the stack. Heap only when the size is unknown at compile time, ownership is shared, or the data must outlive the frame.
+
+| Pointer | Ownership | Thread-safe | Use |
+|---|---|---|---|
+| `Box<T>` | Single | Follows `T` | Trait objects · recursive types · large values |
+| `Rc<T>` | Shared, counted | ✗ No | Single-threaded graphs and trees |
+| `Arc<T>` | Shared, counted | Yes | Cross-thread sharing |
+| `Cow<'a, T>` | Borrowed or owned | Follows `T` | Usually borrowed, occasionally must own |
+
+| ✗ | → |
+|---|---|
+| `Vec::new()` allocated fresh each loop iteration | Allocate before the loop, `.clear()` and reuse |
+| `format!()` to produce a constant string | `&str` literal |
+| `.to_string()` on a literal at every call site | Take `&str`; let the caller own if needed |
+| `collect::<Vec<_>>()` then immediately iterate | Chain the iterators — skip the allocation |
+| `Box<dyn Trait>` for 2–3 known variants | Enum dispatch — stack-allocated, no vtable |
+| `Rc<RefCell<T>>` as a default | Restructure ownership; runtime borrow panics are not a design |
+
+---
+
+## 11. Cargo & Workspaces
 
 ```toml
 [package]
 name = "my-crate"
-version = "0.1.0"
-edition = "2021"        # always latest stable edition
-rust-version = "1.75"   # MSRV — minimum supported Rust version
+edition = "2024"
+rust-version = "1.85"
 
 [lints.rust]
-unsafe_code = "forbid"  # unless crate requires unsafe
+unsafe_code = "forbid"
 
 [lints.clippy]
 all = "deny"
 pedantic = "warn"
+unwrap_used = "deny"
 ```
 
-### Feature Flag Rules
+All shared dependency versions live in the workspace root's `[workspace.dependencies]`; member crates inherit with `serde = { workspace = true }`. ✗ the same dependency versioned twice in one workspace.
 
-| Rule |
-|---|
-| Default features = minimal working set — ✗ kitchen-sink defaults |
-| Feature names use kebab-case: `json-output`, `tls-native` |
-| ✗ features that change public API shape — leads to combinatorial testing burden |
-| Document each feature in `Cargo.toml` comments and crate-level docs |
-| `#[cfg(feature = "x")]` blocks stay in dedicated modules when possible |
-
-### Workspace Dependencies
-
-```toml
-# root Cargo.toml — centralize versions
-[workspace.dependencies]
-serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["full"] }
-
-# crate Cargo.toml — inherit from workspace
-[dependencies]
-serde = { workspace = true }
-tokio = { workspace = true }
-```
-
-**Rule:** all shared dependencies defined in `[workspace.dependencies]`. ✗ version duplication across crates.
-
-### Dependency Selection
-
-| Criterion | Rule |
+| Rule | Detail |
 |---|---|
-| Maturity | Prefer crates with 1.0+ version, active maintenance |
-| Dependency tree | Check `cargo tree` — ✗ crates pulling 100+ transitive deps for one function |
-| Build time | Measure `cargo build --timings` — heavy compile-time deps need justification |
-| Unsafe | Check `cargo geiger` — know how much unsafe you're inheriting |
-| Licensing | Verify compatibility before adding — `cargo deny check licenses` |
+| Default features = minimal working set | ✗ kitchen-sink defaults — every consumer pays for them |
+| Feature names kebab-case | `json-output` · `tls-native` |
+| ✗ features that change the shape of the public API | Combinatorial testing burden |
+| Features are additive | Enabling one must never break another |
+| `cargo tree` before adding a dependency | ✗ 100 transitive crates for one function |
+| `cargo deny check` in CI | Licenses + RUSTSEC advisories |
+| `cargo build --timings` | Compile-time cost of a heavy dependency needs justification |
 
 ---
 
-## 11. Testing
+## 12. Testing Tools
 
-See architecture/STANDARDS.md §1 — principle #2 (functions are I/O or logic, never both → pure logic is trivially testable).
+Pyramid, coverage thresholds, and mocking policy → [testing](../testing/STANDARDS.md). Rust tooling below.
 
-### Test Organization
+| Kind | Location | Command |
+|---|---|---|
+| Unit | `#[cfg(test)] mod tests` in the same file | `cargo test` |
+| Integration | `tests/*.rs` at the crate root | `cargo test` |
+| Doc test | `///` example blocks | `cargo test --doc` |
+| Property | `proptest` \| `quickcheck` | `cargo test` |
+| Benchmark | `benches/*.rs` with `criterion` | `cargo bench` |
+| Fuzz | `fuzz/fuzz_targets/*.rs` | `cargo fuzz run <target>` |
 
-| Type | Location | Runs with | Purpose |
-|---|---|---|---|
-| Unit tests | `#[cfg(test)] mod tests` in same file | `cargo test` | Test private functions, edge cases |
-| Integration tests | `tests/*.rs` at crate root | `cargo test` | Test public API, cross-module behavior |
-| Doc tests | `///` comments with code blocks | `cargo test --doc` | Verify examples compile and run |
-| Benchmarks | `benches/*.rs` | `cargo bench` | Performance regression detection |
-| Fuzz tests | `fuzz/fuzz_targets/*.rs` | `cargo fuzz` | Input-space exploration |
-
-### Unit Test Conventions
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_valid_input_returns_expected_struct() {
-        let result = parse(r#"{"name": "test", "value": 42}"#).unwrap();
-        assert_eq!(result.name, "test");
-    }
-
-    #[test]
-    fn parse_empty_input_returns_error() {
-        assert!(matches!(parse(""), Err(ParseError::Empty)));
-    }
-}
-```
-
-| Rule |
-|---|
-| Test function name = `{method}_{scenario}_{expected_result}` |
-| One assert per behavior — ✗ mega-tests asserting 10 things |
-| `assert_eq!` over `assert!(a == b)` — better error messages |
-| `assert!(matches!(..))` for enum variant checking |
-| ✗ `#[ignore]` without issue tracker link in comment |
-| Test helpers go in `#[cfg(test)]` module — ✗ test utils in production code |
-
-### Doc Tests
+| Rule | Detail |
+|---|---|
+| Test name = `{unit}_{scenario}_{expected}` | `parse_empty_input_returns_error` |
+| `assert_eq!` over `assert!(a == b)` | Failure prints both values |
+| `assert!(matches!(x, Err(E::Empty)))` | Variant assertions |
+| One behavior per test | ✗ a mega-test asserting ten things |
+| ✗ `#[ignore]` without a tracker link | In a comment on the attribute |
+| Test helpers live under `#[cfg(test)]` | ✗ test utilities compiled into the shipped binary |
+| Every public item has a doc test | It is both the example and a compile-checked regression test |
 
 ```rust
 /// Parses a duration string into seconds.
 ///
 /// ```
-/// use my_crate::parse_duration;
-/// assert_eq!(parse_duration("5m").unwrap(), 300);
+/// assert_eq!(my_crate::parse_duration("5m").unwrap(), 300);
 /// ```
 pub fn parse_duration(s: &str) -> Result<u64, ParseError> { /* ... */ }
-```
 
-**Rule:** every public function has at least one doc test showing typical usage.
-
-### Property Testing
-
-```rust
 proptest! {
     #[test]
-    fn roundtrip_serialization(input in any::<Config>()) {
-        let output = deserialize(&serialize(&input).unwrap()).unwrap();
-        prop_assert_eq!(input, output);
+    fn roundtrip(input in any::<Config>()) {
+        prop_assert_eq!(deserialize(&serialize(&input)?)?, input);
     }
 }
 ```
 
-Use `proptest` for: serialization roundtrips, parser fuzzing, invariant verification, boundary conditions.
-
 ---
 
-## 12. Clippy & Formatting
+## 13. Clippy & rustfmt
 
-### rustfmt Configuration
+`rustfmt.toml`: `edition = "2024"` · `max_width = 100` · `use_field_init_shorthand = true` · `use_try_shorthand = true`. ✗ further per-team overrides.
 
-```toml
-# rustfmt.toml at crate root
-edition = "2021"
-max_width = 100
-use_field_init_shorthand = true
-use_try_shorthand = true
-```
-
-**Rule:** `cargo fmt --check` in CI — ✗ merge unformatted code. No team-specific overrides beyond those above.
-
-### Critical Clippy Lints
-
-| Lint | Level | Rationale |
+| Lint | Level | Reason |
 |---|---|---|
-| `clippy::unwrap_used` | deny | Force explicit error handling |
-| `clippy::expect_used` | warn | Allowed with descriptive message in infallible contexts |
-| `clippy::panic` | deny (in lib) | Libraries ✗ panic — return errors |
-| `clippy::todo` | deny (in CI) | ✗ merge incomplete code |
-| `clippy::dbg_macro` | deny | ✗ debug macros in production |
-| `clippy::print_stdout` | deny (in lib) | Libraries use logging, not stdout |
-| `clippy::large_enum_variant` | warn | Box large variants to keep enum size uniform |
-| `clippy::needless_pass_by_value` | warn | Take `&T` instead of `T` when no ownership needed |
+| `clippy::unwrap_used` | deny | Forces explicit handling |
+| `clippy::expect_used` | warn | Allowed with a message naming the invariant |
+| `clippy::panic` | deny in libraries | Libraries return errors |
+| `clippy::todo` · `clippy::unimplemented` | deny | ✗ merge incomplete code |
+| `clippy::dbg_macro` · `clippy::print_stdout` | deny in libraries | Libraries log, ✗ print |
+| `clippy::large_enum_variant` | warn | `Box` the outlier — the enum is as large as its biggest variant |
+| `clippy::needless_pass_by_value` | warn | Take `&T` when ownership is not needed |
 
-### CI Pipeline
+Gate — every command exits 0 before merge:
 
-```yaml
-# Minimum checks — all must pass before merge
-- cargo fmt --check
-- cargo clippy -- -D warnings
-- cargo test
-- cargo doc --no-deps  # verify docs build
+```bash
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-features
+cargo doc --no-deps
+cargo deny check
 ```
+
+Pipeline stages and caching → [cicd](../cicd/STANDARDS.md).
 
 ---
 
-## 13. Performance
+## 14. Performance Idioms
 
-### Zero-Cost Abstractions
+Budgets and profiling methodology → [performance](../performance/STANDARDS.md). Rust specifics:
 
-| Abstraction | Cost at runtime | Use freely |
-|---|---|---|
-| Generics (monomorphized) | Zero — compiled to concrete types | Yes |
-| Iterators (chained) | Zero — fused into single loop | Yes |
-| `enum` dispatch | Branch, no vtable | Yes |
-| `impl Trait` (static) | Zero — monomorphized | Yes |
-| `dyn Trait` (dynamic) | Vtable indirection | Measure first |
-| `Box<dyn Fn()>` closures | Heap alloc + vtable | Avoid in hot paths |
-
-### Iterator Chains over Loops
-
-```rust
-// ✓ iterator chain — compiler optimizes to single pass, no intermediate alloc
-let total: u64 = records.iter().filter(|r| r.is_active()).map(|r| r.amount).sum();
-```
-
-✗ `collect::<Vec<_>>()` into intermediate collection then re-iterate — chain iterators instead.
-
-### Benchmarking
-
-| Rule |
-|---|
-| Benchmark before optimizing — ✗ premature optimization |
-| Use `criterion` for statistical benchmarks, not wall-clock timing |
-| `black_box()` to prevent compiler from eliminating dead code |
-| Track benchmark results in CI — detect regressions automatically |
-| Profile with `cargo flamegraph` or `perf` before micro-optimizing |
-| Prefer algorithmic improvements over micro-optimizations |
-
-### Common Performance Patterns
-
-| Pattern | Technique |
+| Abstraction | Runtime cost |
 |---|---|
-| Avoid repeated allocations | Pre-allocate with `Vec::with_capacity(n)`, reuse buffers |
-| Small string optimization | Use `smol_str` or `compact_str` for many short-lived strings |
-| Reduce monomorphization bloat | Extract non-generic inner function from generic outer function |
-| Avoid unnecessary copies | Return iterators instead of collected Vecs |
-| Batch I/O | Buffer writes with `BufWriter`, reads with `BufReader` |
+| Generics (monomorphized) · `impl Trait` | Zero |
+| Chained iterators | Zero — fused into one loop |
+| Enum dispatch | A branch, no vtable |
+| `dyn Trait` | Vtable indirection — measure before using in a hot path |
+| `Box<dyn Fn>` closure | Heap + vtable — ✗ in a hot path |
 
----
-
-## 14. Idiomatic Patterns
-
-### Builder Pattern
-
-```rust
-impl ServerConfigBuilder {
-    pub fn new() -> Self { /* defaults */ }
-    pub fn port(mut self, port: u16) -> Self { self.port = port; self }
-    pub fn host(mut self, host: impl Into<String>) -> Self { self.host = host.into(); self }
-    pub fn build(self) -> Result<ServerConfig, ConfigError> { /* validate + construct */ }
-}
-```
-
-**Rule:** builder takes `self` (consuming) — prevents reuse of partially-configured builder. Return `Result` from `build()` if validation needed.
-
-### From/Into Conversions
-
-| Rule |
-|---|
-| Implement `From<A> for B` — ✗ implement `Into` directly (From gives Into for free) |
-| `From` conversions must be infallible — use `TryFrom` when conversion can fail |
-| ✗ `From` for lossy conversions — use named methods: `fn to_approximate(&self) -> f32` |
-| Accept `impl Into<T>` in public APIs for ergonomic ownership transfer |
-
-### Display and Debug
-
-| Rule |
-|---|
-| Every public type: `#[derive(Debug)]` minimum |
-| `Display` for types shown to users (logs, errors, CLI output) — implement manually |
-| `Debug` may be verbose — `Display` must be concise |
-| Error types: implement `Display` (required by `std::error::Error`) |
-
-### Iterator Protocol
-
-```rust
-// ✓ return impl Iterator for lazy evaluation — no intermediate allocation
-fn active_users(users: &[User]) -> impl Iterator<Item = &User> {
-    users.iter().filter(|u| u.is_active)
-}
-```
-
-| Rule |
-|---|
-| Return `impl Iterator` over `Vec` when caller just needs to iterate |
-| Implement `IntoIterator` for custom collections |
-| ✗ collect into Vec just to pass to a function that takes `impl IntoIterator` |
-
-### Derive Conventions
-
-| Trait | Derive when |
+| Rule | Detail |
 |---|---|
-| `Debug` | Always on public types |
-| `Clone` | Type is logically copyable |
-| `PartialEq`, `Eq` | Type supports equality comparison |
-| `Hash` | Type used as HashMap/HashSet key (requires `Eq`) |
-| `Default` | Type has meaningful zero/empty state |
-| `Serialize`, `Deserialize` | Type crosses serialization boundary |
+| Benchmark before optimizing | `criterion` for statistics, ✗ wall-clock `Instant` timing |
+| `black_box()` in benchmarks | Prevents the optimizer deleting the code under test |
+| `Vec::with_capacity(n)` when `n` is known | ✗ repeated reallocation |
+| `BufReader` / `BufWriter` on all file and socket I/O | Unbuffered syscall-per-byte is the default trap |
+| Return `impl Iterator` over `Vec` | Lazy, no intermediate allocation |
+| Extract a non-generic inner function | Cuts monomorphization bloat from a generic wrapper |
+| Profile with `cargo flamegraph` / `perf` | Algorithm first, micro-optimization last |
+| Build release with `lto = "thin"` + `codegen-units = 1` | For shipped binaries |
 
-**Rule:** derive order = `Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize` — consistent across codebase.
+### Conversions and Derives
+
+- Implement `From<A> for B`, never `Into` directly — `Into` comes free. `From` must be infallible; use `TryFrom` when it can fail. ✗ `From` for lossy conversions — give them a named method.
+- Every public type derives `Debug`. Derive order: `Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize`.
+- `Display` for anything a user sees; it is required by `std::error::Error` and must stay concise. `Debug` may be verbose.
+- Builders consume `self` (`fn port(mut self, p: u16) -> Self`) and validate in `build() -> Result<T, E>`.
 
 ---
 
 ## 15. Checklist
 
-### Pre-Commit
-
-- [ ] `cargo fmt` — no formatting diffs
-- [ ] `cargo clippy -- -D warnings` — no warnings
-- [ ] `cargo test` — all tests pass
-- [ ] `cargo doc --no-deps` — docs build without warnings
-- [ ] No `.unwrap()` in non-test code (use `?` or `.expect("reason")`)
-- [ ] No `todo!()` or `unimplemented!()` in committed code
-- [ ] Every `unsafe` block has `// SAFETY:` comment
-- [ ] Every public item has doc comment
-
-### Code Review
-
-- [ ] Ownership: prefer borrow over clone; justify each `.clone()`
-- [ ] Error handling: `thiserror` in libs, `anyhow` in bins; no `String` errors
-- [ ] Types: newtypes for IDs/units; enums for state machines; ✗ bool params
-- [ ] Traits: exist only when multiple impls needed or testing requires it
-- [ ] Pattern matching: exhaustive; ✗ wildcard on owned enums
-- [ ] Concurrency: correct `Send`/`Sync` bounds; ✗ `Mutex` guard across `.await`
-- [ ] Memory: no unnecessary allocations in hot paths; buffers reused
-- [ ] Dependencies: justified, audited (`cargo deny`), minimal feature set
-
-### New Crate
-
-- [ ] `edition = "2021"` (or latest stable)
-- [ ] `rust-version` (MSRV) set in `Cargo.toml`
-- [ ] `[lints.clippy]` configured — `all = "deny"`, `pedantic = "warn"`
-- [ ] `unsafe_code = "forbid"` unless crate requires unsafe
-- [ ] Workspace dependencies used for shared crates
-- [ ] `lib.rs` re-exports public API — clean, flat import paths
-- [ ] CI runs: fmt, clippy, test, doc, deny (licenses + advisories)
-- [ ] README with usage example and MSRV badge
+- [ ] `edition = "2024"` and `rust-version` (MSRV) set in `Cargo.toml`
+- [ ] `Cargo.lock` committed
+- [ ] `[lints.rust] unsafe_code = "forbid"` unless the crate genuinely needs unsafe
+- [ ] `[lints.clippy]` sets `all = "deny"`, `pedantic = "warn"`, `unwrap_used = "deny"`
+- [ ] Shared dependency versions declared once in `[workspace.dependencies]`
+- [ ] Parameters take `&str` / `&[T]` / `&Path`, ✗ `&String` / `&Vec<T>` / `&PathBuf`
+- [ ] Every `.clone()` justified — borrow was tried first
+- [ ] ✗ `.unwrap()` outside tests; `.expect()` messages name the invariant
+- [ ] Library errors are a `thiserror` enum; binaries use `anyhow` with `.context()`
+- [ ] ✗ `Result<T, String>` and ✗ `Box<dyn Error>` in a public library API
+- [ ] Public error enums are `#[non_exhaustive]`
+- [ ] Newtypes used for IDs, units, and validated strings — ✗ bare `u64` / `String`
+- [ ] ✗ boolean parameters — enums instead
+- [ ] `match` on owned enums is exhaustive — ✗ wildcard arm
+- [ ] Every `unsafe` block has a `// SAFETY:` comment; Miri runs over unsafe paths in CI
+- [ ] ✗ mutex guard held across an `.await`
+- [ ] Channels are bounded; every spawned task is tracked (`JoinSet`), ✗ detached
+- [ ] Blocking work runs on `spawn_blocking`, not on the async runtime
+- [ ] Every public item has a doc comment; every public function has a doc test
+- [ ] `cargo fmt --check` exits 0
+- [ ] `cargo clippy --all-targets -- -D warnings` exits 0
+- [ ] `cargo test` and `cargo doc --no-deps` exit 0
+- [ ] `cargo deny check` passes — licenses and advisories
+- [ ] ✗ `todo!()` / `unimplemented!()` / `dbg!()` in committed code

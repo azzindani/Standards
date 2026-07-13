@@ -1,594 +1,496 @@
 # Security Standards
 
-Rules for application-level security across all projects, all languages.
-Defines validation boundaries, access control, secrets handling, and
-data protection. ✗ infrastructure security (→ `devops/STANDARDS.md`).
-✗ language-specific security libraries (→ language-specific standards).
-✗ API protocol security details (→ `api/STANDARDS.md`).
+> Application-level security for every project: the validation boundary, access control, secrets, and supply-chain integrity every input and credential passes through.
 
-Composable with: Architecture Standards, API Standards, Database Standards,
-Observability Standards, and language-specific standards.
+**ID** `security` · **Tier** Core · **Version** 1.0
+**Owns** input-validation boundary · injection prevention · authn/authz (RBAC/ABAC · token lifetimes · default-deny) · secrets (token classes · rotation cadence · derived values) · PII/data protection · supply-chain integrity (SLSA · SBOM) · output encoding · transport/TLS · security audit events
+**Defers to** tier/layer model → [architecture](../architecture/STANDARDS.md) · error taxonomy + boundaries → [error_handling](../error_handling/STANDARDS.md) · structured log format + retention → [observability](../observability/STANDARDS.md) · license policy → [dependencies](../dependencies/STANDARDS.md) · config cascade → [configuration](../configuration/STANDARDS.md) · vault/injection mechanics → [devops](../devops/STANDARDS.md) · pipeline secret scoping → [cicd](../cicd/STANDARDS.md) · cookie/CSRF/frontend gating → [web](../web/STANDARDS.md) · API protocol specifics → [api](../api/STANDARDS.md)
+**Load with** [architecture](../architecture/STANDARDS.md) · [error_handling](../error_handling/STANDARDS.md) · [observability](../observability/STANDARDS.md)
 
 ---
 
 ## Table of Contents
 
-1. [Input Validation](#1-input-validation)
-2. [Injection Prevention](#2-injection-prevention)
-3. [Authentication](#3-authentication)
-4. [Authorization](#4-authorization)
-5. [Secrets Management](#5-secrets-management)
-6. [Data Protection](#6-data-protection)
-7. [Dependency Security](#7-dependency-security)
-8. [Path & File Security](#8-path--file-security)
-9. [Subprocess Security](#9-subprocess-security)
-10. [Output Encoding](#10-output-encoding)
-11. [Error Information Exposure](#11-error-information-exposure)
-12. [Security Headers & Transport](#12-security-headers--transport)
+1. [Principles](#1-principles)
+2. [Input Validation Boundary](#2-input-validation-boundary)
+3. [Injection Prevention](#3-injection-prevention)
+4. [Output Encoding](#4-output-encoding)
+5. [Authentication](#5-authentication)
+6. [Authorization](#6-authorization)
+7. [Secrets Management](#7-secrets-management)
+8. [Data Protection & PII](#8-data-protection--pii)
+9. [Supply-Chain Security](#9-supply-chain-security)
+10. [Filesystem & Subprocess Security](#10-filesystem--subprocess-security)
+11. [Error & Information Exposure](#11-error--information-exposure)
+12. [Transport & Headers](#12-transport--headers)
 13. [Audit & Logging](#13-audit--logging)
 14. [Scale Matrix](#14-scale-matrix)
-15. [Security Checklist](#15-security-checklist)
+15. [Checklist](#15-checklist)
 
 ---
 
-## 1. Input Validation
+## 1. Principles
 
-All external input is hostile until validated. Validation happens once,
-at the Tier 3 boundary (see `architecture/STANDARDS.md` §2). Tiers 0–2
-operate on validated data only — no re-validation inside core logic.
+| Principle | Rule |
+|---|---|
+| Fail closed | Any ambiguity → deny. ✗ default to allow/anonymous/verbose |
+| Allowlist over denylist | Define what IS valid; ✗ enumerate what is invalid — attackers find gaps |
+| Defense in depth | No single control is trusted alone; layer validation, encoding, access control |
+| Least privilege | Every actor, token, process, file gets the minimum grant for its task |
+| Data ≠ code | User input is always data; it never enters an executable/structured channel raw |
+| Secure by default | The safe path is the default path; unsafe behavior requires explicit opt-in |
 
-### Validation Boundary
+Benchmark against **OWASP Top 10:2025** (A01 Broken Access Control · A02 Security Misconfiguration · A03 Software Supply Chain Failures · A04 Cryptographic Failures · A05 Injection · A06 Insecure Design · A07 Authentication Failures · A08 Software/Data Integrity Failures · A09 Logging & Alerting Failures · A10 Mishandling of Exceptional Conditions), **CWE Top 25 (2025)** (top weaknesses: XSS · SQLi · CSRF · missing authorization · out-of-bounds write), and **OWASP ASVS 5.0** verification levels (L1 automatable baseline · L2 default for apps handling sensitive data · L3 high-assurance/critical).
+
+---
+
+## 2. Input Validation Boundary
+
+All external input is hostile until validated. Validation happens **once**, at the Tier 3 boundary ([architecture §2](../architecture/STANDARDS.md)). Tiers 0–2 operate on validated typed data only — ✗ re-validate inside core logic. This standard owns the boundary rule; each other standard keeps only its own injection vectors (§3).
+
+### Boundary Rules
 
 | Rule | Detail |
 |---|---|
 | Validate at entry | Every Tier 3 adapter validates all input before passing inward |
 | Trust internally | Tiers 0–2 receive validated types, not raw strings |
-| Parse, don't validate | Convert raw input into typed domain objects at boundary; reject if conversion fails |
+| Parse, don't validate | Convert raw input into typed domain objects at the boundary; reject if conversion fails |
 | Fail closed | Invalid input → reject. ✗ attempt to "fix" malformed input |
-| Allowlist over denylist | Define what IS valid. ✗ enumerate what is invalid — attackers find gaps |
+| Allowlist | Define the valid set; reject everything else |
 
-### Validation Rules
+### Per-Type Rules
 
 | Input type | Validation |
 |---|---|
-| Strings | Max length · allowed character set · encoding (UTF-8) |
-| Numbers | Range (min/max) · type (integer vs float) · no NaN/Infinity |
+| Strings | Max length · allowed charset · UTF-8 encoding |
+| Numbers | Range (min/max) · integer vs float · ✗ NaN/Infinity |
 | Dates/times | Format · range · timezone presence |
 | Enums | Exact match against allowed values |
 | Collections | Max size · element validation · no duplicates where required |
-| File uploads | Max size · allowed MIME types · content verification (✗ trust extension alone) |
+| File uploads | Max size · allowed MIME · content verification (✗ trust extension) |
 | Identifiers | Format (UUID, slug) · existence check at service layer |
-| URLs | Scheme allowlist (https) · ✗ file:// · ✗ internal IPs (SSRF) |
+| URLs | Scheme allowlist (https) · ✗ `file://` · ✗ internal IPs (SSRF) |
 | Email | RFC 5321 format · max length |
 
-### Compound Validation
-
-Validate individual fields first, then cross-field constraints. Return
-all validation errors at once — ✗ stop at first failure (see
-`architecture/STANDARDS.md` §7, partial failure).
+Validate individual fields first, then cross-field constraints. Return **all** validation errors at once — ✗ stop at first failure. Validation produces data errors (structured results, ✗ thrown) → [error_handling §9](../error_handling/STANDARDS.md).
 
 ---
 
-## 2. Injection Prevention
+## 3. Injection Prevention
 
-Every injection attack exploits the same root cause: mixing data with
-control instructions. Prevention: never concatenate user input into
-structured languages.
+Every injection exploits the same root cause: mixing data with control instructions. Prevention: never concatenate user input into a structured language.
 
-### Injection Types & Prevention
-
-| Attack vector | Prevention | ✗ Never |
+| Vector | Prevention | ✗ Never |
 |---|---|---|
-| SQL injection | Parameterized queries · prepared statements | ✗ string concatenation in queries |
-| Command injection | Structured subprocess APIs · argument arrays | ✗ shell string interpolation |
+| SQL | Parameterized queries · prepared statements | ✗ string concatenation in queries |
+| Command | Structured subprocess APIs · argument arrays | ✗ shell string interpolation |
 | Path traversal | Resolve + validate against allowed root | ✗ raw user input in file paths |
-| XSS (reflected) | Context-aware output encoding | ✗ raw user data in HTML |
-| XSS (stored) | Encode on output · sanitize on input | ✗ trust stored data as safe |
-| LDAP injection | Parameterized LDAP queries · escape special chars | ✗ concatenate user input in LDAP filters |
-| Template injection | Logic-less templates · ✗ user input as template code | ✗ eval user strings |
-| Header injection | Strip newlines from header values | ✗ raw input in HTTP headers |
-| XML injection | Disable external entities (XXE) · use safe parsers | ✗ parse untrusted XML with DTD enabled |
+| XSS (reflected/stored) | Context-aware output encoding (§4) | ✗ raw user data in HTML |
+| LDAP | Parameterized queries · escape special chars | ✗ concatenate input in LDAP filters |
+| Template (SSTI) | Logic-less templates | ✗ user input as template code · ✗ eval |
+| Header | Strip newlines from header values | ✗ raw input in HTTP headers |
+| XML (XXE) | Disable external entities · safe parser | ✗ parse untrusted XML with DTD enabled |
+| Deserialization | Typed schema · allowlist classes | ✗ deserialize untrusted data into arbitrary types |
 
-### Core Rule
-
-Data and code occupy separate channels. User input is always data —
-it flows through parameterized APIs, never through string interpolation
-into executable contexts.
+Core rule: data and code occupy separate channels. User input flows through parameterized APIs, never through interpolation into an executable context.
 
 ---
 
-## 3. Authentication
+## 4. Output Encoding
+
+User-supplied data rendered in any output context requires context-aware encoding at render time.
+
+| Output context | Encoding rule |
+|---|---|
+| HTML body | HTML-entity encode `<>&"'` |
+| HTML attribute | Attribute-encode; always quote values |
+| JavaScript | JS-encode; ✗ inline user data in `<script>` |
+| CSS | CSS-encode; ✗ user data in style blocks |
+| URL parameter | Percent-encode all user values |
+| JSON | Proper serialization; ✗ concatenate to build JSON |
+| Log entry | Strip/escape control chars — prevent log injection |
+| Shell display | Strip ANSI escape sequences from untrusted data |
+
+| Rule | Detail |
+|---|---|
+| Encode on output, not input | Store original form; encode at render for the target context |
+| Encode exactly once | ✗ double encoding |
+| Every output path encodes | ✗ raw user data in any output |
+| Prefer framework auto-encoding | Verify it covers the specific context |
+
+---
+
+## 5. Authentication
+
+Authentication proves WHO. Verify identity in Tier 3 before any request reaches Tier 2. This standard owns token lifetimes and classes; `web` keeps cookie attributes/CSRF, `api` keeps protocol specifics.
 
 ### Principles
 
 | Rule | Detail |
 |---|---|
-| Authentication at edge | Verify identity in Tier 3 before any request reaches Tier 2 |
-| One canonical method | Single authentication mechanism per interface; ✗ mix methods |
-| Fail closed | Unauthenticated requests → reject. ✗ default to anonymous access |
-| Rate limit auth attempts | Brute-force protection: exponential backoff after N failures |
-| Multi-factor for privileged ops | Elevated operations require additional verification |
+| Authenticate at edge | Identity verified in Tier 3 before request reaches Tier 2 |
+| One canonical method | Single mechanism per interface; ✗ mix methods |
+| Fail closed | Unauthenticated → reject. ✗ default to anonymous |
+| Rate-limit attempts | Exponential backoff after N failures; brute-force protection |
+| MFA for privileged ops | Elevated operations require additional verification |
 
-### Token Handling
+### Token Classes & Lifetime (! canonical)
+
+Two access-token classes — both apply, scope decides which. ✗ collapse into one number.
+
+| Token class | Max lifetime | Rule |
+|---|---|---|
+| Browser / user-facing access token | ≤ 15 min | Pair with refresh-token rotation |
+| Service-to-service access token | ≤ 1 h | No interactive user; issued per service identity |
+| Refresh token | Long-lived, single-use | Rotate on every use · revoke entire chain on reuse detection |
 
 | Rule | Detail |
 |---|---|
-| Tokens are opaque to client | Client stores, never parses or modifies tokens |
-| Short-lived access tokens | Expiry ≤ 1 hour for access tokens |
-| Refresh tokens: long-lived, rotatable | Single-use refresh tokens; revoke on reuse detection |
-| Signed tokens | Cryptographic signature verification on every request |
-| ✗ tokens in URLs | Tokens in headers only; URLs leak via logs, referrer, browser history |
-| ✗ symmetric signing in distributed systems | Use asymmetric keys when multiple services verify tokens |
+| Opaque to client | Client stores, never parses or modifies tokens |
+| Signed | Cryptographic signature verified on every request |
+| ✗ tokens in URLs | Headers only; URLs leak via logs, referrer, history |
+| Asymmetric signing when distributed | ✗ symmetric signing when multiple services verify |
 
 ### Session Management
 
 | Rule | Detail |
 |---|---|
-| Server-side session state | Session data on server; client holds only session ID |
-| Regenerate session ID on auth change | New session ID after login, logout, privilege elevation |
-| Absolute + idle timeout | Sessions expire after max lifetime AND after idle period |
-| Secure cookie attributes | `Secure` · `HttpOnly` · `SameSite=Strict|Lax` · domain-scoped |
-| Invalidate on logout | Destroy session server-side; ✗ rely on client-side deletion |
+| Server-side state | Session data on server; client holds only session ID |
+| Regenerate on auth change | New session ID after login, logout, privilege elevation |
+| Absolute + idle timeout | Expire after max lifetime AND after idle period |
+| Invalidate on logout | Destroy server-side; ✗ rely on client-side deletion |
 
-### Password Rules (when applicable)
+Cookie attributes (`Secure` · `HttpOnly` · `SameSite`) → [web](../web/STANDARDS.md).
+
+### Password Rules
 
 | Rule | Detail |
 |---|---|
-| Hash with modern algorithm | bcrypt · scrypt · Argon2 — with per-user salt |
-| ✗ store plaintext or reversible encryption | |
-| Minimum length 12+ characters | ✗ maximum length below 64 |
+| Hash with memory-hard algorithm | **Argon2id** (preferred) · scrypt · bcrypt — per-user salt |
+| ✗ plaintext or reversible encryption | — |
+| Minimum length ≥ 12 | ✗ maximum length below 64 |
 | ✗ composition rules | ✗ require uppercase/special — length matters more |
-| Check against breach databases | Reject known-compromised passwords |
+| Check breach databases | Reject known-compromised passwords |
 
 ---
 
-## 4. Authorization
+## 6. Authorization
 
-Authentication proves WHO. Authorization decides WHAT they can do.
-Enforce authorization in Tier 2 (service layer) after authentication
-completes in Tier 3. See `architecture/STANDARDS.md` §2.
+Authorization decides WHAT an authenticated identity may do. Enforce in Tier 2 (service layer) after authentication. This standard owns the RBAC/ABAC model, default-deny, least-privilege, and resource-level checks.
 
-### Access Control Models
+### Access-Control Models
 
 | Model | Use when | Mechanism |
 |---|---|---|
-| RBAC (Role-Based) | Fixed roles with predictable permissions | User → Role → Permissions |
-| ABAC (Attribute-Based) | Context-dependent decisions (time, location, resource state) | Policy engine evaluates attributes |
-| Capability-Based | Fine-grained, delegatable permissions | Caller holds unforgeable capability token |
-| ACL (Access Control List) | Per-resource permission lists | Resource → list of (subject, permission) |
+| RBAC | Fixed roles, predictable permissions | User → Role → Permissions |
+| ABAC | Context-dependent (time, location, resource state) | Policy engine evaluates attributes |
+| Capability | Fine-grained, delegatable | Caller holds unforgeable capability token |
+| ACL | Per-resource permission lists | Resource → (subject, permission) list |
 
-Choose one model per system. ✗ mix models unless clear boundary between subsystems.
+Choose one model per system; ✗ mix unless a clear subsystem boundary separates them.
 
 ### Principles
 
 | Rule | Detail |
 |---|---|
-| Least privilege | Grant minimum permissions required for task. ✗ broad defaults |
-| Deny by default | No permission → denied. Every access requires explicit grant |
+| Least privilege | Grant the minimum permission for the task; ✗ broad defaults |
+| Deny by default | No grant → denied. Every access requires an explicit grant |
 | Check on every request | ✗ cache authorization decisions across requests unless TTL-bounded |
-| Separate from business logic | Authorization checks in service layer, not embedded in domain logic |
-| Resource-level checks | Verify access to specific resource, not just resource type |
+| Separate from business logic | Checks in service layer, ✗ embedded in domain logic |
+| Resource-level checks | Verify access to the specific resource, not just the type — defeats IDOR |
 | Time-bound elevation | Temporary privilege grants expire automatically |
 
-### Capability-Based Security
+### Capability & Multi-Tenancy
 
 | Rule | Detail |
 |---|---|
-| Capabilities are unforgeable tokens | Cryptographically signed or server-validated references |
-| Attenuable | Holder can create restricted sub-capabilities; ✗ escalate |
-| Revocable | System can invalidate capabilities without revoking all access |
-| Transfer-explicit | Capability delegation is audited and intentional |
-
-### Multi-Tenancy
-
-| Rule | Detail |
-|---|---|
-| Tenant isolation at query level | Every data query scoped to tenant; ✗ rely on application-layer filtering alone |
+| Capabilities unforgeable | Cryptographically signed or server-validated references |
+| Attenuable, revocable | Holder makes restricted sub-capabilities; ✗ escalate; system can revoke |
+| Tenant isolation at query level | Every query scoped to tenant; ✗ rely on app-layer filtering alone |
 | Tenant context propagated | Tenant ID injected at Tier 3, flows through all layers |
-| Cross-tenant access = explicit exception | Requires separate authorization path, fully audited |
+| Cross-tenant = explicit exception | Separate authorization path, fully audited |
 
 ---
 
-## 5. Secrets Management
+## 7. Secrets Management
 
-Secrets: API keys, database credentials, encryption keys, certificates,
-tokens. See `architecture/STANDARDS.md` §8 — secrets never in committed
-files; enter through environment at Tier 3; derived values (authenticated
-clients, connections) flow inward, raw secrets do not.
+Secrets: API keys, DB credentials, encryption keys, certificates, tokens. Enter through environment at Tier 3; raw secrets never reach core logic ([architecture §8](../architecture/STANDARDS.md)). This standard owns rotation cadence, token classes, and the derived-values pattern; `configuration` keeps cascade/sourcing, `devops` keeps vault/injection mechanics, `cicd` keeps pipeline scoping, `git` keeps the never-commit rule.
 
 ### Storage & Access
 
 | Rule | Detail |
 |---|---|
-| ✗ secrets in source code | Not in code, config files, comments, or commit history |
-| ✗ secrets in logs | Mask/redact before logging; ✗ log request bodies containing credentials |
-| ✗ secrets in URLs | Query parameters logged by proxies, browsers, CDNs |
-| ✗ secrets in error messages | Stack traces and error details must never expose secret values |
-| Environment variables or vault | Secrets injected at runtime, never baked into artifacts |
+| ✗ secrets in source | Not in code, config files, comments, or commit history |
+| ✗ secrets in logs | Mask/redact before logging; ✗ log bodies containing credentials |
+| ✗ secrets in URLs | Query params logged by proxies, browsers, CDNs |
+| ✗ secrets in errors | Stack traces and error detail never expose secret values |
+| Env var or vault | Injected at runtime, never baked into artifacts |
 | Separate from config | Secrets ≠ configuration; different storage, different access control |
+
+### Rotation Cadence by Credential Class (! canonical)
+
+Distinct classes carry distinct maximum cadences — both are true. ✗ restate a single flat "rotate every N" elsewhere.
+
+| Credential class | Examples | Max cadence |
+|---|---|---|
+| Long-lived service-account credential | DB password · service API key · signing key | ≤ 90 days |
+| Ephemeral CI / deploy token | OIDC-issued build token · deploy job token | ≤ 24 h (per-run preferred) |
+| TLS certificate | Server/client cert | ≤ 90 days (ACME auto-renew) |
+| Data encryption key | AES key | Scheduled rotation + re-encryption / envelope keys |
+
+Access-token lifetimes (user ≤ 15 min · service ≤ 1 h) are stated in §5. Prefer short-lived OIDC-issued tokens over long-lived keys for CI/deploy (§9).
 
 ### Lifecycle
 
 | Phase | Rule |
 |---|---|
-| Generation | Use cryptographically secure random generators; ✗ predictable values |
-| Rotation | Automated rotation on schedule; support concurrent old+new during transition |
-| Revocation | Immediate invalidation capability; revoked secrets fail instantly |
-| Expiry | All secrets have maximum lifetime; ✗ indefinite credentials |
+| Generation | Cryptographically secure random; ✗ predictable values |
+| Rotation | Automated on schedule; support concurrent old+new during transition |
+| Revocation | Immediate invalidation; revoked secrets fail instantly |
+| Expiry | Every secret has a maximum lifetime; ✗ indefinite credentials |
 | Audit | Log secret access (who, when, which); ✗ log secret values |
 
-### Derived Values Pattern
+### Derived-Values Pattern (! sole home)
 
-Raw secrets stay in Tier 3. Pass derived values inward:
+Raw secrets stay in Tier 3. Pass derived values inward; core logic (Tiers 0–2) never sees, stores, or logs raw secret material.
 
 | ✗ Pass inward | Pass inward instead |
 |---|---|
 | Database password | Authenticated connection object |
 | API key | Configured HTTP client |
-| Encryption key bytes | Encryption service instance |
+| Encryption key bytes | Encryption/cipher service instance |
 | Certificate file path | TLS-configured transport |
-
-Core logic (Tiers 0–2) never sees, stores, or logs raw secret material.
 
 ---
 
-## 6. Data Protection
+## 8. Data Protection & PII
 
-### Data Classification
+### Classification
 
 | Level | Examples | Handling |
 |---|---|---|
 | Public | Marketing content, open docs | No restrictions |
-| Internal | Business data, internal reports | Access control required |
+| Internal | Business data, internal reports | Access control |
 | Confidential | User data, financial records | Encryption + access control + audit |
 | Restricted | PII, health data, credentials | Encryption + strict access + audit + retention limits |
 
-Classify data at creation. Classification drives encryption, access,
-retention, and logging decisions.
+Classify at creation. Classification drives encryption, access, retention, and logging.
 
 ### Encryption
 
 | Context | Rule |
 |---|---|
-| In transit | TLS 1.2+ for all network communication; ✗ plaintext protocols |
-| At rest | Encrypt Confidential and Restricted data; AES-256 or equivalent |
-| Key management | Separate encryption keys from encrypted data; rotate keys on schedule |
-| ✗ custom crypto | Use established libraries and algorithms; ✗ invent cryptographic schemes |
-| Hash integrity | SHA-256+ for integrity verification; ✗ MD5, ✗ SHA-1 |
+| In transit | **TLS 1.3** (TLS 1.2 minimum floor); ✗ plaintext protocols |
+| At rest | Encrypt Confidential + Restricted; AES-256 or equivalent |
+| Key management | Separate keys from encrypted data; rotate on schedule (§7) |
+| ✗ custom crypto | Established libraries + algorithms; ✗ invent schemes |
+| Hash integrity | SHA-256+; ✗ MD5, ✗ SHA-1 |
 
-### PII Handling
+### PII Handling (canonical home)
 
 | Rule | Detail |
 |---|---|
-| Minimize collection | Collect only PII required for function; ✗ "nice to have" fields |
-| Purpose limitation | PII used only for stated purpose; ✗ repurpose without consent |
-| Retention limits | Define and enforce maximum retention period per data type |
-| Right to deletion | System supports complete removal of individual's PII |
-| Pseudonymization | Replace identifying fields with tokens where full identity unnecessary |
-| ✗ PII in logs | Mask, hash, or omit PII from log entries |
+| Minimize collection | Only PII required for function; ✗ "nice to have" fields |
+| Purpose limitation | Used only for the stated purpose; ✗ repurpose without consent |
+| Retention limits | Enforce a maximum retention period per data type |
+| Right to deletion | Support complete removal of an individual's PII |
+| Pseudonymization | Replace identifying fields with tokens where full identity is unneeded |
+| ✗ PII in logs | Mask, hash, or omit — same exclusion set applies to receipts and traces |
 | ✗ PII in error messages | Error context must not expose personal data |
 
-### Data Sanitization
-
-| When | Action |
-|---|---|
-| Data deletion | Overwrite or crypto-erase; ✗ rely on filesystem delete alone |
-| Decommissioning storage | Wipe all media before disposal or return |
-| Test environments | Use synthetic data or anonymized production data; ✗ raw production PII |
+Sanitization: deletion → overwrite or crypto-erase (✗ filesystem delete alone) · decommissioned storage → wipe media before disposal/return · test environments → synthetic or anonymized data (✗ raw production PII).
 
 ---
 
-## 7. Dependency Security
+## 9. Supply-Chain Security
 
-Third-party code = third-party risk. Every dependency is an implicit
-trust grant. See `architecture/STANDARDS.md` §3 — wrap externals,
-pin versions, update deliberately.
+Every dependency and build artifact is an implicit trust grant (OWASP A03). License policy → [dependencies](../dependencies/STANDARDS.md); pin/wrap/update mechanics → [dependencies](../dependencies/STANDARDS.md).
 
-### Vulnerability Management
+### Dependency Integrity
 
 | Rule | Detail |
 |---|---|
-| Automated scanning | Run vulnerability scanner on every build; block deploy on critical/high CVEs |
-| Audit command | Every project has one-command dependency audit (language-specific tool) |
-| Fix window | Critical: 24 hours · High: 7 days · Medium: 30 days · Low: next release |
-| Transitive dependencies | Scan full dependency tree, not just direct dependencies |
-
-### Supply Chain
-
-| Rule | Detail |
-|---|---|
-| Lock files committed | Exact resolved versions in lock file; reproducible builds |
+| Lock files committed | Exact resolved versions; reproducible builds |
 | Verify checksums | Package manager verifies integrity hashes on install |
-| ✗ install from unverified sources | Official registries only; ✗ arbitrary URLs or forks |
-| Review new dependencies | Evaluate: maintenance status, download count, known issues, license |
-| Minimize dependency count | Every dependency = attack surface. Prefer standard library where adequate |
+| ✗ unverified sources | Official registries only; ✗ arbitrary URLs or forks |
+| Block dependency confusion | Pin internal scope/namespace; ✗ let public registry shadow private packages |
+| Automated CVE scanning | Scan full tree (transitive included) every build; block deploy on critical/high |
+| Fix window | Critical 24 h · High 7 days · Medium 30 days · Low next release |
 
-### Update Cadence
+### Artifact & Build Integrity
 
-| Dependency type | Update frequency |
+| Rule | Detail |
 |---|---|
-| Security patches | Immediately upon availability |
-| Minor/patch versions | Monthly review |
-| Major versions | Quarterly evaluation; test before upgrade |
-| Deprecated dependencies | Replace before EOL |
+| SBOM per release | Generate a Software Bill of Materials (SPDX/CycloneDX) for every build |
+| Sign artifacts + commits | Cryptographically sign released artifacts and commits (Sigstore/GPG); verify on consume |
+| Secret scanning | Pre-commit + CI scan blocks committed credentials |
+| Target SLSA build integrity | L1 automated provenance · L2 signed provenance from a hosted builder · L3 non-falsifiable provenance from an isolated builder |
+| OIDC over long-lived keys | CI/deploy authenticate via short-lived OIDC-issued tokens; ✗ long-lived static keys in CI (reinforces §7 ephemeral class) |
+| Least-privilege CI tokens | Pipeline credentials scoped to the single job; ✗ org-wide admin tokens |
 
 ---
 
-## 8. Path & File Security
+## 10. Filesystem & Subprocess Security
 
-File operations are Tier 3 I/O (see `architecture/STANDARDS.md` §2).
-Path security prevents directory traversal and unauthorized file access.
+File and subprocess operations are Tier 3 I/O. Both are command/traversal-injection vectors.
 
-### Path Traversal Prevention
-
-| Rule | Detail |
-|---|---|
-| Resolve then validate | Canonicalize path (resolve symlinks, `..`, `.`) → check against allowed root |
-| Allowed root enforcement | Every file operation scoped to declared root directory; ✗ unrestricted filesystem access |
-| ✗ raw user input in paths | User-supplied filenames validated against allowlist pattern |
-| Reject path separators | User-supplied names: ✗ `/` · ✗ `\` · ✗ `..` · ✗ null bytes |
-| Canonical comparison | Compare resolved absolute paths; ✗ string prefix matching on raw input |
-
-### Symlink Rules
+### Path Traversal
 
 | Rule | Detail |
 |---|---|
-| Resolve before access | Follow symlinks to final target; validate target is within allowed root |
-| ✗ create symlinks from user input | User-controlled symlink targets enable escapes |
-| TOCTOU awareness | Check-then-use on paths is race-prone; use atomic open-and-verify where possible |
+| Resolve then validate | Canonicalize (resolve symlinks, `..`, `.`) → check against allowed root |
+| Allowed-root enforcement | Every file op scoped to a declared root; ✗ unrestricted filesystem access |
+| ✗ raw user input in paths | User-supplied names validated against an allowlist pattern |
+| Reject separators | User names: ✗ `/` · ✗ `\` · ✗ `..` · ✗ null bytes |
+| Canonical comparison | Compare resolved absolute paths; ✗ string-prefix match on raw input |
+| TOCTOU-aware | Check-then-use is race-prone; atomic open-and-verify where possible |
 
 ### File Permissions
 
 | Rule | Detail |
 |---|---|
 | Least privilege | Files created with minimum necessary permissions |
-| Sensitive files restrictive | Credentials, keys: owner-read only (0600) |
-| Temp files in secure location | System temp directory with restricted permissions; cleanup after use |
+| Sensitive files restrictive | Credentials/keys: owner-read only (0600) |
+| Temp files secure | System temp dir with restricted permissions; clean up after use |
 | ✗ world-writable output | ✗ create files writable by all users |
 
----
-
-## 9. Subprocess Security
-
-Subprocesses are Tier 3 operations. Every subprocess call is a potential
-command injection vector.
-
-### Rules
+### Subprocess
 
 | Rule | Detail |
 |---|---|
 | ✗ shell interpolation | ✗ pass user input through shell strings |
-| Argument arrays | Pass command + arguments as array/list, not single string |
-| Allowlist commands | Permitted executables defined in configuration; ✗ arbitrary commands |
-| ✗ shell=true with user input | Shell mode enables metacharacter expansion; use only for static commands |
-| Validate arguments | Each argument validated against expected format before execution |
-| Restrict PATH | Subprocess inherits minimal environment; explicit executable paths preferred |
-| Timeout enforcement | Every subprocess has maximum execution time; kill on timeout |
-| Capture and validate output | Subprocess output is untrusted data; validate before use |
-
-### Environment Inheritance
-
-| Rule | Detail |
-|---|---|
-| Minimal environment | Pass only required environment variables to subprocess |
-| ✗ inherit secrets | Subprocess environment ✗ includes parent's secret variables unless explicitly needed |
-| Sanitize inherited values | Strip control characters from any inherited environment variable |
+| Argument arrays | Command + args as an array/list, not a single string |
+| Allowlist commands | Permitted executables in config; ✗ arbitrary commands |
+| ✗ `shell=true` with user input | Shell mode expands metacharacters; static commands only |
+| Timeout enforcement | Every subprocess has a max execution time; kill on timeout |
+| Minimal environment | Pass only required env vars; ✗ inherit parent secrets unless explicitly needed |
+| Output is untrusted | Validate subprocess output before use |
 
 ---
 
-## 10. Output Encoding
+## 11. Error & Information Exposure
 
-User-supplied data rendered in any output context requires context-aware
-encoding. Encoding prevents stored/reflected XSS and format injection.
-
-### Context-Specific Encoding
-
-| Output context | Encoding rule |
-|---|---|
-| HTML body | HTML-entity encode: `<>&"'` |
-| HTML attributes | Attribute-encode; always quote attribute values |
-| JavaScript context | JavaScript-encode; ✗ inline user data in `<script>` blocks |
-| CSS context | CSS-encode; ✗ user data in style attributes or `<style>` blocks |
-| URL parameters | Percent-encode (URL-encode) all user values |
-| JSON responses | Proper JSON serialization; ✗ string concatenation to build JSON |
-| SQL (as fallback) | Parameterized queries preferred (§2); encoding as defense-in-depth only |
-| Log entries | Strip/escape control characters; prevent log injection |
-| Shell display | Strip ANSI escape sequences from untrusted data |
-
-### Principles
+Errors leak internals that help attackers map the system (OWASP A10). Error taxonomy, boundaries, and never-swallow rules → [error_handling](../error_handling/STANDARDS.md); this section covers only what must not reach an external caller.
 
 | Rule | Detail |
 |---|---|
-| Encode on output, not input | Store data in original form; encode at render time for correct context |
-| ✗ double encoding | Apply encoding exactly once per output context |
-| ✗ raw user data in any output | Every output path requires explicit encoding step |
-| Framework auto-encoding | Use framework's built-in encoding; verify it covers the specific context |
+| ✗ stack traces to users | Logs only; user sees a generic message |
+| ✗ internal paths/class names in responses | → logs |
+| ✗ database details in responses | Query text, table/column names → logs |
+| ✗ version/dependency names in responses | → logs |
+| ✗ raw input echoed | Log a sanitized copy (mask PII/secrets); ✗ echo to user |
+| Error IDs for correlation | Return an opaque error ID; full detail in logs keyed by that ID |
+| Detail by environment | Development verbose · production generic + error ID |
 
 ---
 
-## 11. Error Information Exposure
+## 12. Transport & Headers
 
-Errors are an information leak vector. Internal details help attackers
-map system internals. See `architecture/STANDARDS.md` §7 for error
-architecture.
-
-### Rules
-
-| Rule | Detail |
-|---|---|
-| ✗ stack traces to users | Stack traces in logs only; user sees generic message |
-| ✗ internal paths in errors | File paths, class names, module structure → logs, not response |
-| ✗ database details in errors | Query text, table names, column names → logs, not response |
-| ✗ version info in errors | Software versions, framework names → not in error responses |
-| ✗ dependency names in errors | Third-party library names/versions → logs only |
-| Error IDs for correlation | Return opaque error ID to user; full details in logs keyed by same ID |
-| Different detail by environment | Development: verbose errors · Production: generic messages + error ID |
-
-### Error Response Pattern
-
-| Component | User-facing response | Internal log |
-|---|---|---|
-| Message | Generic, actionable ("Request failed") | Full technical detail |
-| Error ID | Unique correlation ID | Same correlation ID |
-| Stack trace | ✗ never | Full trace |
-| Input data | ✗ never echoed raw | Sanitized copy (mask PII/secrets) |
-| Remediation | Generic ("try again", "contact support") | Specific fix needed |
-
----
-
-## 12. Security Headers & Transport
-
-Applies to web-facing interfaces (HTTP APIs, web applications).
+Applies to web-facing interfaces (HTTP APIs, web apps).
 
 ### Transport
 
 | Rule | Detail |
 |---|---|
-| HTTPS everywhere | TLS 1.2+ for all endpoints; ✗ plaintext HTTP in production |
-| HSTS enabled | `Strict-Transport-Security: max-age=31536000; includeSubDomains` |
-| Certificate validation | Verify full chain; ✗ disable certificate checks (even in staging) |
-| TLS configuration | Disable SSLv3, TLS 1.0, TLS 1.1; prefer forward-secrecy cipher suites |
+| HTTPS everywhere | **TLS 1.3** preferred, TLS 1.2 minimum; ✗ plaintext HTTP in production |
+| Disable legacy | ✗ SSLv3 · ✗ TLS 1.0 · ✗ TLS 1.1; prefer forward-secrecy ciphers |
+| HSTS | `Strict-Transport-Security: max-age=31536000; includeSubDomains` |
+| Certificate validation | Verify full chain; ✗ disable cert checks (even in staging) |
 
 ### Security Headers
 
 | Header | Value | Purpose |
 |---|---|---|
-| `Content-Security-Policy` | Restrictive policy; ✗ `unsafe-inline`, ✗ `unsafe-eval` | XSS mitigation |
-| `X-Content-Type-Options` | `nosniff` | Prevent MIME-type sniffing |
-| `X-Frame-Options` | `DENY` or `SAMEORIGIN` | Clickjacking prevention |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` or `no-referrer` | Referrer leak prevention |
-| `Permissions-Policy` | Disable unused browser features (camera, mic, geolocation) | Feature restriction |
-| `Cache-Control` | `no-store` for sensitive responses | Prevent caching of secrets/PII |
+| `Content-Security-Policy` | Restrictive; ✗ `unsafe-inline`, ✗ `unsafe-eval` | XSS mitigation |
+| `X-Content-Type-Options` | `nosniff` | Block MIME sniffing |
+| `X-Frame-Options` | `DENY` \| `SAMEORIGIN` | Clickjacking |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` \| `no-referrer` | Referrer leak |
+| `Permissions-Policy` | Disable unused features (camera, mic, geo) | Feature restriction |
+| `Cache-Control` | `no-store` for sensitive responses | ✗ cache secrets/PII |
 
-### CORS
-
-| Rule | Detail |
-|---|---|
-| ✗ `Access-Control-Allow-Origin: *` for authenticated endpoints | Wildcard origin incompatible with credentials |
-| Allowlist specific origins | Validate `Origin` header against configured list |
-| Restrict methods and headers | Allow only required HTTP methods and custom headers |
-| Preflight caching | `Access-Control-Max-Age` set to reduce preflight requests |
-| Credentials explicit | `Access-Control-Allow-Credentials: true` only when cookies/auth needed |
-
-### Request Protection
+### CORS & Request Protection
 
 | Rule | Detail |
 |---|---|
-| CSRF protection | State-changing requests require anti-CSRF token or SameSite cookies |
-| Request size limits | Maximum body size enforced at web server/framework level |
-| Rate limiting | Per-client rate limits on all endpoints; stricter on auth endpoints |
-| Request timeout | Maximum request processing time; kill long-running requests |
+| ✗ `Allow-Origin: *` with credentials | Wildcard origin incompatible with credentials |
+| Allowlist origins | Validate `Origin` against a configured list |
+| Restrict methods/headers | Allow only required HTTP methods and custom headers |
+| Request size limits | Max body size enforced at server/framework |
+| Rate limiting | Per-client limits on all endpoints; stricter on auth |
+| CSRF protection | State-changing requests require anti-CSRF token or SameSite cookies → [web](../web/STANDARDS.md) |
 
 ---
 
 ## 13. Audit & Logging
 
-Security events require dedicated logging separate from application
-logs. Cross-reference `observability/STANDARDS.md` for general logging
-standards.
+Security events require dedicated, tamper-evident logging. Structured log format, fields, and retention tiers → [observability](../observability/STANDARDS.md); this section owns which security events to capture and their integrity controls.
 
-### Security Events to Log
+### Events to Log
 
-| Event category | Examples |
+| Category | Examples |
 |---|---|
 | Authentication | Login success/failure · logout · token refresh · token revocation |
 | Authorization | Access denied · privilege elevation · role change |
-| Data access | Read/write of Confidential/Restricted data · bulk export |
-| Configuration change | Permission change · security setting modification · secret rotation |
-| Input validation failure | Rejected requests · repeated validation failures from same source |
-| Administrative actions | User create/delete · role assignment · system configuration |
-| Anomalies | Unusual access patterns · impossible travel · concurrent sessions |
+| Data access | Read/write of Confidential/Restricted · bulk export |
+| Configuration change | Permission change · security-setting change · secret rotation |
+| Input validation failure | Rejected requests · repeated failures from one source |
+| Administrative | User create/delete · role assignment · system config change |
+| Anomalies | Impossible travel · concurrent sessions · brute-force detected |
 
-### Log Content
+Log fields per event: timestamp (UTC ISO 8601) · actor identity · action · resource · source IP / request ID · outcome · correlation ID. ✗ log passwords, raw secrets, full PII (hash/mask), session tokens, or encryption keys.
 
-| Include | ✗ Exclude |
-|---|---|
-| Timestamp (UTC, ISO 8601) | Passwords or credentials |
-| Actor identity (user ID, service ID) | Raw secret values |
-| Action performed | Full PII (hash or mask) |
-| Resource affected | Session tokens |
-| Source IP / request ID | Encryption keys |
-| Outcome (success/failure) | Internal file paths (in user-facing logs) |
-| Correlation ID | |
-
-### Log Protection
+### Integrity Controls
 
 | Rule | Detail |
 |---|---|
-| Immutable storage | Security logs written to append-only storage; ✗ modifiable after write |
-| Access restricted | Security logs readable by security team only; ✗ general access |
-| Retention policy | Minimum retention per compliance requirements; default 1 year |
-| Tamper detection | Integrity verification (checksums, hash chains) on log entries |
-| Separate from application logs | Security audit trail distinct from operational logging |
+| Immutable storage | Append-only; ✗ modifiable after write |
+| Access restricted | Readable by security/compliance roles only |
+| Tamper-evident | Checksums or hash chains on entries |
+| Separate from app logs | Security audit trail distinct from operational logging |
+| Retention | Default ≥ 1 year (regulated: per compliance) → [observability](../observability/STANDARDS.md) |
 
 ---
 
 ## 14. Scale Matrix
 
-Apply security rules proportionally to project scale.
-
-| Security area | PoC / Script | Small Project | Production System |
+| Security area | Prototype | Production | Scale |
 |---|---|---|---|
-| Input validation (§1) | Type checking at entry | Full validation at boundary | Schema validation + rate limiting |
-| Injection prevention (§2) | Parameterized queries | All injection types covered | Automated scanning + WAF |
-| Authentication (§3) | Basic/API key | Token-based with expiry | MFA + short-lived tokens + rotation |
-| Authorization (§4) | Single role | RBAC | RBAC/ABAC + per-resource checks |
-| Secrets management (§5) | Environment variables | Vault/encrypted config | Automated rotation + audit trail |
-| Data protection (§6) | TLS in transit | + encryption at rest | + classification + PII controls |
-| Dependency security (§7) | Manual audit | Automated scanning | Block on CVE + SLA fix windows |
-| Path security (§8) | Basic validation | Allowed root enforcement | + symlink resolution + TOCTOU |
-| Subprocess security (§9) | Argument arrays | + command allowlist | + minimal environment + timeout |
-| Output encoding (§10) | Framework defaults | Context-specific encoding | + CSP + automated XSS testing |
+| Input validation (§2) | Type checking at entry | Full validation at boundary | Schema validation + rate limiting |
+| Injection (§3) | Parameterized queries | All vectors covered | + automated scanning + WAF |
+| Authentication (§5) | API key / basic | Token-based with expiry + classes | MFA + short-lived tokens + rotation |
+| Authorization (§6) | Single role | RBAC + resource-level checks | RBAC/ABAC + policy engine |
+| Secrets (§7) | Env variables | Vault + class-based rotation | Automated rotation + audit trail |
+| Data protection (§8) | TLS in transit | + encryption at rest | + classification + PII controls |
+| Supply chain (§9) | Lock file + manual audit | Automated scanning + SBOM | Signed artifacts + SLSA L3 + OIDC |
+| Filesystem/subprocess (§10) | Argument arrays | + allowed root + command allowlist | + symlink/TOCTOU + minimal env |
 | Error exposure (§11) | Generic messages | + error IDs | + per-environment detail levels |
-| Headers & transport (§12) | HTTPS | + basic security headers | Full header suite + CORS + CSRF |
-| Audit logging (§13) | Auth events only | + access denied + data access | Full security event logging + immutable storage |
+| Transport/headers (§12) | HTTPS | + core security headers | Full header suite + CORS + CSRF |
+| Audit logging (§13) | Auth events | + access-denied + data access | Full event set + immutable storage |
 
-### Scale Transitions
-
-When graduating from one scale to the next, prioritize in order:
-1. Input validation + injection prevention (highest attack surface)
-2. Authentication + authorization (access control)
-3. Secrets management (credential protection)
-4. Everything else (defense in depth)
+Transition priority: (1) input validation + injection · (2) authn + authz · (3) secrets · (4) defense in depth.
 
 ---
 
-## 15. Security Checklist
-
-### New Project
+## 15. Checklist
 
 - [ ] Data classification defined for all data types
-- [ ] Input validation at Tier 3 boundary for all external input
-- [ ] Parameterized queries for all database access
-- [ ] Authentication mechanism selected and implemented at edge
-- [ ] Authorization model chosen; deny-by-default enforced
-- [ ] Secrets in environment variables or vault; ✗ in code or config files
-- [ ] TLS enabled for all network communication
-- [ ] Dependency vulnerability scanning in build pipeline
-- [ ] Error responses expose no internal details in production
-- [ ] Security audit logging for auth events
-
-### New Feature / Endpoint
-
-- [ ] All input validated against explicit schema
-- [ ] No string concatenation into SQL, shell, HTML, or template contexts
-- [ ] Authorization check on every access path (including direct object references)
-- [ ] Output encoding applied for target context
-- [ ] Secrets used only in Tier 3; derived values passed inward
-- [ ] File paths validated against allowed root
-- [ ] Subprocess arguments passed as arrays; commands on allowlist
-- [ ] Error responses return correlation ID, not internal details
-- [ ] Security-relevant actions logged with actor, action, resource, outcome
-
-### Pre-Release Review
-
-- [ ] Dependency audit: zero critical/high CVEs
-- [ ] Security headers configured for all HTTP responses
-- [ ] CORS policy restricts origins to known allowlist
-- [ ] CSRF protection on state-changing endpoints
-- [ ] Rate limiting on authentication and public endpoints
-- [ ] Session management: secure cookies, timeouts, server-side invalidation
-- [ ] PII handling: minimized, encrypted, retention-limited
-- [ ] No stack traces, internal paths, or version info in production responses
-- [ ] Security logs: immutable, access-restricted, retained per policy
-- [ ] Secrets rotation process documented and tested
+- [ ] Input validated once at the Tier 3 boundary; core logic trusts typed data
+- [ ] All validation errors returned at once; ✗ stop at first
+- [ ] Parameterized queries / structured APIs for every injection vector
+- [ ] Output encoded per target context; ✗ raw user data in any output
+- [ ] One canonical auth method per interface; unauthenticated → reject
+- [ ] Access tokens: user ≤ 15 min + refresh rotation · service-to-service ≤ 1 h
+- [ ] Passwords hashed with Argon2id/scrypt/bcrypt + per-user salt; ✗ plaintext
+- [ ] Authorization deny-by-default; resource-level checks on every access path
+- [ ] Secrets in env/vault; ✗ in code, config, or commit history
+- [ ] Rotation by class: service-account ≤ 90 days · CI/deploy token ≤ 24 h
+- [ ] Derived values pass inward; raw secrets never leave Tier 3
+- [ ] PII minimized, encrypted, retention-limited; ✗ PII in logs/errors/receipts
+- [ ] TLS 1.3 (1.2 floor); legacy TLS/SSL disabled; HSTS enabled
+- [ ] Lock files committed; CVE scan blocks critical/high; dependency-confusion pinned
+- [ ] SBOM generated; artifacts + commits signed; secret scanning in CI
+- [ ] CI authenticates via OIDC short-lived tokens; ✗ long-lived static keys
+- [ ] File ops scoped to allowed root; subprocess args as arrays; commands allowlisted
+- [ ] Error responses return correlation ID, ✗ stack traces / internal detail
+- [ ] Security headers + CORS allowlist + CSRF on state-changing endpoints
+- [ ] Security audit trail immutable, access-restricted, retained ≥ 1 year

@@ -1,11 +1,11 @@
 # Git & Version Control Standards
 
-Rules for branching, commits, merges, tags, history hygiene, and repository
-discipline. Language-agnostic — applies to every project regardless of stack.
+> Branching, commits, merges, tags, semantic versioning, changelog format, and history hygiene for every project regardless of stack.
 
-Composable with: `cicd/STANDARDS.md` (pipeline triggers) · `code_review/STANDARDS.md`
-(PR process) · `workflow/STANDARDS.md` (branching ↔ lifecycle) ·
-`security/STANDARDS.md` (secrets in VCS).
+**ID** `git` · **Tier** Delivery · **Version** 1.0
+**Owns** branching strategy · Conventional Commits format · atomic commits · merge strategy (squash/rebase/merge) · **semantic versioning (SemVer 2.0.0)** · **changelog format (Keep a Changelog 1.1.0)** · **release tagging** · signed commits · linear history + rebase policy · protected branches · history hygiene · `.gitignore` · git hooks · large files/LFS · monorepo git conventions · secret-in-VCS remediation
+**Defers to** PR size + reviewer counts + review criteria → [code_review](../code_review/STANDARDS.md) · secrets management architecture + rotation → [security](../security/STANDARDS.md) · release automation + artifact signing + pipeline → [cicd](../cicd/STANDARDS.md) · branching ↔ lifecycle phase → [workflow](../workflow/STANDARDS.md) · changelog rendering/publishing → [documentation](../documentation/STANDARDS.md)
+**Load with** [cicd](../cicd/STANDARDS.md) · [code_review](../code_review/STANDARDS.md) · [workflow](../workflow/STANDARDS.md)
 
 ---
 
@@ -15,8 +15,8 @@ Composable with: `cicd/STANDARDS.md` (pipeline triggers) · `code_review/STANDAR
 2. [Commit Conventions](#2-commit-conventions)
 3. [Commit Message Format](#3-commit-message-format)
 4. [Merge Strategy](#4-merge-strategy)
-5. [Tag Strategy](#5-tag-strategy)
-6. [Pull Requests / Merge Requests](#6-pull-requests--merge-requests)
+5. [Versioning, Tagging & Changelog](#5-versioning-tagging--changelog)
+6. [Pull Requests](#6-pull-requests)
 7. [History Hygiene](#7-history-hygiene)
 8. [.gitignore Rules](#8-gitignore-rules)
 9. [Hooks](#9-hooks)
@@ -30,46 +30,40 @@ Composable with: `cicd/STANDARDS.md` (pipeline triggers) · `code_review/STANDAR
 
 ## 1. Branching Strategy
 
-### Model Selection
+Trunk-based development by default. `main` always deployable, always green.
 
 | Scale | Model | Characteristics |
 |---|---|---|
-| PoC / solo | Trunk-based | Commit directly to `main`, optional short-lived branches |
-| Small team (2–5) | Trunk-based + short-lived branches | Feature branches live < 2 days, merge to `main` |
-| Production / team (5+) | Trunk-based + release branches | `main` always deployable, `release/*` for stabilization |
+| PoC / solo | Trunk-based | Commit direct to `main`, optional short-lived branches |
+| Small team (2–5) | Trunk + short-lived branches | Feature branches merge < 2 days |
+| Production / team (5+) | Trunk + release branches | `main` deployable, `release/*` for stabilization |
 
-✗ Long-lived feature branches (> 3 days). Rebase + split if work exceeds 3 days.
-✗ Gitflow for new projects — overhead without proportional benefit.
+- ✗ Long-lived feature branches (> 3 days). Exceeds 3 days → rebase + split.
+- ✗ Gitflow for new projects — overhead without proportional benefit.
+- Short-lived branches integrate to trunk frequently → reduces merge conflict + review size.
 
 ### Branch Naming
 
 | Pattern | Use |
 |---|---|
-| `main` | Primary integration branch. Always deployable. |
+| `main` | Primary integration branch. Always deployable |
 | `feat/<ticket>-<slug>` | New feature work |
 | `fix/<ticket>-<slug>` | Bug fix |
 | `refactor/<slug>` | Restructuring, no behavior change |
-| `docs/<slug>` | Documentation only |
-| `test/<slug>` | Test additions/fixes only |
-| `chore/<slug>` | Tooling, deps, config |
-| `release/<version>` | Release stabilization (production scale only) |
+| `docs/<slug>` · `test/<slug>` · `chore/<slug>` | Docs · tests · tooling/deps/config |
+| `release/<version>` | Release stabilization (production scale) |
 | `hotfix/<ticket>-<slug>` | Emergency production fix |
 
-Rules:
 - Lowercase, hyphen-delimited. ✗ underscores · ✗ uppercase · ✗ spaces.
-- `<ticket>` = issue/ticket ID when tracking system exists.
-- `<slug>` = 2–4 word summary. Max 50 characters total branch name.
+- `<ticket>` = issue ID when tracking system exists. `<slug>` = 2–4 words. Max 50 chars total.
 - Delete branch after merge. Zero stale branches.
 
-### Branch Lifecycle
+### Branch Lifecycle & Protection
 
-```
-create → push → PR → review → merge → delete
-```
-
-- Branch from `main` (or `release/*` for hotfixes).
-- Pull/rebase from `main` at least daily for branches lasting > 1 day.
+- Lifecycle: **create → push → PR → review → merge → delete**.
+- Branch from `main` (or `release/*` for hotfixes). Rebase from `main` ≥ daily for branches lasting > 1 day.
 - Merge back via PR. ✗ direct push to `main` ; exception: solo PoC scale.
+- Protected branches (`main`, `release/*`): required status checks · required reviews · linear history · ✗ force-push · ✗ deletion. Enforced server-side (§9).
 
 ---
 
@@ -77,228 +71,172 @@ create → push → PR → review → merge → delete
 
 ### Atomic Commits
 
-One commit = one logical change. Logical change = one of:
-- Single feature or sub-feature
-- Single bug fix
-- Single refactor operation
-- Single dependency update
-- Single configuration change
+One commit = one logical change: single feature/sub-feature · single bug fix · single refactor · single dependency update · single config change.
 
-✗ Mix refactoring with feature work in same commit.
-✗ Mix formatting changes with logic changes.
-✗ Commit half-working state (every commit builds + passes tests).
+- ✗ Mix refactoring with feature work in one commit.
+- ✗ Mix formatting changes with logic changes.
+- ✗ Commit half-working state — every commit builds + passes tests.
 
 ### Commit Granularity
 
 | Too small | Right size | Too large |
 |---|---|---|
-| Fix typo in one variable | Add input validation to user registration | Implement entire authentication system |
-| Add single import | Refactor database layer to use connection pooling | Rewrite frontend + backend + tests |
-| Whitespace change | Extract payment processing into dedicated module | Week of work in one commit |
+| Fix typo in one variable | Add input validation to user registration | Implement entire auth system |
+| Add single import | Refactor DB layer to connection pooling | Rewrite frontend + backend + tests |
+| Whitespace change | Extract payment processing into module | Week of work in one commit |
 
 Rule of thumb: reviewer understands the full diff in < 5 minutes → right size.
 
 ### What Gets Committed
 
-- Source code, configuration, infrastructure-as-code, documentation, tests.
+- Source, configuration, infrastructure-as-code, documentation, tests.
 - ✗ Build artifacts · ✗ generated files · ✗ secrets · ✗ local environment files.
-- ✗ Files > 5 MB (see §10 Large Files).
-- Lock files (package-lock.json, Cargo.lock, etc.) → commit when they change.
+- ✗ Files > 5 MB (§10).
+- Lock files (`package-lock.json`, `Cargo.lock`, …) → commit when they change.
 
 ---
 
 ## 3. Commit Message Format
 
-### Structure
-
-```
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
-```
+Conventional Commits. Structure: `<type>(<scope>): <subject>` · blank line · `<body>` · blank line · `<footer>`.
 
 ### Type Prefixes
 
+Spec mandates only `feat` + `fix`; the rest are the widely-adopted commitlint convention — adopt this set repo-wide.
+
 | Type | Meaning |
 |---|---|
-| `feat` | New feature or capability |
-| `fix` | Bug fix |
-| `refactor` | Code restructuring, no behavior change |
-| `docs` | Documentation only |
-| `test` | Add/modify tests only |
-| `chore` | Build, tooling, deps, config |
+| `feat` | New feature or capability (→ MINOR bump) — **spec** |
+| `fix` | Bug fix (→ PATCH bump) — **spec** |
+| `refactor` | Restructuring, no behavior change |
+| `docs` · `test` · `chore` | Docs only · tests only · build/tooling/deps |
 | `perf` | Performance improvement, no behavior change |
-| `style` | Formatting, whitespace — no logic change |
-| `ci` | CI/CD pipeline changes |
-| `revert` | Reverts a previous commit |
+| `style` · `ci` · `revert` | Formatting · CI/CD changes · reverts a prior commit |
 
-### Subject Line Rules
+### Subject Rules
 
 | Rule | Constraint |
 |---|---|
 | Max length | 72 characters |
 | Capitalization | Lowercase after type prefix |
-| Tense | Imperative mood (`add`, not `added` or `adds`) |
+| Tense | Imperative mood (`add`, ✗ `added`/`adds`) |
 | Punctuation | ✗ trailing period |
 | Content | What changed, not how |
 
-### Body Rules
+### Body & Footer
 
-- Separate from subject by blank line.
-- Wrap at 72 characters.
-- Explain *what* and *why*, not *how* (code shows how).
-- Required when subject alone is insufficient context.
-- Reference issue/ticket IDs: `Fixes #123`, `Closes PROJ-456`.
-
-### Footer Rules
-
-- Breaking changes: `BREAKING CHANGE: <description>`
-- Issue references: `Fixes #<id>` | `Closes #<id>` | `Refs #<id>`
-- Co-authors: `Co-authored-by: Name <email>`
+- Body separated from subject by blank line, wrapped at 72 chars. Explain *what* + *why*, not *how*.
+- Breaking change: `!` after type/scope (`feat(api)!: …`) **or** footer `BREAKING CHANGE: <description>` → MAJOR bump.
+- Issue refs: `Fixes #<id>` | `Closes #<id>` | `Refs #<id>`. Co-authors: `Co-authored-by: Name <email>`.
+- `commit-msg` hook validates format (§9). ✗ non-conforming messages on `main`.
 
 ---
 
 ## 4. Merge Strategy
 
-### Strategy Selection
-
-| Strategy | When to use | Result |
+| Strategy | When | Result |
 |---|---|---|
-| **Merge commit** | Release branches → `main`, hotfixes | Preserves full branch history, clear merge point |
-| **Squash merge** | Feature/fix branches → `main` (default) | Single clean commit on `main`, branch detail in PR |
-| **Rebase + fast-forward** | Keeping linear history on small branches | Linear history, no merge commits |
+| **Squash merge** | Feature/fix branches → `main` (default) | Single clean commit on `main`, detail in PR |
+| **Merge commit** | `release/*` → `main` · `hotfix/*` → `main` + `release/*` | Preserves branch history, clear merge point |
+| **Rebase + fast-forward** | Small branches keeping linear history | Linear history, no merge commit |
 
-### Default: Squash Merge for Feature Branches
-
-- All feature/fix branches → squash merge into `main`.
-- PR title becomes commit subject. PR description becomes commit body.
-- Branch history preserved in PR record, not in `main` log.
-
-### When to Use Merge Commit
-
-- `release/*` → `main` (preserve release stabilization history).
-- `hotfix/*` → `main` and `release/*` simultaneously.
-- Long-running integration branches (rare, avoid when possible).
-
-### When to Use Rebase
-
-- Updating feature branch from `main` (rebase onto `main`, not merge `main` into feature).
-- ✗ Rebase commits already pushed to shared branch others have pulled.
-- ✗ Rebase `main` or `release/*` branches.
+- Default: squash merge for feature/fix. PR title → commit subject; PR description → commit body.
+- Update feature branch by rebasing onto `main`. ✗ merge `main` into feature (noise merge commits).
+- ✗ Rebase commits already pushed to a shared branch others pulled.
+- ✗ Rebase `main` or `release/*`.
 
 ---
 
-## 5. Tag Strategy
+## 5. Versioning, Tagging & Changelog
 
-### Semantic Versioning Tags
+Single source of truth for SemVer, release tags, and changelog format across the repo. `cicd` release automation, `documentation` changelog rendering, and `cli` compatibility promises all defer here.
 
-Format: `v<MAJOR>.<MINOR>.<PATCH>` following semver.org.
+### Semantic Versioning (SemVer 2.0.0)
+
+Format `MAJOR.MINOR.PATCH`, tag `v<MAJOR>.<MINOR>.<PATCH>`.
 
 | Component | Increment when |
 |---|---|
-| MAJOR | Breaking changes to public API/contract |
-| MINOR | New features, backward compatible |
-| PATCH | Bug fixes, backward compatible |
+| MAJOR | Breaking change to public API/contract/behavior |
+| MINOR | New feature, backward compatible |
+| PATCH | Bug fix, backward compatible |
 
-### Tag Types
-
-| Pattern | Purpose | Example |
-|---|---|---|
-| `v1.2.3` | Release tag | Stable release |
-| `v1.2.3-rc.1` | Release candidate | Pre-release for validation |
-| `v1.2.3-beta.1` | Beta release | Feature-complete, not fully tested |
-| `v1.2.3-alpha.1` | Alpha release | Early preview |
+- Pre-1.0.0: API unstable; MINOR may break. 1.0.0 = first stable public contract.
+- Pre-release suffixes: `-alpha.N` (early preview) · `-beta.N` (feature-complete, untested) · `-rc.N` (release candidate). Precedence `alpha < beta < rc < release`.
+- Build metadata: `+<meta>` (ignored in precedence).
+- Version lives in exactly one place (package/version file or tag). ✗ version strings scattered across sources.
 
 ### Tag Rules
 
-- Tags on `main` branch only (or `release/*` for pre-release).
-- Annotated tags only (`git tag -a`). ✗ lightweight tags for releases.
-- Tag message = changelog summary for that version.
-- Tag after merge, not before.
-- ✗ Move or delete published tags. Create new patch version instead.
-- Tags trigger release pipelines. See `cicd/STANDARDS.md`.
+| Pattern | Purpose |
+|---|---|
+| `v1.2.3` | Stable release |
+| `v1.2.3-rc.1` · `-beta.1` · `-alpha.1` | Pre-release for validation |
+
+- Tags on `main` only (or `release/*` for pre-release). Tag after merge, ✗ before.
+- Annotated tags only (`git tag -a`). ✗ lightweight tags for releases. Tag message = changelog summary.
+- ✗ Move or delete published tags → create new patch version instead.
+- Tag triggers release pipeline (release automation → [cicd](../cicd/STANDARDS.md)).
+- Monorepo: scope tags to package — `auth/v1.2.3`, `api/v2.0.0` (§11).
+
+### Changelog Format (Keep a Changelog 1.1.0)
+
+`CHANGELOG.md` at repo root, reverse-chronological. Top `## [Unreleased]` section accumulates changes; released on version bump with date `## [1.2.3] - YYYY-MM-DD`.
+
+| Category | Contains |
+|---|---|
+| Added | New features |
+| Changed | Changes to existing functionality |
+| Deprecated | Soon-to-be-removed features |
+| Removed | Removed features |
+| Fixed | Bug fixes |
+| Security | Vulnerability fixes |
+
+- Entry = one line per change, human-readable, issue/PR reference. Breaking changes flagged explicitly.
+- Written for humans, ✗ raw commit dump. Auto-draft from Conventional Commits, then curate.
+- Keep an `[Unreleased]` heading always present. Link versions to compare/diff URLs at file bottom.
 
 ---
 
-## 6. Pull Requests / Merge Requests
+## 6. Pull Requests
 
-### Size Limits
-
-| Metric | Target | Hard limit |
-|---|---|---|
-| Lines changed (diff) | < 300 | 500 |
-| Files changed | < 10 | 20 |
-| Review time | < 30 min | 60 min |
-
-PRs exceeding hard limits → split into stacked PRs or sequential PRs.
-Exception: generated code, migrations, large deletions (flag in description).
+Size limits + reviewer counts + review criteria → [code_review](../code_review/STANDARDS.md). This section covers VCS-side PR mechanics only.
 
 ### PR Description Requirements
 
-Every PR contains:
-- **Summary**: 1–3 bullet points describing what changed and why.
-- **Test plan**: How the change was verified (manual steps, automated tests, or both).
-- **Issue reference**: Link to ticket/issue when applicable.
-- **Breaking changes**: Explicit callout if any.
-- **Screenshots/output**: Required for UI or output-format changes.
-
-### Review Requirements
-
-| Scale | Minimum reviewers | Auto-merge allowed |
-|---|---|---|
-| PoC / solo | 0 (self-merge) | Yes |
-| Small team | 1 | After approval |
-| Production | 2 (1 domain expert) | After all approvals + CI green |
-
-Rules:
-- CI passes before review begins. ✗ Review red PRs.
-- All review comments resolved before merge.
-- Reviewer approves the PR, not individual files.
-- See `code_review/STANDARDS.md` for review criteria and feedback style.
+Every PR contains: **Summary** (1–3 bullets: what + why) · **Test plan** (how verified) · **Issue reference** (when applicable) · **Breaking changes** (explicit callout) · **Screenshots/output** (UI or output-format changes).
 
 ### PR Lifecycle
 
-```
-draft → ready → CI green → review → approved → merge → branch deleted
-```
-
-- Use draft PRs for work-in-progress. ✗ Open non-draft PR until ready for review.
+- **draft → ready → CI green → review → approved → merge → branch deleted**.
+- Draft PRs for work-in-progress. ✗ open non-draft PR until ready for review.
+- CI passes before review begins. All review comments resolved before merge.
 - Stale PRs (no activity > 7 days) → close or rebase and update.
-- Author merges after approval. ✗ Reviewer merges (unless team convention states otherwise).
+- Author merges after approval. ✗ reviewer merges unless team convention states otherwise.
 
 ---
 
 ## 7. History Hygiene
 
-### Clean History on `main`
+### Clean, Linear History on `main`
 
-- `main` history reads as a linear sequence of logical changes.
-- Each commit on `main` builds, passes tests, and is independently deployable.
-- Squash merge (§4) produces this by default for feature branches.
-
-### Rebase Before Merge
-
-- Feature branch behind `main` → rebase onto `main` before creating PR.
-- ✗ Merge `main` into feature branch (creates noise merge commits).
-- Conflicts resolved during rebase, not in a merge commit.
+- `main` reads as a linear sequence of logical changes. Squash merge (§4) produces this by default.
+- Each commit on `main` builds, passes tests, is independently deployable.
+- Feature branch behind `main` → rebase onto `main` before PR. ✗ merge `main` into feature.
 
 ### Interactive Rebase (Local Only)
 
-Permitted on **unpushed** or **force-push-safe** branches only:
-- Squash fixup commits into their parent.
-- Reword unclear commit messages.
-- Reorder commits for logical flow.
-- Drop accidental commits (debug logs, temp files).
+Permitted on **unpushed** or **force-push-safe** branches only: squash fixups · reword unclear messages · reorder for logical flow · drop accidental commits.
 
-✗ Interactive rebase on `main`, `release/*`, or any shared branch.
-✗ Force-push to branches others have checked out without coordination.
+- ✗ Interactive rebase on `main`, `release/*`, or any shared branch.
+- ✗ Force-push to branches others checked out without coordination.
+- Fixup workflow: `git commit --fixup=<sha>` → autosquash before merge. ✗ "fix typo"/"fix lint" commits surviving into `main`.
 
-### Fixup Workflow
+### Signed Commits
 
-- Spotted issue in recent commit → `git commit --fixup=<sha>` → autosquash before merge.
-- ✗ Separate "fix typo" / "fix linting" commits surviving into `main`.
+- Production scale: signed commits required for releases (GPG, SSH, or `gitsign`/Sigstore keyless).
+- Verified-signature status enforced on protected branches. Release tags signed (`git tag -s`).
+- Signing keys tied to identity provider; ✗ shared signing keys across developers.
 
 ---
 
@@ -312,116 +250,54 @@ Permitted on **unpushed** or **force-push-safe** branches only:
 | Dependencies | `node_modules/`, `vendor/`, `.venv/`, `__pycache__/` |
 | Environment files | `.env`, `.env.local`, `.env.*.local` |
 | Secrets / credentials | `*.pem`, `*.key`, `credentials.json`, `secrets.*` |
-| IDE / editor | `.idea/`, `.vscode/`, `*.swp`, `*.swo`, `.DS_Store` |
-| OS files | `Thumbs.db`, `.DS_Store`, `Desktop.ini` |
-| Logs | `*.log`, `logs/` |
-| Coverage / reports | `coverage/`, `.nyc_output/`, `htmlcov/` |
-| Temporary files | `*.tmp`, `*.bak`, `*.orig` |
+| IDE / editor / OS | `.idea/`, `.vscode/`, `*.swp`, `.DS_Store`, `Thumbs.db` |
+| Logs · coverage · temp | `*.log`, `coverage/`, `htmlcov/`, `*.tmp`, `*.bak`, `*.orig` |
 
-### .gitignore Structure
-
-- Root `.gitignore` covers project-wide patterns.
-- Subdirectory `.gitignore` only for directory-specific overrides.
-- ✗ Use `.gitignore` to track negation patterns for secrets (unreliable).
+- Root `.gitignore` covers project-wide patterns; subdirectory files only for local overrides.
+- ✗ rely on `.gitignore` negation patterns for secrets (unreliable).
 - Global gitignore (`~/.config/git/ignore`) for personal IDE/OS files.
-
-### Template Rule
-
-New project → start from language/framework template, then add project-specific entries.
-Review `.gitignore` in code review — missing entries = secrets/artifacts in repo.
+- New project → start from language/framework template + project additions. Review in code review — missing entries = secrets/artifacts in repo.
 
 ---
 
 ## 9. Hooks
 
-### Required Hooks
-
 | Hook | Trigger | Enforces |
 |---|---|---|
-| `pre-commit` | Before commit created | Linting · formatting · ✗ secrets in staged files |
-| `commit-msg` | After message written | Commit message format (§3) |
-| `pre-push` | Before push to remote | Tests pass · build succeeds · ✗ push to protected branches |
+| `pre-commit` | Before commit | Lint · format · ✗ secrets in staged files · reject files > 5 MB |
+| `commit-msg` | After message | Conventional Commits format (§3) |
+| `pre-push` | Before push | Tests pass · build succeeds · branch name valid · ✗ push to protected branches |
 
-### Hook Implementation Rules
-
-- Hooks stored in repo (`.githooks/` or managed by tool like `husky`, `pre-commit`, `lefthook`).
-- Setup automated: `git config core.hooksPath .githooks` in project init script.
-- Hooks run fast (< 10 seconds for pre-commit, < 60 seconds for pre-push).
-- Hook failure = operation blocked. ✗ `--no-verify` bypass ; exception: documented emergency with follow-up fix.
-
-### What Hooks Enforce
-
-| Check | Hook | Action |
-|---|---|---|
-| Secret detection | `pre-commit` | Scan staged diff for API keys, tokens, passwords, private keys |
-| File size | `pre-commit` | Reject files > 5 MB |
-| Commit message format | `commit-msg` | Validate type prefix, subject length, imperative mood |
-| Branch name format | `pre-push` | Validate against naming convention (§1) |
-| Test suite | `pre-push` | Run test suite, block push on failure |
-| Lint | `pre-commit` | Run configured linters on staged files |
-| Format | `pre-commit` | Auto-format staged files (or reject if not formatted) |
-
-### Server-Side Hooks
-
-- Protected branch rules enforced server-side (GitHub/GitLab branch protection).
-- Required status checks, required reviewers — ✗ rely solely on client-side hooks.
-- See `cicd/STANDARDS.md` for pipeline-as-gatekeeper.
+- Hooks stored in repo (`.githooks/` or `husky`/`pre-commit`/`lefthook`). Setup automated: `git config core.hooksPath .githooks` in init script.
+- pre-commit < 10 s, pre-push < 60 s. Hook failure = operation blocked. ✗ `--no-verify` ; exception: documented emergency with follow-up fix.
+- Secret detection scans staged diff for API keys, tokens, passwords, private keys.
+- Protected-branch rules enforced server-side (branch protection). ✗ rely solely on client-side hooks. See [cicd](../cicd/STANDARDS.md) for pipeline-as-gatekeeper.
 
 ---
 
 ## 10. Large Files
-
-### Size Limits
 
 | Threshold | Action |
 |---|---|
 | < 1 MB | Commit normally |
 | 1–5 MB | Justify in commit message; consider alternatives |
 | 5–100 MB | Must use Git LFS |
-| > 100 MB | ✗ In repo. Use external storage (S3, artifact registry) with reference |
+| > 100 MB | ✗ In repo. External storage (S3, artifact registry) with reference |
 
-### Binary File Rules
-
-- ✗ Binary files in repo unless essential (fonts, small icons, certificates).
-- Images → optimize before commit. Prefer SVG over raster when possible.
-- Data files → external storage. Repo stores schema/reference, not data.
-- Compiled artifacts → build from source. ✗ commit `.o`, `.class`, `.pyc`, `.dll`, `.so`.
-
-### Git LFS
-
-- Track by extension pattern, not individual files.
-- LFS patterns declared in `.gitattributes` at repo root.
-- Common LFS patterns: `*.psd`, `*.ai`, `*.sketch`, `*.zip`, `*.tar.gz`, `*.bin`, `*.model`.
-- LFS storage has quota — monitor usage, prune old versions.
-- CI/CD pipelines must `git lfs install` + `git lfs pull` if LFS files needed for build.
+- ✗ Binary files unless essential (fonts, small icons, certificates). Images → optimize; prefer SVG over raster.
+- Data files → external storage. Compiled artifacts → build from source. ✗ commit `.o`, `.class`, `.pyc`, `.dll`, `.so`.
+- LFS tracked by extension pattern in `.gitattributes` at repo root (`*.psd`, `*.zip`, `*.bin`, `*.model`, …). LFS quota monitored, old versions pruned.
+- CI must `git lfs install` + `git lfs pull` if LFS files needed for build.
 
 ---
 
 ## 11. Monorepo Git Practices
 
-### Commit Scope
-
-- Commit touches one package/service/module per commit when possible.
-- Commit message scope = package name: `feat(auth): add token refresh`.
-- Cross-cutting changes (shared lib update) → single commit with scope `shared` or `core`.
-
-### Path-Based Ownership
-
-- `CODEOWNERS` file maps directory paths → responsible teams/individuals.
-- PR auto-assigns reviewers based on changed paths.
-- Every directory with deployable code has at least one owner.
-
-### Sparse Checkout
-
-- Large monorepos → developers use sparse checkout for their area.
-- CI checks run only for affected paths (path-filter in pipeline).
-- See `cicd/STANDARDS.md` for path-based pipeline triggers.
-
-### Monorepo Branch Rules
-
-- Single `main` branch for entire monorepo. ✗ Per-package branches.
-- Tags scoped to package: `auth/v1.2.3`, `api/v2.0.0`.
-- Release branches scoped when needed: `release/auth/1.2`.
+- Commit touches one package/service/module when possible. Scope = package name: `feat(auth): add token refresh`.
+- Cross-cutting changes → single commit scoped `shared`/`core`.
+- `CODEOWNERS` maps directory paths → responsible teams. PR auto-assigns reviewers by changed path. Every deployable directory has ≥ 1 owner.
+- Large monorepos → sparse checkout per area; CI runs only affected paths (path-filter). See [cicd](../cicd/STANDARDS.md).
+- Single `main` for the entire monorepo. ✗ per-package branches. Tags + release branches scoped: `auth/v1.2.3`, `release/auth/1.2`.
 
 ---
 
@@ -429,10 +305,9 @@ Review `.gitignore` in code review — missing entries = secrets/artifacts in re
 
 ### Prevention
 
-- Pre-commit hook scans for secrets (§9). ✗ Rely on developer discipline alone.
+- Pre-commit hook scans for secrets (§9). ✗ rely on developer discipline alone.
 - `.gitignore` covers all known secret file patterns (§8).
-- Environment-specific values → environment variables | secret manager. ✗ Config files in repo.
-- See `security/STANDARDS.md` for secrets management architecture.
+- Environment-specific values → environment variables | secret manager. ✗ config files in repo. See [security](../security/STANDARDS.md) for secrets architecture.
 
 ### Detection Patterns
 
@@ -442,43 +317,42 @@ Review `.gitignore` in code review — missing entries = secrets/artifacts in re
 | Private keys | `-----BEGIN.*PRIVATE KEY-----` |
 | Connection strings | `postgres://`, `mysql://`, `mongodb+srv://` with passwords |
 | Tokens | `Bearer .*`, `token = ".*"`, `password = ".*"` |
-| High-entropy strings | Base64/hex strings > 40 characters in assignment context |
+| High-entropy strings | Base64/hex > 40 chars in assignment context |
 
-Tools: `gitleaks`, `trufflehog`, `detect-secrets`, `git-secrets` — at least one required in pre-commit.
+Tools: `gitleaks`, `trufflehog`, `detect-secrets`, `git-secrets` — ≥ 1 required in pre-commit.
 
 ### Remediation (Secret Committed)
 
-Severity: **Critical**. Treat as security incident.
+Severity **Critical** — security incident. Ordered:
 
-1. **Revoke** the secret immediately. ✗ Remove from history first — assume compromised.
-2. **Rotate** the credential. Generate new secret, deploy to all consumers.
-3. **Remove** from history using `git filter-repo` (preferred) or `BFG Repo-Cleaner`.
-4. **Force-push** cleaned history. All collaborators must re-clone or `git fetch --all && git reset --hard origin/main`.
-5. **Add** pattern to pre-commit hook + `.gitignore` to prevent recurrence.
+1. **Revoke** the secret immediately — assume compromised. ✗ remove from history first.
+2. **Rotate** the credential; deploy new to all consumers.
+3. **Remove** from history via `git filter-repo` (preferred) or BFG Repo-Cleaner. ✗ `git filter-branch` (deprecated, error-prone).
+4. **Force-push** cleaned history. Collaborators re-clone or `git fetch --all && git reset --hard origin/main`.
+5. **Add** pattern to pre-commit hook + `.gitignore`.
 6. **Audit** access logs for the compromised credential.
 
-✗ `git filter-branch` — deprecated, slow, error-prone.
-✗ Assume secret is safe because "nobody saw it" — bots scrape public repos in seconds.
+✗ assume the secret is safe because "nobody saw it" — bots scrape public repos in seconds.
 
 ---
 
 ## 13. Scale Matrix
 
-Git discipline mapped to project scale. See `architecture/STANDARDS.md` §12 for scale definitions.
+Git discipline by project scale. Scale definitions → [architecture](../architecture/STANDARDS.md) §12.
 
 | Practice | PoC | Small | Production |
 |---|---|---|---|
 | Branching model | Direct to `main` | Trunk + short branches | Trunk + release branches |
 | Commit message format | Type prefix + subject | Full format (§3) | Full format + issue refs |
-| PR required | ✗ | Required, 1 reviewer | Required, 2 reviewers |
-| Squash merge | Optional | Default | Default (merge for releases) |
-| Tags | Optional | `v*` on releases | Semver + release notes |
-| Pre-commit hooks | Recommended | Required (lint + format) | Required (lint + format + secrets) |
+| PR required | ✗ | Required (counts → code_review) | Required (counts → code_review) |
+| Merge strategy | Optional | Squash default | Squash default (merge for releases) |
+| Tags | Optional | `v*` on releases | SemVer + release notes |
+| Changelog | ✗ | `[Unreleased]` maintained | Keep a Changelog per release |
+| Pre-commit hooks | Recommended | Lint + format | Lint + format + secrets |
 | Pre-push hooks | ✗ | Recommended (tests) | Required (tests + build) |
-| .gitignore | Basic template | Full template | Full + audited |
+| `.gitignore` | Basic template | Full template | Full + audited |
 | Branch protection | ✗ | `main` protected | `main` + `release/*` protected |
 | CODEOWNERS | ✗ | ✗ | Required |
-| Git LFS | If needed | If needed | Policy documented |
 | Secret scanning | ✗ | Pre-commit | Pre-commit + CI + server-side |
 | Signed commits | ✗ | ✗ | Required for releases |
 | History cleanliness | Informal | Clean `main` (squash) | Linear `main`, auditable |
@@ -489,42 +363,34 @@ Git discipline mapped to project scale. See `architecture/STANDARDS.md` §12 for
 
 ### New Repository Setup
 
-- [ ] `main` branch created and set as default
-- [ ] Branch protection rules configured
+- [ ] `main` created, set as default, branch protection configured
 - [ ] `.gitignore` from language/framework template + project additions
 - [ ] `.gitattributes` with LFS patterns if needed
 - [ ] `CODEOWNERS` file (production scale)
-- [ ] Hooks configured (`.githooks/` or tool-managed)
-- [ ] Pre-commit: linting + formatting + secret scanning
-- [ ] Commit-msg: message format validation
-- [ ] CI pipeline triggered on push + PR (see `cicd/STANDARDS.md`)
-- [ ] Merge strategy configured in platform (squash default)
-- [ ] PR template with summary + test plan sections
+- [ ] Hooks configured: pre-commit (lint + format + secret scan) · commit-msg (format)
+- [ ] CI triggered on push + PR ([cicd](../cicd/STANDARDS.md))
+- [ ] Merge strategy set in platform (squash default) · PR template with summary + test plan
+- [ ] `CHANGELOG.md` created with `[Unreleased]` section
 
 ### Every Commit
 
 - [ ] One logical change per commit
-- [ ] Commit message follows format (§3): type prefix, imperative, ≤ 72 char subject
+- [ ] Message follows Conventional Commits (§3): type prefix, imperative, ≤ 72-char subject
 - [ ] No secrets, credentials, or environment-specific values
-- [ ] No files > 5 MB (use LFS or external storage)
-- [ ] No build artifacts or generated files
-- [ ] All tests pass · build succeeds
-- [ ] Pre-commit hooks pass without `--no-verify`
+- [ ] No files > 5 MB (LFS or external storage) · no build artifacts or generated files
+- [ ] Tests pass · build succeeds · pre-commit hooks pass without `--no-verify`
 
 ### Every PR
 
 - [ ] Branch name follows convention (§1)
 - [ ] PR description: summary + test plan + issue reference
-- [ ] Diff size within limits (< 300 lines target, < 500 hard limit)
-- [ ] CI green before requesting review
-- [ ] All review comments resolved
-- [ ] Squash merged (feature/fix) or merge commit (release/hotfix)
-- [ ] Branch deleted after merge
+- [ ] CI green before requesting review · all review comments resolved
+- [ ] Squash merged (feature/fix) or merge commit (release/hotfix) · branch deleted after merge
 
 ### Release
 
-- [ ] Annotated tag on `main`: `v<MAJOR>.<MINOR>.<PATCH>`
-- [ ] Tag message contains changelog summary
-- [ ] All CI checks pass on tagged commit
-- [ ] Release notes published (platform release feature or `CHANGELOG.md`)
+- [ ] Annotated (signed at production scale) tag on `main`: `v<MAJOR>.<MINOR>.<PATCH>`
+- [ ] Version bumped per SemVer in the single source of truth
+- [ ] `CHANGELOG.md` `[Unreleased]` promoted to the version with date
+- [ ] All CI checks pass on the tagged commit
 - [ ] Pre-release tags used for RC/beta/alpha: `v1.0.0-rc.1`

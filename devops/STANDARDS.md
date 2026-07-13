@@ -1,12 +1,11 @@
 # DevOps & Infrastructure Standards
 
-Rules for infrastructure provisioning, deployment, environment management,
-incident response, and operational resilience. Language-agnostic.
+> Infrastructure provisioning, containers, deployment, environment management, incident response, on-call, backup/DR, and cost — the operational layer that keeps a service alive.
 
-Composable with: architecture/STANDARDS.md (core principles),
-security/STANDARDS.md (infrastructure security), cicd/STANDARDS.md
-(deployment pipeline), observability/STANDARDS.md (monitoring integration),
-configuration/STANDARDS.md (environment management).
+**ID** `devops` · **Tier** Delivery · **Version** 1.0
+**Owns** infrastructure-as-code + drift detection · container standards (distroless/non-root/read-only rootfs) · immutable infrastructure · 12-Factor · deployment patterns (infra mechanics) · environment management + parity · incident response (SEV levels + blameless postmortems) · **on-call rotation + escalation + paging policy** · scaling + autoscaling · **backup · DR · RTO/RPO · failover cadence** · networking + TLS · vault/secret-injection mechanics · **cost management (infra + LLM/API token spend)**
+**Defers to** alert design + resource thresholds → [observability](../observability/STANDARDS.md) · secrets rotation cadence + lifecycle + token classes → [security](../security/STANDARDS.md) · deployment pipeline stages + release automation → [cicd](../cicd/STANDARDS.md) · configuration cascade + sourcing → [configuration](../configuration/STANDARDS.md) · WAL/PITR + replica lag + restore mechanics → [database](../database/STANDARDS.md) · SLO definitions + log/metric formats → [observability](../observability/STANDARDS.md) · application security + authz → [security](../security/STANDARDS.md)
+**Load with** [cicd](../cicd/STANDARDS.md) · [observability](../observability/STANDARDS.md) · [security](../security/STANDARDS.md) · [configuration](../configuration/STANDARDS.md)
 
 ---
 
@@ -16,7 +15,7 @@ configuration/STANDARDS.md (environment management).
 2. [Container Standards](#2-container-standards)
 3. [Deployment Patterns](#3-deployment-patterns)
 4. [Environment Management](#4-environment-management)
-5. [Monitoring & Alerting](#5-monitoring--alerting)
+5. [Metrics Collection](#5-metrics-collection)
 6. [Incident Response](#6-incident-response)
 7. [Scaling Strategy](#7-scaling-strategy)
 8. [Backup & Disaster Recovery](#8-backup--disaster-recovery)
@@ -30,211 +29,165 @@ configuration/STANDARDS.md (environment management).
 
 ## 1. Infrastructure as Code
 
-All infrastructure defined in version-controlled declarative files.
-✗ manual provisioning · ✗ clickops · ✗ undocumented changes.
-
-### Core Rules
+All infrastructure defined in version-controlled declarative files. ✗ manual provisioning · ✗ clickops · ✗ undocumented changes.
 
 | Rule | Detail |
 |---|---|
-| Declarative over imperative | Describe desired state; tooling reconciles. See architecture/STANDARDS.md §10 (Reconciliation Loop) |
-| Version controlled | Every infra file committed to repo; same branching rules as application code. See git/STANDARDS.md |
-| Idempotent applies | Running same config twice → identical result. ✗ side effects on re-apply |
+| Declarative over imperative | Describe desired state; tooling reconciles. See [architecture](../architecture/STANDARDS.md) §10 |
+| Version controlled | Every infra file committed; same branching rules as app code ([git](../git/STANDARDS.md)) |
+| Idempotent applies | Same config twice → identical result. ✗ side effects on re-apply |
 | Reproducible | Any environment rebuildable from repo + secrets vault alone. ✗ snowflake servers |
-| Modular | Reusable components per resource type. ✗ monolithic config files >300 lines |
-| Parameterized | Environment differences expressed as variables, not separate configs |
-| Drift detection | Automated comparison: declared state vs actual state. Alert on divergence |
+| Immutable infra | Servers replaced, ✗ mutated in place. Rebuild + redeploy, ✗ patch running hosts |
+| Modular | Reusable components per resource type. ✗ monolithic config files > 300 lines |
+| Parameterized | Environment differences as variables, not separate configs |
+| Drift detection | Automated compare declared vs actual state. Alert on divergence |
 | Plan before apply | Every change previewed (dry-run/plan) before execution. ✗ direct apply without review |
-| State management | Remote state with locking. ✗ local-only state files. ✗ concurrent state modification |
-| Least privilege | IaC service accounts get minimum permissions required for provisioning |
+| State management | Remote state with locking. ✗ local-only state. ✗ concurrent modification |
+| Least privilege | IaC service accounts get minimum provisioning permissions |
 
 ### Change Workflow
 
-1. Branch from main → modify infra code
-2. Run plan/dry-run → review diff
-3. Peer review required for production changes
-4. Apply via CI/CD pipeline. ✗ manual apply to production
-5. Verify drift detection passes post-apply
-6. Commit state changes
+1. Branch from `main` → modify infra code.
+2. Run plan/dry-run → review diff.
+3. Peer review required for production changes.
+4. Apply via CI/CD pipeline. ✗ manual apply to production.
+5. Verify drift detection passes post-apply. Commit state changes.
 
 ### Resource Tagging
 
-Every provisioned resource tagged with:
-
-| Tag | Purpose |
-|---|---|
-| `environment` | dev / staging / production |
-| `service` | Owning service name |
-| `team` | Responsible team |
-| `cost-center` | Budget allocation |
-| `managed-by` | IaC tool identifier |
-| `created-date` | Provisioning timestamp |
-
-✗ untagged resources in any environment above dev.
+Every provisioned resource tagged: `environment` · `service` · `team` · `cost-center` · `managed-by` · `created-date`. ✗ untagged resources in any environment above dev.
 
 ---
 
 ## 2. Container Standards
 
-### Base Image Selection
-
-| Criteria | Rule |
-|---|---|
-| Minimal base | Use distroless or alpine variants. ✗ full OS images unless required by runtime |
-| Pinned versions | Tag with digest hash, not `latest`. ✗ mutable tags in production |
-| Trusted sources | Official images or internal registry only. ✗ unverified third-party images |
-| Regular rebuilds | Base images rebuilt ≥ monthly to pull security patches |
-| Scanning | Every image scanned for CVEs before registry push. Block critical/high severity |
-
-### Image Build Rules
+### Base Image
 
 | Rule | Detail |
 |---|---|
-| Layer optimization | Least-changing layers first; frequently-changing layers last |
-| Multi-stage builds | Build dependencies ✗ in final image. Compile in builder stage, copy artifacts only |
-| Single process | One process per container. ✗ init systems inside containers ; exception: log sidecar |
-| No secrets in layers | ✗ secrets in build args, ENV, or COPY. Use runtime injection only |
-| Size budget | Application images < 500MB. Alert if exceeded. Distroless targets < 100MB |
-| Reproducible builds | Same source commit → same image (content-addressable). Pin all package versions |
-| Non-root execution | Container runs as non-root user. ✗ root in production containers |
-| Read-only filesystem | Root filesystem mounted read-only. Writable volumes for data paths only |
-| Health checks | Every container defines health check endpoint or command |
-| Graceful shutdown | Handle SIGTERM → drain connections → exit within termination grace period |
+| Minimal base | Distroless or alpine. ✗ full OS images unless required by runtime |
+| Pinned by digest | Tag with digest hash, ✗ `latest` or mutable tags in production |
+| Trusted sources | Official or internal registry only. ✗ unverified third-party images |
+| Regular rebuilds | Base images rebuilt ≥ monthly for security patches |
+| Scanned | Every image scanned for CVEs before registry push. Block critical/high |
 
-### Image Lifecycle
+### Build
 
-| Stage | Action |
+| Rule | Detail |
 |---|---|
-| Build | CI builds on every merge to main |
-| Scan | Vulnerability scan + policy check |
-| Tag | Semantic version + git SHA |
-| Push | To internal registry only |
-| Promote | dev → staging → production (same image, ✗ rebuild) |
-| Retain | Keep last 10 versions per service. Purge untagged images > 7 days |
+| Layer optimization | Least-changing layers first; frequently-changing last |
+| Multi-stage builds | Build deps ✗ in final image. Compile in builder, copy artifacts only |
+| Single process | One process per container ; exception: log sidecar. ✗ init systems inside |
+| No secrets in layers | ✗ secrets in build args, ENV, COPY. Runtime injection only (§10) |
+| Size budget | App images < 500 MB (alert if exceeded). Distroless targets < 100 MB |
+| Reproducible | Same source commit → same image (content-addressable). Pin all package versions |
+| Non-root | Container runs as non-root user. ✗ root in production containers |
+| Read-only rootfs | Root filesystem mounted read-only. Writable volumes for data paths only |
+| Health checks | Every container defines health check endpoint/command |
+| Graceful shutdown | SIGTERM → drain connections → exit within termination grace period |
+
+### Lifecycle
+
+Build (CI on merge to `main`) → Scan (CVE + policy) → Tag (SemVer + git SHA) → Push (internal registry only) → Promote (dev → staging → production, same image, ✗ rebuild) → Retain (last 10 versions per service; purge untagged > 7 days).
 
 ---
 
 ## 3. Deployment Patterns
 
-### Strategy Selection
+Deployment strategy = infra mechanics. Pipeline integration + progressive-delivery gating → [cicd](../cicd/STANDARDS.md).
 
-| Strategy | Use When | Risk | Rollback Speed | Resource Cost |
-|---|---|---|---|---|
-| Rolling update | Default for stateless services | Low | Medium (progressive) | 1x + surge capacity |
-| Blue-green | Zero-downtime required · database migration involved | Low | Fast (switch route) | 2x during deploy |
-| Canary | High-risk change · large user base · measurable SLIs | Very low | Fast (route shift) | 1x + canary slice |
-| Recreate | Stateful singleton · incompatible versions cannot coexist | High | Slow (full redeploy) | 1x |
-| Feature flag | Decouple deploy from release · gradual rollout by segment | Very low | Instant (flag toggle) | 1x |
-
-See cicd/STANDARDS.md for pipeline integration of deployment strategies.
+| Strategy | Use When | Rollback Speed | Resource Cost |
+|---|---|---|---|
+| Rolling update | Default for stateless services | Medium (progressive) | 1x + surge |
+| Blue-green | Zero-downtime · DB migration involved | Fast (switch route) | 2x during deploy |
+| Canary | High-risk change · large user base · measurable SLIs | Fast (route shift) | 1x + canary slice |
+| Recreate | Stateful singleton · versions cannot coexist | Slow (full redeploy) | 1x |
+| Feature flag | Decouple deploy from release · gradual by segment | Instant (flag toggle) | 1x |
 
 ### Deployment Rules
 
 | Rule | Detail |
 |---|---|
-| Immutable artifacts | Deploy exact artifact from build. ✗ recompile at deploy time |
-| Promotion not rebuild | Same image/artifact promoted across environments. ✗ separate builds per env |
-| Automated rollback | Failed health checks → automatic rollback to last known good. ✗ manual-only rollback |
-| Deployment timeout | Every deployment has max duration. Exceeded → automatic rollback |
-| One service at a time | ✗ simultaneous deployment of coupled services unless orchestrated with dependency order |
-| Drain before stop | Remove instance from load balancer → wait for in-flight requests → stop |
-| Smoke tests | Post-deploy smoke test suite runs automatically. Failure → rollback |
-| Deploy log | Every deployment recorded: who, what version, when, which environment, outcome |
+| Immutable artifacts | Deploy exact build artifact. ✗ recompile at deploy time |
+| Promotion not rebuild | Same image promoted across environments. ✗ separate builds per env |
+| Automated rollback | Failed health checks → automatic rollback to last known good. ✗ manual-only |
+| Deployment timeout | Every deploy has max duration. Exceeded → automatic rollback |
+| One service at a time | ✗ simultaneous deploy of coupled services unless dependency-ordered |
+| Drain before stop | Remove from load balancer → wait for in-flight requests → stop |
+| Smoke tests | Post-deploy smoke suite runs automatically. Failure → rollback |
+| Deploy log | Every deploy recorded: who, version, when, environment, outcome |
 
-### Rollback Criteria
-
-Automatic rollback triggers:
-- Health check failure rate > 50% within first 5 minutes
-- Error rate increase > 2x baseline within canary window
-- Latency p99 increase > 3x baseline
-- Any critical alert fired during deployment window
+Automatic rollback triggers: health check failure > 50% within first 5 min · error rate > 2x baseline within canary window · latency p99 > 3x baseline · any critical alert fired during deployment window.
 
 ---
 
 ## 4. Environment Management
 
-Every environment reproducible from IaC + configuration + secrets vault.
-✗ environment-specific code paths. Behavior differences expressed through
-configuration only. See configuration/STANDARDS.md for cascade rules.
+Every environment reproducible from IaC + configuration + secrets vault. ✗ environment-specific code paths — behavior differences via configuration only (cascade → [configuration](../configuration/STANDARDS.md)).
 
 ### Environment Tiers
 
-| Tier | Environment | Purpose | Data | Access |
-|---|---|---|---|---|
-| 0 | Local/dev | Developer workstation | Synthetic/seed | Developer |
-| 1 | CI | Automated test execution | Synthetic | Pipeline |
-| 2 | Staging | Pre-production validation | Anonymized copy of production | Team |
-| 3 | Production | Live traffic | Real | Restricted |
+| Tier | Environment | Data | Access |
+|---|---|---|---|
+| 0 | Local/dev | Synthetic/seed | Developer |
+| 1 | CI | Synthetic | Pipeline |
+| 2 | Staging | Anonymized copy of production | Team |
+| 3 | Production | Real | Restricted |
 
 ### Parity Rules
 
 | Rule | Detail |
 |---|---|
-| Architecture parity | All environments use same topology (services, queues, databases). ✗ skipping components in lower tiers |
-| Version parity | Staging runs same versions of all dependencies as production |
-| Configuration parity | Same config structure across all tiers; only values differ (endpoints, credentials, resource sizes) |
-| Data shape parity | Non-production data matches production schema exactly. ✗ schema drift between environments |
+| Architecture parity | Same topology (services, queues, DBs). ✗ skipping components in lower tiers |
+| Version parity | Staging runs same dependency versions as production |
+| Configuration parity | Same config structure across tiers; only values differ |
+| Data shape parity | Non-production data matches production schema exactly. ✗ schema drift |
 | Infrastructure parity | Same OS, runtime versions, networking model. Scale differs, architecture does not |
 
-### Provisioning Rules
+### Provisioning
 
-- New environment provisioned entirely from IaC. Time to provision ≤ 1 hour for full stack
-- Environment teardown fully automated. ✗ orphaned resources after decommission
-- Ephemeral environments for feature branches — auto-destroy after merge or 7 days idle
-- Production-like environment available for load testing — isolated from staging
-- Environment inventory maintained: list of all active environments, their purpose, owner, expiry
+- New environment provisioned entirely from IaC. Time to provision ≤ 1 hour for full stack.
+- Teardown fully automated. ✗ orphaned resources after decommission.
+- Ephemeral environments for feature branches — auto-destroy after merge or 7 days idle.
+- Production-like environment for load testing — isolated from staging.
+- Environment inventory maintained: active environments, purpose, owner, expiry.
 
 ---
 
-## 5. Monitoring & Alerting
+## 5. Metrics Collection
 
-Infrastructure and application monitoring required for all production services.
-See observability/STANDARDS.md for structured logging, metrics format, and
-health check patterns.
+Which infrastructure + application metrics to collect and at what interval. **Alert design rules, resource thresholds, and SLO burn-rate policy → [observability](../observability/STANDARDS.md)** — ✗ restate thresholds here.
 
 ### Infrastructure Metrics (required)
 
-| Metric | Collection Interval | Alert Threshold |
-|---|---|---|
-| CPU utilization | 30s | > 80% sustained 5 min |
-| Memory utilization | 30s | > 85% sustained 5 min |
-| Disk usage | 60s | > 80% capacity |
-| Disk I/O latency | 30s | > 50ms p99 sustained 2 min |
-| Network throughput | 30s | > 80% link capacity |
-| Container restart count | Event-driven | > 3 restarts in 10 min |
-| Node availability | 15s | Any node unreachable > 1 min |
+| Metric | Collection Interval |
+|---|---|
+| CPU utilization | 30s |
+| Memory utilization | 30s |
+| Disk usage | 60s |
+| Disk I/O latency | 30s |
+| Network throughput | 30s |
+| Container restart count | Event-driven |
+| Node availability | 15s |
 
 ### Application Metrics (required)
 
-| Metric | Collection Interval | Alert Threshold |
-|---|---|---|
-| Request rate | 10s | Deviation > 3σ from baseline |
-| Error rate (5xx) | 10s | > 1% of total requests |
-| Latency p50 / p95 / p99 | 10s | p99 > 2x baseline |
-| Queue depth | 30s | > 80% configured max |
-| Active connections | 30s | > 80% connection pool max |
-| Dependency health | 30s | Any dependency unhealthy > 1 min |
-| Business metrics | Service-specific | Service-specific |
-
-### Alert Design Rules
-
-| Rule | Detail |
+| Metric | Collection Interval |
 |---|---|
-| Actionable | Every alert has a defined response action. ✗ informational-only alerts in paging channels |
-| Severity mapped | Every alert assigned severity level (§6). Severity drives notification channel |
-| Deduplicated | Same root cause → one alert, not N alerts per instance |
-| Auto-resolving | Alert clears when condition resolves. ✗ manual close required for transient issues |
-| Runbook linked | Every paging alert links to runbook with diagnostic steps |
-| SLO-based | Prefer SLO burn-rate alerts over static thresholds for user-facing metrics |
-| Tuned quarterly | Review alert noise quarterly. Tune or remove alerts with > 50% false positive rate |
-| Escalation path | Unacknowledged alert escalates after defined timeout (see §6) |
+| Request rate | 10s |
+| Error rate (5xx) | 10s |
+| Latency p50 / p95 / p99 | 10s |
+| Queue depth | 30s |
+| Active connections | 30s |
+| Dependency health | 30s |
+| Business metrics | Service-specific |
 
 ### Monitoring Architecture
 
-- Metrics pipeline independent from application data path. Monitoring failure ✗ impacts application
-- Retention: raw metrics ≥ 15 days, downsampled ≥ 1 year
-- Dashboards: one service overview dashboard per service + one infrastructure overview
-- Dashboard hierarchy: system overview → service detail → instance detail
+- Metrics pipeline independent from application data path. Monitoring failure ✗ impacts application.
+- Retention: raw metrics ≥ 15 days, downsampled ≥ 1 year.
+- Dashboards: one service-overview per service + one infrastructure overview. Hierarchy: system → service → instance.
+- Every collected metric feeds observability's alert + SLO layer; thresholds + escalation live there.
 
 ---
 
@@ -242,34 +195,40 @@ health check patterns.
 
 ### Severity Levels
 
-| Severity | Definition | Response Time | Update Cadence | Escalation After |
+| Severity | Definition | Response Time | Update Cadence | Escalate After |
 |---|---|---|---|---|
-| SEV-1 Critical | Complete service outage · data loss · security breach | 15 min | Every 30 min | 30 min unacknowledged |
-| SEV-2 Major | Partial outage · degraded for >50% users · SLO breach | 30 min | Every 1 hour | 1 hour unacknowledged |
-| SEV-3 Minor | Degraded for <50% users · non-critical feature down | 4 hours | Every 4 hours | 8 hours unacknowledged |
+| SEV-1 Critical | Complete outage · data loss · security breach | 15 min | Every 30 min | 30 min unacknowledged |
+| SEV-2 Major | Partial outage · degraded > 50% users · SLO breach | 30 min | Every 1 hour | 1 hour unacknowledged |
+| SEV-3 Minor | Degraded < 50% users · non-critical feature down | 4 hours | Every 4 hours | 8 hours unacknowledged |
 | SEV-4 Low | Cosmetic · minor degradation · workaround available | Next business day | Daily | None |
 
 ### Incident Workflow
 
-1. **Detect** → automated alert or manual report
-2. **Triage** → assign severity, incident commander, communication lead
-3. **Communicate** → status page update within response time SLA
-4. **Diagnose** → identify root cause or contributing factors
-5. **Mitigate** → restore service (fix forward or rollback). Mitigation priority > root cause
-6. **Resolve** → confirm full recovery, monitoring returns to baseline
-7. **Postmortem** → blameless review within 5 business days (SEV-1/2), 10 days (SEV-3)
+Detect (alert/report) → Triage (severity, incident commander, comms lead) → Communicate (status page within response SLA) → Diagnose → Mitigate (restore; mitigation priority > root cause) → Resolve (confirm baseline) → Postmortem.
+
+### On-Call
+
+| Rule | Detail |
+|---|---|
+| Rotation size | ≥ 2 engineers per rotation. ✗ single point of human failure |
+| Roles | Primary (first page) + secondary (backup, auto-paged if primary misses ack) |
+| Cadence | Weekly shifts default. ✗ shifts > 1 week (fatigue) · ✗ back-to-back weeks for same engineer |
+| Escalation path | Primary → secondary → incident commander → engineering lead. Timeouts per SEV (table above) |
+| Handoff | Documented handoff each rotation: open incidents, known risks, in-flight changes, silenced alerts |
+| Paging policy | Page only on SLO burn or user-facing impact. ✗ page on causes (high CPU, single node down) that have no user impact — those are tickets, not pages |
+| Toil / comp limit | Track page volume; > 2 pages/shift off-hours sustained → fix the underlying noise. Off-hours paging compensated per policy |
+| Runbook required | Every paging alert links to a runbook with diagnostic + mitigation steps ([observability](../observability/STANDARDS.md) owns alert-to-runbook linkage) |
 
 ### Postmortem Rules
 
 | Rule | Detail |
 |---|---|
-| Blameless | Focus on systems, processes, and tooling. ✗ individual blame |
-| Timeline | Minute-by-minute timeline from detection to resolution |
-| Root cause | Identify contributing factors, not single root cause. Use 5-whys or fault tree |
-| Action items | Every postmortem produces ≥ 1 concrete action item with owner and deadline |
-| Follow-through | Action items tracked to completion. Review in next team sync |
-| Published | Postmortems accessible to entire engineering organization |
-| Recurrence check | If same root cause appears twice → escalate remediation priority to critical |
+| Blameless | Focus on systems, processes, tooling. ✗ individual blame |
+| Timeline | Minute-by-minute from detection to resolution |
+| Root cause | Contributing factors, not single cause. 5-whys or fault tree |
+| Action items | ≥ 1 concrete item with owner + deadline, tracked to completion |
+| Published | Accessible to entire engineering org |
+| Recurrence check | Same root cause twice → escalate remediation to critical |
 
 ### Remediation Timelines
 
@@ -280,74 +239,70 @@ health check patterns.
 | SEV-3 | Within 1 business day | Next sprint |
 | SEV-4 | Best effort | Backlog |
 
+Postmortem completed blameless within 5 business days (SEV-1/2), 10 days (SEV-3).
+
 ---
 
 ## 7. Scaling Strategy
-
-### Horizontal vs Vertical Selection
 
 | Factor | Horizontal (add instances) | Vertical (add resources) |
 |---|---|---|
 | Stateless services | Preferred | Fallback |
 | Stateful services | Requires coordination (sharding, consensus) | Preferred initially |
-| Cost efficiency | Linear cost scaling | Diminishing returns at high end |
 | Failure isolation | Instance failure = partial impact | Single point of failure |
-| Complexity | Load balancer + service discovery required | Simple; no coordination |
 | Scaling ceiling | Near-unlimited | Hardware limits |
-| Default choice | ✓ Stateless workloads | ✓ Database, cache, single-writer |
+| Default | ✓ Stateless workloads | ✓ Database, cache, single-writer |
 
 ### Auto-Scaling Rules
 
 | Rule | Detail |
 |---|---|
 | Metric-driven | Scale on measured demand (CPU, request rate, queue depth). ✗ time-based only |
-| Cooldown period | Minimum 3 min between scale events. Prevents oscillation |
+| Cooldown | Minimum 3 min between scale events. Prevents oscillation |
 | Scale-up aggressive | Scale up at 70% threshold. ✗ wait until saturated |
-| Scale-down conservative | Scale down at 30% threshold sustained 10 min. Prevents premature shrink |
-| Minimum instances | Production services: minimum 2 instances always. ✗ scale to zero in production (except batch) |
-| Maximum instances | Hard cap defined per service. Prevents runaway scaling and cost explosion |
-| Health-aware | New instance must pass health check before receiving traffic |
-| Graceful drain | Instance marked for removal → drain connections → terminate |
+| Scale-down conservative | Scale down at 30% sustained 10 min. Prevents premature shrink |
+| Minimum instances | Production: ≥ 2 always. ✗ scale to zero in production (except batch) |
+| Maximum instances | Hard cap per service. Prevents runaway scaling + cost explosion |
+| Health-aware | New instance passes health check before receiving traffic |
 
 ### Capacity Planning
 
-- Quarterly capacity review: current utilization vs projected growth
-- Headroom target: 40% spare capacity at peak load
-- Load test before scaling assumptions: verify linear scaling holds
-- Identify bottleneck resources per service (CPU, memory, I/O, network, database connections)
-- Document scaling limits: at what load does each service degrade?
-- Pre-provision for known traffic events (launches, marketing campaigns)
+- Quarterly review: current utilization vs projected growth. Headroom target: 40% spare at peak.
+- Load-test before scaling assumptions; verify linear scaling holds. Identify bottleneck resource per service.
+- Document scaling limits (at what load each service degrades). Pre-provision for known traffic events.
 
 ---
 
 ## 8. Backup & Disaster Recovery
 
+Sole owner of backup cadence, DR patterns, RTO/RPO, and failover testing. `database` keeps only WAL/PITR + replica lag + restore mechanics and defers cadence/RTO/RPO here.
+
 ### Backup Requirements
 
-| Data Class | Backup Frequency | Retention | Encryption |
+| Data Class | Frequency | Retention | Encryption |
 |---|---|---|---|
 | Database (transactional) | Continuous (WAL/replication) + daily full | 30 days incremental · 1 year full | At rest + in transit |
 | Database (analytical) | Daily full | 90 days | At rest + in transit |
 | Object storage / files | Daily incremental · weekly full | 90 days incremental · 1 year full | At rest + in transit |
 | Configuration / secrets | On every change (version controlled) | Indefinite (git history) | Encrypted at rest |
-| Container images | Retained in registry (§2 lifecycle) | Per registry retention policy | Registry-managed |
+| Container images | Retained in registry (§2) | Per registry policy | Registry-managed |
 
 ### Backup Rules
 
 | Rule | Detail |
 |---|---|
-| Automated | All backups fully automated. ✗ manual backup procedures as primary strategy |
+| Automated | All backups automated. ✗ manual procedures as primary strategy |
 | Tested | Restore tested ≥ monthly for critical data, quarterly for all data |
-| Offsite | Backups stored in separate region/availability zone from primary |
-| Monitored | Backup job success/failure monitored. Alert on failure |
-| Immutable | Production backups immutable for retention period. ✗ overwrite or delete before expiry |
-| Documented | Restore procedure documented as runbook. Restore tested by on-call, not just backup team |
+| Offsite | Stored in separate region/AZ from primary |
+| Monitored | Job success/failure monitored. Alert on failure |
+| Immutable | Production backups immutable for retention period. ✗ overwrite/delete before expiry |
+| Documented | Restore procedure is a runbook; tested by on-call, not just backup team |
 
 ### RTO / RPO Targets
 
 | Tier | RPO (max data loss) | RTO (max downtime) | Example |
 |---|---|---|---|
-| Critical | < 1 min (synchronous replication) | < 15 min | Payment processing, auth |
+| Critical | < 1 min (synchronous replication) | < 15 min | Payment, auth |
 | High | < 15 min | < 1 hour | Core APIs, user-facing services |
 | Standard | < 1 hour | < 4 hours | Internal tools, batch jobs |
 | Low | < 24 hours | < 24 hours | Dev environments, analytics |
@@ -356,12 +311,12 @@ health check patterns.
 
 | Pattern | Use When | RPO | RTO | Cost |
 |---|---|---|---|---|
-| Active-active multi-region | Critical tier · zero tolerance | ~0 | Minutes | High (2x+ resources) |
-| Active-passive failover | High tier · cost-constrained | Minutes | 15–60 min | Medium (standby resources) |
-| Pilot light | Standard tier · infrequent DR need | Minutes–hours | 1–4 hours | Low (minimal standby) |
-| Backup and restore | Low tier · acceptable long recovery | Hours | Hours–day | Lowest (storage only) |
+| Active-active multi-region | Critical tier · zero tolerance | ~0 | Minutes | High (2x+) |
+| Active-passive failover | High tier · cost-constrained | Minutes | 15–60 min | Medium (standby) |
+| Pilot light | Standard tier · infrequent DR | Minutes–hours | 1–4 hours | Low (minimal standby) |
+| Backup and restore | Low tier · long recovery acceptable | Hours | Hours–day | Lowest (storage) |
 
-DR failover tested ≥ annually. ✗ untested DR plan counts as no plan.
+**DR failover tested ≥ semi-annually** (large production: monthly drill). ✗ untested DR plan counts as no plan.
 
 ---
 
@@ -369,154 +324,121 @@ DR failover tested ≥ annually. ✗ untested DR plan counts as no plan.
 
 ### Service Discovery
 
-| Rule | Detail |
-|---|---|
-| Registry-based | Services register at startup, deregister on shutdown. Health-checked entries only |
-| DNS or service mesh | Use DNS-based discovery or service mesh. ✗ hardcoded IPs or hostnames in application code |
-| Client-side caching | Discovery results cached with TTL ≤ 30s. Stale cache → fallback to re-resolve |
-| Graceful failover | Unreachable endpoint → retry next healthy endpoint. See architecture/STANDARDS.md §1 (Circuit Breaker) |
+- Registry-based: services register at startup, deregister on shutdown; health-checked entries only.
+- DNS-based discovery or service mesh. ✗ hardcoded IPs/hostnames in application code.
+- Client-side caching with TTL ≤ 30s; stale cache → re-resolve.
+- Graceful failover: unreachable endpoint → retry next healthy. See [architecture](../architecture/STANDARDS.md) §1 (circuit breaker).
 
 ### Load Balancing
 
-| Rule | Detail |
-|---|---|
-| Layer 7 preferred | Use application-layer (L7) load balancing for HTTP services. Enables path/header routing |
-| Health-check gated | ✗ route traffic to instances failing health checks |
-| Connection draining | On instance removal: stop new connections, drain existing within grace period |
-| Sticky sessions | ✗ sticky sessions unless explicitly required by stateful protocol. Prefer stateless design |
-| Rate limiting | Rate limits at load balancer level per client/API key. Protect backend from overload |
+- Layer 7 preferred for HTTP (path/header routing). ✗ route to instances failing health checks.
+- Connection draining on removal: stop new, drain existing within grace period.
+- ✗ sticky sessions unless required by stateful protocol — prefer stateless design.
+- Rate limits at load balancer per client/API key. Protect backend from overload.
 
 ### TLS / SSL
 
 | Rule | Detail |
 |---|---|
-| TLS everywhere | All service-to-service communication encrypted. ✗ plaintext in any environment above dev |
-| TLS 1.2 minimum | ✗ TLS 1.0, 1.1, SSLv3. Prefer TLS 1.3 |
-| Certificate automation | Certificates auto-provisioned and auto-renewed. ✗ manual certificate management |
+| TLS everywhere | All service-to-service encrypted. ✗ plaintext in any environment above dev |
+| TLS 1.2 minimum | ✗ TLS 1.0/1.1/SSLv3. Prefer TLS 1.3 |
+| Certificate automation | Auto-provisioned + auto-renewed. ✗ manual certificate management |
 | Certificate monitoring | Alert ≥ 30 days before expiry |
-| mTLS for internal | Mutual TLS between services when using service mesh |
-| Termination point | TLS terminated at load balancer or sidecar proxy, not in application code |
+| mTLS internal | Mutual TLS between services when using service mesh |
+| Termination point | At load balancer or sidecar proxy, ✗ in application code |
 
-### DNS Rules
+### DNS & Segmentation
 
-- TTL ≤ 300s for service records. Enables fast failover
-- Separate DNS zones per environment. ✗ shared DNS between production and non-production
-- DNS changes via IaC (§1). ✗ manual DNS edits
-- Health-checked DNS for multi-region failover
-
-### Network Segmentation
-
-- Production network isolated from non-production. ✗ shared VPC/VLAN
-- Database tier not directly accessible from internet. Application tier mediates all access
-- Egress restricted: services whitelist outbound destinations. ✗ unrestricted outbound
-- Network policies enforced: default deny, explicit allow per service pair. See security/STANDARDS.md
+- Service records TTL ≤ 300s (fast failover). Separate DNS zones per environment. DNS changes via IaC (§1), ✗ manual edits.
+- Production network isolated from non-production. ✗ shared VPC/VLAN. Database tier ✗ internet-accessible — application tier mediates.
+- Egress restricted: whitelist outbound destinations. Default deny, explicit allow per service pair. See [security](../security/STANDARDS.md).
 
 ---
 
 ## 10. Secrets & Credentials
 
-All infrastructure secrets managed through centralized vault.
-✗ secrets in source code · ✗ secrets in environment files committed to repo ·
-✗ secrets in container images · ✗ secrets in CI/CD config files.
-
-See security/STANDARDS.md for application-level secret handling and
-configuration/STANDARDS.md for secret cascade patterns.
+Infrastructure secrets managed through centralized vault. ✗ secrets in source · env files in repo · container images · CI/CD config files. Vault + injection **mechanics** live here; **rotation cadence + lifecycle + token classes → [security](../security/STANDARDS.md)**.
 
 ### Vault Rules
 
 | Rule | Detail |
 |---|---|
-| Centralized store | Single source of truth for secrets (vault service). ✗ scattered across config files |
-| Access-controlled | Per-service, per-environment access policies. Service A ✗ reads Service B secrets |
-| Audit logged | Every secret read/write/list logged with actor, timestamp, resource |
-| Encrypted at rest | Vault storage encrypted with managed keys. Key rotation automated |
-| Dynamic secrets | Prefer short-lived dynamic credentials (database, cloud IAM). ✗ long-lived static creds when dynamic available |
-| Lease-based | Secrets have TTL. Application re-fetches or renews before expiry |
+| Centralized store | Single source of truth (vault service). ✗ scattered across config files |
+| Access-controlled | Per-service, per-environment policies. Service A ✗ reads Service B secrets |
+| Audit logged | Every read/write/list logged with actor, timestamp, resource |
+| Encrypted at rest | Vault storage encrypted with managed keys; key rotation automated |
+| Dynamic secrets | Prefer short-lived dynamic credentials (DB, cloud IAM). ✗ long-lived static when dynamic available |
+| Lease-based | Secrets have TTL. Application re-fetches/renews before expiry |
 
-### Rotation Rules
-
-| Secret Type | Rotation Frequency | Method |
-|---|---|---|
-| Database credentials | ≤ 90 days (prefer dynamic per-session) | Vault-generated, auto-rotated |
-| API keys | ≤ 90 days | Dual-key rotation (new key active before old revoked) |
-| TLS certificates | Auto-renewed ≥ 30 days before expiry | Certificate automation (§9) |
-| Encryption keys | ≤ 1 year | Key versioning; decrypt with old, encrypt with new |
-| Service account tokens | ≤ 90 days | Token refresh via identity provider |
-| SSH keys | ≤ 1 year (prefer certificate-based SSH) | Re-generate and distribute via automation |
-
-### Secret Injection Patterns
+### Injection Patterns
 
 | Pattern | Use When |
 |---|---|
-| Environment variable at runtime | Container orchestrator injects from vault at pod start |
+| Environment variable at runtime | Orchestrator injects from vault at pod start |
 | Sidecar/init container | Vault agent fetches secrets, writes to shared volume |
-| Application vault client | Application directly authenticates to vault, fetches secrets |
-| Mounted secret volume | Orchestrator mounts secret as file. Application reads file path |
+| Application vault client | App authenticates to vault, fetches secrets directly |
+| Mounted secret volume | Orchestrator mounts secret as file; app reads path |
 
-✗ baking secrets into images. ✗ passing secrets via command-line arguments (visible in process list).
+✗ baking secrets into images. ✗ passing secrets via command-line arguments (visible in process list). Rotation frequencies + token lifetimes → [security](../security/STANDARDS.md).
 
 ---
 
 ## 11. Cost Management
 
-### Resource Right-Sizing
+### Infrastructure Cost
 
 | Rule | Detail |
 |---|---|
-| Measured allocation | Resource requests/limits based on measured utilization, not estimates. Profile before sizing |
-| Right-size quarterly | Review CPU/memory allocation vs actual usage quarterly. Adjust over-provisioned resources |
-| Utilization targets | Compute: 50–70% average utilization. < 30% → over-provisioned. > 80% → under-provisioned |
-| Reserved capacity | Stable baseline workloads → reserved/committed pricing. Variable → on-demand/spot |
-| Spot/preemptible | Fault-tolerant batch workloads → spot instances. ✗ spot for latency-sensitive services |
+| Measured allocation | Requests/limits based on measured utilization, ✗ estimates. Profile before sizing |
+| Right-size quarterly | Review CPU/memory vs actual usage; adjust over-provisioned |
+| Utilization targets | Compute 50–70% average. < 30% over-provisioned. > 80% under-provisioned |
+| Reserved vs spot | Stable baseline → reserved/committed. Fault-tolerant batch → spot. ✗ spot for latency-sensitive |
+| Tagged costs | All resources tagged (§1). Costs attributable to team + service |
+| Budget alerts | Alert at 80% + 100% of monthly budget per team/service |
+| Anomaly detection | Alert on cost increase > 20% day-over-day without matching traffic increase |
+| Unit economics | Track cost-per-request / cost-per-user. Unit cost stable or decreasing as scale grows |
 
-### Cost Monitoring
+### LLM / API Token Spend
+
+First-class cost class for agent + ML systems. `agent` and `ml` cross-reference here, ✗ restate.
 
 | Rule | Detail |
 |---|---|
-| Tagged costs | All resources tagged (§1 Resource Tagging). Costs attributable to team + service |
-| Budget alerts | Alert at 80% and 100% of monthly budget per team/service |
-| Anomaly detection | Alert on cost increase > 20% day-over-day without corresponding traffic increase |
-| Monthly review | Monthly cost review per team. Identify top 5 cost drivers + optimization opportunities |
-| Unit economics | Track cost-per-request or cost-per-user. Ensure unit cost stable or decreasing as scale increases |
+| Budget caps | Per-request **and** per-tenant token/spend caps enforced. Exceed → reject or degrade, ✗ silently overspend |
+| Cost as a metric | Cost per 1k tokens (input + output separately) tracked as a first-class metric alongside latency/error rate |
+| Spend burn-rate alerts | Alert on spend burn-rate (projected month-end vs budget), not only end-of-month total |
+| Cheaper-model routing | Route to the cheapest model meeting the quality bar; reserve premium models for tasks that need them |
+| Attribution | Token spend tagged per tenant/feature/request-class. Unattributed spend ✗ allowed above dev |
+| Cache + batch | Cache/deduplicate identical prompts; batch where the API supports it, to cut cost per unit of work |
 
-### Cleanup Rules
+### Cleanup
 
-- Unused resources identified weekly via automated scan. Resources idle > 14 days → flagged for deletion
-- Non-production environments auto-scaled to zero or shut down outside business hours
-- Orphaned resources (unattached volumes, unused IPs, stale snapshots) cleaned weekly
-- Old container images purged per retention policy (§2)
-- Expired feature-branch environments destroyed automatically (§4)
+- Unused resources scanned weekly; idle > 14 days → flagged for deletion.
+- Non-production environments auto-scaled to zero or shut down outside business hours.
+- Orphaned resources (unattached volumes, unused IPs, stale snapshots) cleaned weekly.
+- Old container images purged per retention policy (§2). Expired feature-branch environments destroyed automatically (§4).
 
 ---
 
 ## 12. Scale Matrix
 
-Apply rules proportionally to project scale.
-
 | Rule | Side Project / PoC | Small Production | Large Production |
 |---|---|---|---|
-| Infrastructure as Code (§1) | Scripts or manual ok | IaC for all infra; local state ok | Full IaC · remote state · drift detection · peer review |
-| Containers (§2) | Any base image; no scanning | Minimal base · scanning on build | Distroless · signed images · enforced size budgets |
+| IaC (§1) | Scripts or manual ok | IaC for all infra; local state ok | Full IaC · remote state · drift detection · peer review |
+| Containers (§2) | Any base; no scanning | Minimal base · scanning on build | Distroless · signed · enforced size budgets |
 | Deployment (§3) | Manual deploy ok | Rolling update via CI/CD | Canary/blue-green · automated rollback · smoke tests |
 | Environments (§4) | Local + production | Dev + staging + production | Full tier model · ephemeral envs · parity enforced |
-| Monitoring (§5) | Basic health check | Infrastructure + application metrics · alerts | Full SLO-based alerting · dashboards · anomaly detection |
-| Incident Response (§6) | Fix when noticed | Severity levels · postmortems for SEV-1/2 | Full incident workflow · on-call rotation · all postmortems |
+| Metrics (§5) | Basic health check | Infra + application metrics collected | Full metric set feeding observability alert/SLO layer |
+| Incident + on-call (§6) | Fix when noticed | Severity levels · postmortems SEV-1/2 · informal on-call | Full workflow · ≥ 2-engineer rotation · all postmortems |
 | Scaling (§7) | Single instance | Manual scaling; min 2 instances | Auto-scaling · capacity planning · load testing |
 | Backup & DR (§8) | Manual backup | Automated daily backups · quarterly restore test | Continuous replication · multi-region · monthly DR drill |
-| Networking (§9) | Direct connections | TLS everywhere · basic segmentation | Service mesh · mTLS · network policies · L7 load balancing |
-| Secrets (§10) | Environment variables | Centralized vault · no static creds in code | Dynamic secrets · auto-rotation · audit logging |
-| Cost Management (§11) | Not needed | Tagged resources · monthly review | Full unit economics · automated cleanup · budget alerts |
+| Networking (§9) | Direct connections | TLS everywhere · basic segmentation | Service mesh · mTLS · network policies · L7 LB |
+| Secrets (§10) | Environment variables | Centralized vault · no static creds in code | Dynamic secrets · injection mechanics · audit logging |
+| Cost (§11) | Not needed | Tagged resources · monthly review · token caps if LLM | Full unit economics · token burn-rate alerts · automated cleanup |
 
 ### Scale Transition
 
-Graduating to next scale: apply incrementally using strangler fig pattern.
-See architecture/STANDARDS.md §11. Priority order for upgrades:
-1. Secrets management (security risk)
-2. Backup & DR (data loss risk)
-3. Monitoring & alerting (visibility)
-4. IaC (reproducibility)
-5. Deployment automation (reliability)
-6. Everything else
+Graduate incrementally (strangler fig, [architecture](../architecture/STANDARDS.md) §11). Priority order: 1. Secrets (security risk) · 2. Backup & DR (data-loss risk) · 3. Metrics feeding observability (visibility) · 4. IaC (reproducibility) · 5. Deployment automation (reliability) · 6. Everything else.
 
 ---
 
@@ -524,44 +446,36 @@ See architecture/STANDARDS.md §11. Priority order for upgrades:
 
 ### New Service — Infrastructure Setup
 
-- [ ] Infrastructure defined in IaC; committed to version control (§1)
+- [ ] Infrastructure defined in IaC, committed to version control (§1)
 - [ ] All resources tagged: environment, service, team, cost-center, managed-by (§1)
-- [ ] Container image built: minimal base, non-root, health check, size within budget (§2)
-- [ ] Image scanned for vulnerabilities; no critical/high findings (§2)
-- [ ] Deployment strategy selected and configured with automated rollback (§3)
+- [ ] Container image: minimal base, non-root, read-only rootfs, health check, within size budget (§2)
+- [ ] Image scanned; no critical/high findings (§2)
+- [ ] Deployment strategy selected with automated rollback (§3)
 - [ ] All environments provisioned from IaC; parity validated (§4)
-- [ ] Infrastructure metrics collected and dashboarded (§5)
-- [ ] Application metrics collected; SLO-based alerts configured (§5)
-- [ ] Severity levels assigned to all alerts; runbooks written (§5, §6)
-- [ ] Incident escalation path defined (§6)
+- [ ] Infrastructure + application metrics collected; wired to observability alert/SLO layer (§5)
+- [ ] Incident severity levels assigned; escalation path defined (§6)
+- [ ] On-call rotation established: ≥ 2 engineers, primary + secondary, handoff documented (§6)
+- [ ] Paging policy: page only on SLO burn / user-facing impact (§6)
 - [ ] Scaling limits defined: min instances, max instances, scale triggers (§7)
 - [ ] Backup configured and first restore test passed (§8)
 - [ ] RTO/RPO tier assigned and validated (§8)
-- [ ] TLS enabled on all endpoints; certificates auto-renewed (§9)
+- [ ] TLS on all endpoints; certificates auto-renewed (§9)
 - [ ] Network segmentation enforced; egress restricted (§9)
 - [ ] Secrets in vault; no static credentials in code or config (§10)
-- [ ] Secret rotation schedule defined (§10)
-- [ ] Cost tags applied; budget alert configured (§11)
+- [ ] Cost tags applied; budget alert configured; token caps set if LLM/API spend (§11)
 
 ### Ongoing Operations
 
-- [ ] Monthly: cost review, right-sizing assessment (§11)
-- [ ] Monthly: restore test for critical-tier data (§8)
-- [ ] Quarterly: capacity planning review (§7)
-- [ ] Quarterly: alert tuning — remove or adjust noisy alerts (§5)
-- [ ] Quarterly: secret rotation compliance check (§10)
-- [ ] Quarterly: resource right-sizing review (§11)
-- [ ] Annually: DR failover drill (§8)
-- [ ] Annually: full security audit of infrastructure (See security/STANDARDS.md)
-- [ ] Per incident: postmortem within SLA (§6)
-- [ ] Per incident: action items tracked to completion (§6)
+- [ ] Monthly: cost review + right-sizing; restore test for critical-tier data (§8, §11)
+- [ ] Quarterly: capacity planning; resource right-sizing (§7, §11)
+- [ ] Semi-annually: DR failover drill (§8)
+- [ ] Per incident: blameless postmortem within SLA; action items tracked (§6)
 
 ### Pre-Production Gate
 
-- [ ] All §13 "New Service" items completed
+- [ ] All "New Service" items completed
 - [ ] Load test passed at 2x expected peak traffic (§7)
 - [ ] DR failover tested at least once (§8)
-- [ ] On-call rotation established with ≥ 2 engineers (§6)
-- [ ] Runbooks written for all paging alerts (§5, §6)
+- [ ] Runbooks written for all paging alerts (§6)
 - [ ] Deployment runbook written and rehearsed (§3)
 - [ ] Cost projection reviewed and approved (§11)

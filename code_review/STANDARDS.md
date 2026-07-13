@@ -1,13 +1,11 @@
 # Code Review Standards
 
-Rules for reviewing code changes across all projects, all languages.
-This standard defines how reviews are conducted — what to check, how to
-communicate, and when to approve. Not how code is written (see
-`code_writing/STANDARDS.md`) or how commits are structured (see
-`git/STANDARDS.md`).
+> How code changes are reviewed: what to check, how to communicate, when to approve — the review process itself, not how code is written or committed.
 
-Composable with: Architecture Standards, Code Writing Standards,
-Testing Standards, Git Standards, Security Standards, CI/CD Standards.
+**ID** `code_review` · **Tier** Delivery · **Version** 1.0
+**Owns** review criteria + priority order · PR size limits · feedback style · comment-type taxonomy · approval flow + required-approver counts · review-speed SLAs · disagreement escalation · AI-assisted review policy
+**Defers to** commit format + branching + history + PR merge mechanics → [git](../git/STANDARDS.md) · test-coverage adequacy → [testing](../testing/STANDARDS.md) · security review criteria + threat model → [security](../security/STANDARDS.md) · tier boundaries + dependency direction → [architecture](../architecture/STANDARDS.md) · readability + naming + function size → [code_writing](../code_writing/STANDARDS.md) · CI gates + pipeline → [cicd](../cicd/STANDARDS.md) · API contract + versioning → [api](../api/STANDARDS.md)
+**Load with** [git](../git/STANDARDS.md) · [code_writing](../code_writing/STANDARDS.md) · [testing](../testing/STANDARDS.md) · [cicd](../cicd/STANDARDS.md)
 
 ---
 
@@ -42,16 +40,19 @@ Testing Standards, Git Standards, Security Standards, CI/CD Standards.
 | Bias to action | If two approaches are roughly equal, approve the author's choice |
 | ✗ Gatekeeping | Reviews unblock progress. ✗ use reviews to impose personal style preferences |
 | ✗ Rubber-stamping | Every approval = reviewer verified correctness · readability · test coverage |
-| Incremental improvement | Code does not need to be perfect — it needs to be better than before |
-| Timely response | Pending reviews block teammates. Treat review requests as high-priority interrupts |
+| Approve on net improvement | Approve when the change **definitely improves overall code health**, even if imperfect. ✗ withhold approval pending unrelated polish |
+| Incremental improvement | Code need not be perfect — it must be better than before. Perfection is not the merge bar |
+| Timely response | Pending reviews block teammates. Respond within 1 business day; treat requests as high-priority interrupts |
 
 ---
 
 ## 2. PR Size
 
+Owner of PR size across the repo — `git` PR mechanics defer here for size + reviewer counts. Small PRs review faster, review better; target the ~200-line sweet spot, ceiling ≤ 400.
+
 | Metric | Target | Hard Limit | Notes |
 |---|---|---|---|
-| Lines changed (added + modified) | ≤ 400 | 800 | Excludes generated files, lock files, migrations |
+| Lines changed (added + modified) | ≤ 400 (aim ~200) | 800 | Excludes generated files, lock files, migrations |
 | Files changed | ≤ 10 | 20 | Excludes test fixtures, snapshots |
 | Commits per PR | 1–5 | 10 | Each commit = logical unit |
 | Review time per PR | 15–30 min | 60 min | If longer → PR too large |
@@ -212,9 +213,11 @@ Every review comment carries a type prefix. This eliminates ambiguity about whet
 
 ## 8. Review Speed
 
+Outer bound: a review request gets a first response within **1 business day** — never sit on a pending review longer. Targets below are tighter during work hours.
+
 | Metric | Target | Escalation |
 |---|---|---|
-| First response (comment or approve) | ≤ 4 hours during work hours | If missed → reviewer reassigned or author pings |
+| First response (comment or approve) | ≤ 4 hours work hours · ≤ 1 business day absolute | If missed → reviewer reassigned or author pings |
 | Follow-up round | ≤ 2 hours after author updates | Faster for small changes |
 | Total review-to-merge | ≤ 1 business day | If exceeded → daily standup escalation |
 | Hotfix review | ≤ 1 hour | On-call reviewer; post-merge review for thoroughness |
