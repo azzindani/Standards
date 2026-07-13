@@ -12,9 +12,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ---
 
-## [1.0.0] — 2026-07-13
+## [0.1.0] — 2026-07-13
 
-First stable release. The library is now composable, conformance-checked, and safe to depend on from other projects.
+Initial release. The library is composable, conformance-checked, and usable across projects. Pre-1.0: rules may still change as the standards are exercised on real work; the first stable line is tagged `v1.0.0`.
 
 ### Added
 
@@ -38,4 +38,4 @@ First stable release. The library is now composable, conformance-checked, and sa
 - **`MCP_IDEAS.md`** → **`local_mcp/IDEAS.md`** — it is a server-idea catalog, not a standard; moved out of the repo root and excluded from validation.
 - Tooling recommendations brought current across language standards.
 
-[1.0.0]: https://github.com/azzindani/Standards/releases/tag/v1.0.0
+[0.1.0]: https://github.com/azzindani/Standards/releases/tag/v0.1.0
