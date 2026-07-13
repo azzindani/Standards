@@ -29,6 +29,11 @@ jobs:
       - name: Validate every standard against TEMPLATE.md
         run: python3 tools/validate.py
 
+      # index.json is the contract downstream consumers (Pipeline) read instead
+      # of re-parsing markdown. Stale index → consumers route on old rules.
+      - name: Verify index.json is current
+        run: python3 tools/validate.py --check-index
+
   lint:
     name: Markdown lint
     runs-on: ubuntu-latest

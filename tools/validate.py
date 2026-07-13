@@ -1,12 +1,24 @@
 #!/usr/bin/env python3
-"""Conformance validator for the Standards library.
+"""Conformance validator + index emitter for the Standards library.
 
 Enforces the contract defined in TEMPLATE.md. Exit 0 = all standards conform.
 No third-party dependencies — stdlib only, runs on any Python >= 3.9.
+
+    validate.py                 validate only
+    validate.py --emit-index    validate, then write index.json
+    validate.py --check-index   validate, then fail if index.json is stale
+
+index.json is the machine-readable contract consumed by downstream tools
+(Pipeline et al). It carries what a consumer needs to route and inject
+standards without re-parsing markdown: catalog · headers · checklists ·
+always-on set · routes. Regenerate it whenever a standard or ROUTER changes;
+CI runs --check-index to guarantee it never drifts.
 """
 
 from __future__ import annotations
 
+import argparse
+import json
 import re
 import sys
 from dataclasses import dataclass, field
@@ -233,7 +245,248 @@ def validate(path: Path) -> Result:
     return r
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Index emission — the machine-readable contract for downstream consumers.
+# ──────────────────────────────────────────────────────────────────────
+
+INDEX_PATH = ROOT / "index.json"
+INDEX_SCHEMA = 1
+
+# Load order — later tiers assume earlier tiers are in effect (ROUTER.md §2).
+TIER_ORDER = ["Foundation", "Core", "Delivery", "Interface", "Domain", "Language"]
+
+RE_OWNS = re.compile(r"^\*\*Owns\*\* (.+)$", re.MULTILINE)
+RE_DEFERS = re.compile(r"^\*\*Defers to\*\* (.+)$", re.MULTILINE)
+RE_LOAD_WITH = re.compile(r"^\*\*Load with\*\* (.+)$", re.MULTILINE)
+RE_MD_LINK = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
+RE_TOKEN = re.compile(r"`([A-Za-z0-9_/*.]+)`")
+RE_PAREN = re.compile(r"\(([^)]*)\)")
+# Markdown row cells split on pipes that are NOT backslash-escaped: ROUTER
+# writes alternation as `go` \| `rust` inside a cell, and a naive split on "|"
+# would tear that row in half.
+RE_CELL_SPLIT = re.compile(r"(?<!\\)\|")
+
+
+def path_to_id(rel: str) -> str:
+    """Path relative to ROOT → standard id. Mirrors validate()'s expect_id."""
+    p = Path(rel)
+    return p.parent.name if p.stem == "STANDARDS" else f"{p.parent.name}/{p.stem.lower()}"
+
+
+def link_to_id(href: str, base: Path) -> str | None:
+    """Resolve a relative markdown link to a standard id, or None if off-corpus."""
+    target = (base.parent / href.split("#")[0]).resolve()
+    try:
+        return path_to_id(str(target.relative_to(ROOT)))
+    except ValueError:
+        return None
+
+
+def split_dots(cell: str) -> list[str]:
+    return [s.strip() for s in cell.split("·") if s.strip()]
+
+
+def parse_header_meta(path: Path, text: str) -> dict:
+    head = "\n".join(text.splitlines()[:14])
+
+    owns: list[str] = []
+    if m := RE_OWNS.search(head):
+        owns = [s.replace("`", "") for s in split_dots(m.group(1))]
+
+    defers: list[dict] = []
+    if m := RE_DEFERS.search(head):
+        for seg in split_dots(m.group(1)):
+            topic = seg.split("→")[0].strip() if "→" in seg else seg
+            for _, href in RE_MD_LINK.findall(seg):
+                if sid := link_to_id(href, path):
+                    defers.append({"topic": topic, "to": sid})
+
+    load_with: list[str] = []
+    if m := RE_LOAD_WITH.search(head):
+        for _, href in RE_MD_LINK.findall(m.group(1)):
+            if (sid := link_to_id(href, path)) and sid not in load_with:
+                load_with.append(sid)
+
+    return {"owns": owns, "defers_to": defers, "load_with": load_with}
+
+
+def parse_checklist(lines: list[str]) -> list[str]:
+    """Items of the final Checklist section — TEMPLATE.md guarantees it exists."""
+    return [l.strip()[6:].strip() for l in lines if l.strip().startswith("- [ ]")]
+
+
+def build_standard(path: Path) -> dict:
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    rel = str(path.relative_to(ROOT))
+
+    head = "\n".join(lines[:14])
+    m_tier = RE_TIER.search(head)
+    m_ver = RE_VERSION.search(head)
+    purpose = next((l[2:].strip() for l in lines[1:6] if l.startswith("> ")), "")
+    title = lines[0][2:].strip() if lines and lines[0].startswith("# ") else rel
+
+    entry = {
+        "id": path_to_id(rel),
+        "domain": path.parent.name,
+        "path": rel,
+        "title": title,
+        "purpose": purpose,
+        "tier": m_tier.group(1) if m_tier else None,
+        "version": m_ver.group(1) if m_ver else None,
+        "lines": len(lines),
+        "checklist": parse_checklist(lines),
+    }
+    entry.update(parse_header_meta(path, text))
+    return entry
+
+
+def expand_token(token: str, known: list[str]) -> list[str]:
+    """`local_mcp/*` → every id in that domain · `testing/PRESSURE.md` → id · else itself."""
+    if token.endswith("/*"):
+        prefix = token[:-2]
+        hits = [i for i in known if i == prefix or i.startswith(prefix + "/")]
+        return sorted(hits, key=lambda i: (i != prefix, i))  # domain root first
+    if token.endswith(".md"):
+        return [path_to_id(token)]
+    return [token] if token in known else []
+
+
+def parse_route_cell(cell: str, known: list[str]) -> dict:
+    """A ROUTER route cell → structured adds.
+
+    Handles the three shapes ROUTER uses, and keeps `raw` so no nuance is lost:
+      `api` · `security`            → add (unconditional)
+      `go` \\| `rust`                → alternatives (choose one)
+      `python` (or `typescript`)    → alternatives (choose one)
+      `local_mcp/*` (if tool-serving) → conditional
+    """
+    add: list[str] = []
+    alternatives: list[list[str]] = []
+    conditional: list[dict] = []
+
+    for seg in split_dots(cell):
+        ids = [i for t in RE_TOKEN.findall(seg) for i in expand_token(t, known)]
+        if not ids:
+            continue  # prose-only segment, e.g. "language route" — preserved in raw
+        paren = RE_PAREN.search(seg)
+        note = paren.group(1).strip() if paren else ""
+
+        if "\\|" in seg or note.startswith("or "):
+            alternatives.append(ids)
+        elif note.startswith("if "):
+            conditional.append({"add": ids, "when": note[3:].strip()})
+        else:
+            add.extend(i for i in ids if i not in add)
+
+    return {
+        "add": add,
+        "alternatives": alternatives,
+        "conditional": conditional,
+        "raw": cell.strip(),
+    }
+
+
+def router_section(text: str, heading: str) -> list[str]:
+    """Lines of one '## N. Heading' section of ROUTER.md."""
+    out: list[str] = []
+    inside = False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            if inside:
+                break
+            inside = line.split(". ", 1)[-1].strip() == heading
+            continue
+        if inside:
+            out.append(line)
+    return out
+
+
+def table_rows(lines: list[str]) -> list[list[str]]:
+    """Data rows of the first markdown table in `lines` — header + rule dropped."""
+    rows: list[list[str]] = []
+    for line in lines:
+        s = line.strip()
+        if not s.startswith("|"):
+            if rows:
+                break  # table ended
+            continue
+        cells = [c.strip() for c in RE_CELL_SPLIT.split(s)[1:-1]]
+        if not cells or set("".join(cells)) <= set("-: "):
+            continue  # separator row
+        rows.append(cells)
+    return rows[1:] if rows else []  # drop header row
+
+
+def build_routes(known: list[str]) -> dict:
+    text = (ROOT / "ROUTER.md").read_text(encoding="utf-8")
+
+    always_on: list[str] = []
+    for cells in table_rows(router_section(text, "Always-On Set")):
+        for _, href in RE_MD_LINK.findall(cells[0]):
+            if (sid := link_to_id(href, ROOT / "ROUTER.md")) and sid not in always_on:
+                always_on.append(sid)
+
+    by_type = {
+        cells[0]: parse_route_cell(cells[1], known)
+        for cells in table_rows(router_section(text, "Routes by Project Type"))
+        if len(cells) >= 2
+    }
+    by_surface = {
+        cells[0]: {**parse_route_cell(cells[1], known), "trigger": cells[2] if len(cells) > 2 else ""}
+        for cells in table_rows(router_section(text, "Routes by Surface"))
+        if len(cells) >= 2
+    }
+
+    return {"always_on": always_on, "by_type": by_type, "by_surface": by_surface}
+
+
+def build_index(standards: list[Path]) -> dict:
+    entries = [build_standard(p) for p in standards]
+    known = [e["id"] for e in entries]
+    routes = build_routes(known)
+    return {
+        "schema": INDEX_SCHEMA,
+        "generator": "tools/validate.py --emit-index",
+        "tier_order": TIER_ORDER,
+        "always_on": routes["always_on"],
+        "routes": {"by_type": routes["by_type"], "by_surface": routes["by_surface"]},
+        "standards": sorted(entries, key=lambda e: e["id"]),
+    }
+
+
+def render_index(index: dict) -> str:
+    return json.dumps(index, indent=2, ensure_ascii=False) + "\n"
+
+
+def emit_index(standards: list[Path]) -> None:
+    INDEX_PATH.write_text(render_index(build_index(standards)), encoding="utf-8")
+    print(f"wrote {INDEX_PATH.relative_to(ROOT)} — {len(standards)} standards")
+
+
+def check_index(standards: list[Path]) -> int:
+    """CI gate: index.json must match what the current corpus would generate."""
+    if not INDEX_PATH.exists():
+        print("FAIL — index.json missing. Run: tools/validate.py --emit-index", file=sys.stderr)
+        return 1
+    want = render_index(build_index(standards))
+    if INDEX_PATH.read_text(encoding="utf-8") != want:
+        print(
+            "FAIL — index.json is stale. Run: tools/validate.py --emit-index",
+            file=sys.stderr,
+        )
+        return 1
+    print("PASS — index.json is current")
+    return 0
+
+
 def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--emit-index", action="store_true", help="write index.json")
+    g.add_argument("--check-index", action="store_true", help="fail if index.json is stale")
+    args = ap.parse_args()
+
     standards = discover_standards()
     if not standards:
         print("FAIL: no standards discovered", file=sys.stderr)
@@ -261,6 +514,13 @@ def main() -> int:
         print(f"FAIL — {n_err} error(s). See TEMPLATE.md for the contract.")
         return 1
     print("PASS — all standards conform to TEMPLATE.md")
+
+    # Index is only emitted/checked off a conforming corpus — a malformed
+    # header would otherwise be baked into the contract downstream reads.
+    if args.emit_index:
+        emit_index(standards)
+    if args.check_index:
+        return check_index(standards)
     return 0
 
 

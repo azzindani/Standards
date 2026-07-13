@@ -1,0 +1,3731 @@
+{
+  "schema": 1,
+  "generator": "tools/validate.py --emit-index",
+  "tier_order": [
+    "Foundation",
+    "Core",
+    "Delivery",
+    "Interface",
+    "Domain",
+    "Language"
+  ],
+  "always_on": [
+    "architecture",
+    "design",
+    "directory",
+    "code_writing",
+    "error_handling",
+    "testing",
+    "security",
+    "observability",
+    "configuration",
+    "dependencies",
+    "documentation",
+    "git",
+    "cicd",
+    "code_review",
+    "workflow"
+  ],
+  "routes": {
+    "by_type": {
+      "Python CLI tool": {
+        "add": [
+          "python",
+          "cli",
+          "performance"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`python` · `cli` · `performance`"
+      },
+      "Python data pipeline": {
+        "add": [
+          "python",
+          "data_pipeline",
+          "database",
+          "sql",
+          "performance"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`python` · `data_pipeline` · `database` · `sql` · `performance`"
+      },
+      "MCP server": {
+        "add": [
+          "local_mcp",
+          "local_mcp/delivery",
+          "local_mcp/runtime",
+          "local_mcp/tools",
+          "cli",
+          "performance"
+        ],
+        "alternatives": [
+          [
+            "python",
+            "typescript",
+            "rust"
+          ]
+        ],
+        "conditional": [],
+        "raw": "`local_mcp/*` · `python` \\| `typescript` \\| `rust` · `cli` · `performance`"
+      },
+      "Web app (TS front + back)": {
+        "add": [
+          "typescript",
+          "typescript/tooling",
+          "web",
+          "api",
+          "database",
+          "sql",
+          "performance",
+          "devops"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`typescript/*` · `web` · `api` · `database` · `sql` · `performance` · `devops`"
+      },
+      "REST/gRPC service (Go/Rust)": {
+        "add": [
+          "api",
+          "database",
+          "sql",
+          "performance",
+          "devops"
+        ],
+        "alternatives": [
+          [
+            "go",
+            "rust"
+          ]
+        ],
+        "conditional": [],
+        "raw": "`go` \\| `rust` · `api` · `database` · `sql` · `performance` · `devops`"
+      },
+      "ML project": {
+        "add": [
+          "python",
+          "ml",
+          "data_pipeline",
+          "database",
+          "performance"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`python` · `ml` · `data_pipeline` · `database` · `performance`"
+      },
+      "Shell tooling": {
+        "add": [
+          "shell",
+          "shell/hardening"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`shell/*`"
+      },
+      "Report / dashboard generator": {
+        "add": [
+          "html_generation",
+          "html_generation/charts",
+          "html_generation/theming"
+        ],
+        "alternatives": [
+          [
+            "python",
+            "typescript"
+          ]
+        ],
+        "conditional": [],
+        "raw": "`html_generation/*` · `python` (or `typescript`)"
+      },
+      "Agent / LLM system": {
+        "add": [
+          "agent",
+          "expectation"
+        ],
+        "alternatives": [],
+        "conditional": [
+          {
+            "add": [
+              "local_mcp",
+              "local_mcp/delivery",
+              "local_mcp/runtime",
+              "local_mcp/tools"
+            ],
+            "when": "tool-serving"
+          }
+        ],
+        "raw": "`agent` · `expectation` · `local_mcp/*` (if tool-serving)"
+      },
+      "Library / SDK": {
+        "add": [
+          "api",
+          "documentation"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "language route · `api` (public surface = contract) · `documentation`"
+      }
+    },
+    "by_surface": {
+      "HTTP / gRPC API": {
+        "add": [
+          "api",
+          "security",
+          "performance"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`api` · `security` · `performance`",
+        "trigger": "Any network-callable endpoint"
+      },
+      "Persistent store": {
+        "add": [
+          "database",
+          "sql"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`database` · `sql`",
+        "trigger": "Any durable state beyond files"
+      },
+      "Command line": {
+        "add": [
+          "cli"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`cli`",
+        "trigger": "Any user-invoked binary or entrypoint"
+      },
+      "Browser UI": {
+        "add": [
+          "web",
+          "html_generation",
+          "html_generation/charts",
+          "html_generation/theming"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`web` · `html_generation/*`",
+        "trigger": "Any rendered UI"
+      },
+      "Deployed service": {
+        "add": [
+          "devops",
+          "observability",
+          "testing/pressure"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`devops` · `observability` · `testing/PRESSURE.md`",
+        "trigger": "Anything with uptime expectations"
+      },
+      "Public package": {
+        "add": [
+          "dependencies",
+          "documentation",
+          "api"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`dependencies` · `documentation` · `api`",
+        "trigger": "Anything others import"
+      },
+      "Batch / scheduled job": {
+        "add": [
+          "data_pipeline",
+          "observability"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`data_pipeline` · `observability`",
+        "trigger": "Anything running unattended"
+      },
+      "Model artifact": {
+        "add": [
+          "ml"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`ml`",
+        "trigger": "Anything with trained weights"
+      }
+    }
+  },
+  "standards": [
+    {
+      "id": "agent",
+      "domain": "agent",
+      "path": "agent/STANDARDS.md",
+      "title": "Agent Context Standards",
+      "purpose": "Rules for authoring the context files that steer AI coding agents — CLAUDE.md, AGENTS.md, and system prompts — for maximum behavioral accuracy at minimum token cost.",
+      "tier": "Domain",
+      "version": "1.0",
+      "lines": 326,
+      "checklist": [
+        "Every line constrains behavior or supplies non-derivable context",
+        "Density rules applied — no articles, weak modals, scaffolding, or hedging",
+        "Negations, thresholds, exceptions, technical names, and sequences left uncompressed",
+        "Custom terms defined on first use; vocabulary block present when ≥ 5 terms",
+        "Standards referenced, never restated (Layer 0 not inlined)",
+        "Project overrides of a standard stated explicitly",
+        "Role defined in ≤ 3 lines when a role is needed; no personality instructions",
+        "Core behavioral principles stated",
+        "Project structure and tech stack documented",
+        "Architecture boundaries given as a dependency table where applicable",
+        "Only non-obvious, testable code-quality rules included",
+        "No rule duplicated with a linter or CI check",
+        "Restrictions grouped under `✗`, ordered by severity",
+        "Stop-and-ask actions marked with `🛑`",
+        "Investigation protocol present (read → trace → root-cause → verify)",
+        "No discoverable facts the agent could grep or read to find",
+        "Critical rules front-loaded; nice-to-haves last",
+        "File within its token budget for its type",
+        "Human-facing documentation rules deferred to documentation/, not restated",
+        "File reviewed against actual current project practice"
+      ],
+      "owns": [
+        "agent context file types",
+        "caveman density rules",
+        "high-density engineering",
+        "token budget",
+        "context file structure",
+        "role/persona",
+        "project-context selection",
+        "restriction format",
+        "investigation protocol",
+        "context maintenance"
+      ],
+      "defers_to": [
+        {
+          "topic": "runbooks",
+          "to": "documentation"
+        },
+        {
+          "topic": "repo file structure + header schema",
+          "to": "/template"
+        },
+        {
+          "topic": "catalog + routing",
+          "to": "/router"
+        },
+        {
+          "topic": "layer model + dependency direction",
+          "to": "architecture"
+        },
+        {
+          "topic": "comparator model + quality dimensions",
+          "to": "expectation"
+        },
+        {
+          "topic": "MCP tool serving",
+          "to": "local_mcp"
+        }
+      ],
+      "load_with": [
+        "documentation",
+        "expectation"
+      ]
+    },
+    {
+      "id": "api",
+      "domain": "api",
+      "path": "api/STANDARDS.md",
+      "title": "API Standards",
+      "purpose": "Rules for designing, versioning, and operating network APIs across protocols.",
+      "tier": "Interface",
+      "version": "1.0",
+      "lines": 498,
+      "checklist": [
+        "Protocol chosen from §2 by communication pattern, rationale documented",
+        "Schema (OpenAPI · Protobuf · SDL) committed before implementation",
+        "Resource paths: plural nouns · lowercase-hyphenated · ≤ 2 nesting levels",
+        "HTTP method matches semantics; success status matches §3",
+        "Every error scenario maps to the §3 status code — no 200-with-error bodies",
+        "`ETag` emitted on mutable resources; `If-Match` honoured on writes",
+        "Request body size limit enforced per route → 413 on exceed",
+        "One response envelope shape across the entire API; empty collections return `[]` with 200",
+        "`X-Request-Id` present on every response",
+        "Breaking changes gated in CI against the previous schema version",
+        "Deprecated endpoints emit `Deprecation` + `Sunset` headers; 410 after sunset",
+        "Errors use RFC 9457 `application/problem+json` with stable `type` + `code`",
+        "Validation returns all field failures at once, not just the first",
+        "No stack traces, table names, or query fragments in any error body",
+        "Every collection endpoint paginates; cursors opaque; max page size capped",
+        "Filterable + sortable fields allowlisted and indexed",
+        "Auth required by default; public endpoints marked explicitly in the schema",
+        "No credential ever appears in a URL path or query string",
+        "`RateLimit-Limit` · `RateLimit-Remaining` · `RateLimit-Reset` on every response; 429 carries `Retry-After`",
+        "Rate-limit counters shared across instances",
+        "Timestamps ISO 8601 UTC; money never floating point",
+        "`Idempotency-Key` accepted on state-creating POSTs; duplicate key + different body → 422",
+        "Consumer-driven contract tests pass in the provider build; generated docs match the deployed schema"
+      ],
+      "owns": [
+        "HTTP semantics + status codes",
+        "resource naming",
+        "request/response contract",
+        "versioning + deprecation protocol",
+        "problem-details errors",
+        "cursor + envelope pagination contract",
+        "rate limiting",
+        "idempotency keys",
+        "wire serialization",
+        "OpenAPI/Protobuf contract artifact"
+      ],
+      "defers_to": [
+        {
+          "topic": "authn/authz model + token lifetimes + secrets",
+          "to": "security"
+        },
+        {
+          "topic": "pagination query mechanics + N+1",
+          "to": "database"
+        },
+        {
+          "topic": "semver + changelog",
+          "to": "git"
+        },
+        {
+          "topic": "caching strategy",
+          "to": "performance"
+        },
+        {
+          "topic": "coverage + pyramid",
+          "to": "testing"
+        },
+        {
+          "topic": "pipeline stages",
+          "to": "cicd"
+        },
+        {
+          "topic": "alert thresholds",
+          "to": "observability"
+        },
+        {
+          "topic": "error taxonomy",
+          "to": "error_handling"
+        },
+        {
+          "topic": "i18n/l10n",
+          "to": "web"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "security",
+        "error_handling",
+        "database"
+      ]
+    },
+    {
+      "id": "architecture",
+      "domain": "architecture",
+      "path": "architecture/STANDARDS.md",
+      "title": "Architecture Standards",
+      "purpose": "Structural rules for how a system is layered, how dependencies flow, and where state, concurrency, extension, and evolution live.",
+      "tier": "Foundation",
+      "version": "1.0",
+      "lines": 417,
+      "checklist": [
+        "Every architectural decision traces to ≥ 1 principle (§1)",
+        "Innermost layer contains zero I/O calls (§2)",
+        "All I/O confined to the outermost layer (§2)",
+        "Layer count justified by complexity — no speculative layers (§2, §11)",
+        "Dependency graph is a DAG — zero cycles (§3)",
+        "Zero inner → outer imports (§3)",
+        "Lateral dependencies go through a declared shared abstraction (§3)",
+        "No inner layer calls a third-party library directly (§3)",
+        "Every function classified logic or shell — none does both (§4)",
+        "CQS holds; every atomic exception documented (§4)",
+        "Absence represented by an explicit type, never null (§4)",
+        "Every retriable operation is idempotent or carries an idempotency key (§4)",
+        "Every module declares its public API explicitly (§5)",
+        "No module-level mutable state reachable from outside (§5)",
+        "Every resource has exactly one owner at any point (§6)",
+        "Data flow is unidirectional per pipeline — no cycles (§6)",
+        "Every stored value has one authoritative source; derived data computed (§6)",
+        "Every concurrent operation has an explicit timeout (§7)",
+        "Every queue/buffer has an explicit max depth (§7)",
+        "No shared mutable state between workers (§7)",
+        "Config schema in innermost layer; config loading at boundary (§8)",
+        "Secrets stop at the boundary — only derived values flow inward (§8)",
+        "Error catch boundaries placed per layer transition (§8)",
+        "Batch operations accumulate failures instead of stopping at the first (§8)",
+        "Adding a feature required no edit to an unrelated module (§9)",
+        "Breaking changes shipped with migration path + deprecation window (§10)",
+        "Subsystem replacement done incrementally, not as a rewrite (§10)",
+        "No anti-pattern from §11 present in the change"
+      ],
+      "owns": [
+        "core structural principles",
+        "layer model",
+        "dependency direction",
+        "function placement",
+        "module boundaries",
+        "state architecture",
+        "concurrency architecture",
+        "extension",
+        "evolution"
+      ],
+      "defers_to": [
+        {
+          "topic": "module internals",
+          "to": "design"
+        },
+        {
+          "topic": "identifier naming",
+          "to": "code_writing"
+        },
+        {
+          "topic": "file naming",
+          "to": "directory"
+        },
+        {
+          "topic": "reporting",
+          "to": "error_handling"
+        },
+        {
+          "topic": "flags",
+          "to": "configuration"
+        },
+        {
+          "topic": "wrapper policy",
+          "to": "dependencies"
+        },
+        {
+          "topic": "profiling",
+          "to": "performance"
+        },
+        {
+          "topic": "traces",
+          "to": "observability"
+        },
+        {
+          "topic": "access control",
+          "to": "security"
+        }
+      ],
+      "load_with": [
+        "design",
+        "directory",
+        "code_writing"
+      ]
+    },
+    {
+      "id": "cicd",
+      "domain": "cicd",
+      "path": "cicd/STANDARDS.md",
+      "title": "CI/CD Pipeline Standards",
+      "purpose": "Build, test, secure, and deliver every commit through an automated, reproducible, hermetic pipeline — fast feedback, immutable signed artifacts, progressive rollout.",
+      "tier": "Delivery",
+      "version": "1.0",
+      "lines": 483,
+      "checklist": [
+        "Pipeline definition in repo, version-controlled",
+        "Confidence level declared ([testing](../testing/STANDARDS.md) §1); pipeline gates by it",
+        "Lint stage: formatter + static analysis + determinism enforcement (§4)",
+        "Build reproducible + hermetic; produces single versioned artifact (§5)",
+        "Unit + integration suites run every push (§6)",
+        "Cross-platform matrix configured for all target OS (§16)",
+        "Pipeline failure blocks merge · ✗ override without documented reason",
+        "Secrets via OIDC keyless / secret manager, ✗ repo (§12)",
+        "Pipeline duration baselined and monitored (§11)",
+        "Test stage gates by Confidence Level (§6)",
+        "Nightly suites wired: scenario · long-run · fuzz · mutation · performance ([testing](../testing/STANDARDS.md) §20)",
+        "Pressure / survival / pen runners provisioned ([PRESSURE.md](../testing/PRESSURE.md) §9)",
+        "Security scanning: SCA + SAST + secret scan (§7)",
+        "Supply chain: SBOM generated · artifacts signed (cosign) · provenance attested · action SHAs pinned (§8)",
+        "Artifact immutable, stored with retention policy (§8)",
+        "Dev → Staging → Production progression with parity verified (§9, §10)",
+        "Zero-downtime deployment configured; automated rollback triggers tested (§9, §14)",
+        "DORA four key metrics + deployment rework rate tracked (§2)",
+        "Rollback procedure tested monthly (§14)",
+        "Tag triggers pipeline; version + changelog per [git](../git/STANDARDS.md) (§15)",
+        "All suites green per Confidence Level (§6); cross-platform matrix green (§16)",
+        "Artifact signed + provenance-attested + published; post-deploy health green (§8, §9)",
+        "Pipeline duration reviewed monthly — no creep beyond targets (§11)",
+        "Flaky tests quarantined and resolved within 7 days ([testing](../testing/STANDARDS.md) §3)",
+        "Security scan exceptions reviewed and renewed (§7)",
+        "Artifact retention cleanup daily; runner queue wait < 1 min (§8, §11)"
+      ],
+      "owns": [
+        "pipeline stages + gating (lint/build/test/security/deploy)",
+        "**DORA four key metrics**",
+        "progressive delivery (canary/blue-green/feature-flag)",
+        "reproducible + hermetic builds",
+        "**supply chain (SLSA levels",
+        "SBOM",
+        "artifact signing/Sigstore-cosign",
+        "pinned action SHAs)**",
+        "**OIDC keyless auth**",
+        "artifact management + promotion",
+        "environment parity",
+        "pipeline speed budgets",
+        "rollback triggers",
+        "**release automation**",
+        "cross-platform matrix"
+      ],
+      "defers_to": [
+        {
+          "topic": "test strategy + pyramid + coverage gate",
+          "to": "testing"
+        },
+        {
+          "topic": "SemVer + changelog + release tagging",
+          "to": "git"
+        },
+        {
+          "topic": "secrets rotation cadence + lifecycle",
+          "to": "security"
+        },
+        {
+          "topic": "alert thresholds + SLO design",
+          "to": "observability"
+        },
+        {
+          "topic": "deployment infra mechanics (containers/IaC/networking)",
+          "to": "devops"
+        },
+        {
+          "topic": "branching strategy",
+          "to": "git"
+        },
+        {
+          "topic": "injection/vuln taxonomy",
+          "to": "security"
+        },
+        {
+          "topic": "license policy",
+          "to": "dependencies"
+        }
+      ],
+      "load_with": [
+        "testing",
+        "git",
+        "security",
+        "devops"
+      ]
+    },
+    {
+      "id": "cli",
+      "domain": "cli",
+      "path": "cli/STANDARDS.md",
+      "title": "CLI Standards",
+      "purpose": "Rules for command-line tools that compose in pipelines, fail loudly, and behave identically in a terminal and in a script.",
+      "tier": "Interface",
+      "version": "1.0",
+      "lines": 447,
+      "checklist": [
+        "`--help` / `-h` prints structured usage to stdout and exits 0",
+        "`--version` / `-V` prints `name version` to stdout and exits 0",
+        "All long flags are `--kebab-case`; `--` terminator supported",
+        "Positional arguments limited to 2; unknown flag → exit 2 with a suggestion",
+        "stdin read automatically when piped; `-` accepted as explicit stdin",
+        "No secret is accepted as a command-line argument",
+        "Data → stdout, diagnostics → stderr, with zero mixing",
+        "`--json` emits only valid JSON on stdout — no warnings, progress, or timing",
+        "Output is newline-terminated with a stable field order",
+        "File output written to a temp file, then renamed",
+        "Exit 0 only on success; exit 2 on usage error; every code documented in `--help`",
+        "Color auto-disabled when stdout is not a TTY; `NO_COLOR` respected",
+        "Color never the sole signal — always paired with a text prefix",
+        "Progress bars and spinners suppressed when stderr is not a TTY",
+        "Every error states what failed, why, and how to fix it, prefixed `error:`",
+        "Validation errors aggregated — all reported, not just the first",
+        "No stack trace at default verbosity",
+        "No prompt when stdin is not a TTY or `CI` is set → exit 2 instead of hanging",
+        "Destructive operations confirm, defaulting to the safe answer; `--yes` bypasses",
+        "`--dry-run` mutates nothing",
+        "Config resolved by cascade; `config show` reveals the source of each value",
+        "Deprecated flags warn on stderr for ≥ 2 minor releases before removal",
+        "`--json` schema, flag names, and exit code meanings unchanged within a major version",
+        "SIGINT and SIGTERM shut down gracefully; SIGPIPE exits silently",
+        "Temp and partial files removed on every exit path",
+        "Network operations have a documented default timeout",
+        "Verified in a pipeline: `tool \\| head`, `tool \\| grep`, `tool --json \\| jq`"
+      ],
+      "owns": [
+        "flag + argument conventions",
+        "--help / --version contract",
+        "exit codes",
+        "stdout/stderr channel discipline",
+        "machine-readable output modes",
+        "TTY detection + NO_COLOR",
+        "interactive vs non-interactive rules",
+        "signal handling",
+        "pipeline composition",
+        "CLI compatibility promise (flag deprecation",
+        "output-format stability)"
+      ],
+      "defers_to": [
+        {
+          "topic": "semver + changelog + release tagging",
+          "to": "git"
+        },
+        {
+          "topic": "config cascade + precedence",
+          "to": "configuration"
+        },
+        {
+          "topic": "error taxonomy + boundaries",
+          "to": "error_handling"
+        },
+        {
+          "topic": "secrets + credential input",
+          "to": "security"
+        },
+        {
+          "topic": "structured logs + metrics",
+          "to": "observability"
+        },
+        {
+          "topic": "packaging + distribution",
+          "to": "dependencies"
+        },
+        {
+          "topic": "release pipeline",
+          "to": "cicd"
+        },
+        {
+          "topic": "coverage + pyramid",
+          "to": "testing"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "error_handling",
+        "configuration"
+      ]
+    },
+    {
+      "id": "code_review",
+      "domain": "code_review",
+      "path": "code_review/STANDARDS.md",
+      "title": "Code Review Standards",
+      "purpose": "How code changes are reviewed: what to check, how to communicate, when to approve — the review process itself, not how code is written or committed.",
+      "tier": "Delivery",
+      "version": "1.0",
+      "lines": 426,
+      "checklist": [
+        "PR description explains what changed and why",
+        "PR size within limits (≤ 400 lines target, ≤ 800 hard cap)",
+        "All CI checks pass (build, lint, test, security)",
+        "Self-reviewed diff at least once",
+        "Tests added/updated for new/changed behavior",
+        "No secrets, credentials, or tokens in diff",
+        "No commented-out code or debug statements",
+        "Breaking changes documented in PR description",
+        "Related issues/tickets linked",
+        "Read PR description first — understand intent before reading code",
+        "Verify CI is green before starting review",
+        "Check correctness: does code match stated intent? (§3 P0)",
+        "Check security: no injection, auth bypass, secret exposure? (§3 P0)",
+        "Check architecture: tier boundaries, dependency direction respected? (§3 P1)",
+        "Check error handling: no silent swallowing, proper propagation? (§3 P1)",
+        "Check test coverage: new paths tested, edge cases covered? (§3 P1)",
+        "Check readability: clear names, small functions, obvious flow? (§3 P2)",
+        "Check performance: no N+1, unbounded allocations, hot-path issues? (§3 P2)",
+        "All comments prefixed with type: `[blocking]` `[nit]` `[question]` `[praise]` (§6)",
+        "Blocking comments reference a standard or principle (§6)",
+        "Reviewed only the diff scope (unless architecture change) (§10)",
+        "All blocking comments resolved",
+        "All questions answered (or confirmed non-blocking)",
+        "CI still green after author's latest push",
+        "Required approval count will be met with this approval (§7)",
+        "Confident this code is production-ready"
+      ],
+      "owns": [
+        "review criteria + priority order",
+        "PR size limits",
+        "feedback style",
+        "comment-type taxonomy",
+        "approval flow + required-approver counts",
+        "review-speed SLAs",
+        "disagreement escalation",
+        "AI-assisted review policy"
+      ],
+      "defers_to": [
+        {
+          "topic": "commit format + branching + history + PR merge mechanics",
+          "to": "git"
+        },
+        {
+          "topic": "test-coverage adequacy",
+          "to": "testing"
+        },
+        {
+          "topic": "security review criteria + threat model",
+          "to": "security"
+        },
+        {
+          "topic": "tier boundaries + dependency direction",
+          "to": "architecture"
+        },
+        {
+          "topic": "readability + naming + function size",
+          "to": "code_writing"
+        },
+        {
+          "topic": "CI gates + pipeline",
+          "to": "cicd"
+        },
+        {
+          "topic": "API contract + versioning",
+          "to": "api"
+        }
+      ],
+      "load_with": [
+        "git",
+        "code_writing",
+        "testing",
+        "cicd"
+      ]
+    },
+    {
+      "id": "code_writing",
+      "domain": "code_writing",
+      "path": "code_writing/STANDARDS.md",
+      "title": "Code Writing Standards",
+      "purpose": "Rules for how individual identifiers, functions, statements, and files are written inside the structure architecture and design define.",
+      "tier": "Foundation",
+      "version": "1.0",
+      "lines": 447,
+      "checklist": [
+        "Every name reveals intent; no `data` · `info` · `temp` · `misc` (§2, §11)",
+        "No abbreviations outside the allowed set (§2)",
+        "One verb per concept across the project (§2, §11)",
+        "No type encoded in any identifier (§2, §11)",
+        "Name length matches scope length (§2)",
+        "No function exceeds 80 lines; target ≤ 30 (§3)",
+        "No function nests deeper than 3 levels (§3)",
+        "No function takes more than 3 parameters (§3)",
+        "No boolean parameters (§3, §11)",
+        "Guard clauses first; main logic at lowest indentation (§3)",
+        "Public functions appear above the private helpers they call (§3, §9)",
+        "Every function body sits at one abstraction level (§3)",
+        "Every variable is immutable unless mutation is required (§4)",
+        "Every variable declared at first use, in the smallest scope (§4)",
+        "Zero magic numbers (except 0, 1, -1) and zero magic strings (§4)",
+        "Every constant carrying a quantity names its unit (§4)",
+        "Conditions are positive; no double negatives (§5)",
+        "Every branch on a type or enum is exhaustive; unknown → error (§5)",
+        "No error swallowed to keep a branch tidy (§5, §11)",
+        "Every loop has a known bound (§6)",
+        "No collection mutated during its own iteration (§6)",
+        "Every comment explains why, never what (§7)",
+        "Zero commented-out code, journal comments, or divider comments (§7)",
+        "No function exceeds cyclomatic complexity 15 (§8)",
+        "Call chains reach a leaf within 4 levels (§8)",
+        "No file exceeds 600 lines; target ≤ 400 (§9)",
+        "File follows section order: imports → constants → types → public → private (§9)",
+        "Zero unused imports, wildcard imports, or circular imports (§9)",
+        "Line length ≤ 120 characters (§10)",
+        "Diff contains only changed lines — no drive-by reformatting (§10)"
+      ],
+      "owns": [
+        "identifier naming",
+        "function style + size",
+        "variables + constants",
+        "control flow",
+        "loops",
+        "comment discipline",
+        "complexity thresholds",
+        "file internal structure",
+        "formatting + readability"
+      ],
+      "defers_to": [
+        {
+          "topic": "idempotency",
+          "to": "architecture"
+        },
+        {
+          "topic": "module surface",
+          "to": "design"
+        },
+        {
+          "topic": "file placement",
+          "to": "directory"
+        },
+        {
+          "topic": "result types",
+          "to": "error_handling"
+        },
+        {
+          "topic": "API docs",
+          "to": "documentation"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "design"
+      ]
+    },
+    {
+      "id": "configuration",
+      "domain": "configuration",
+      "path": "configuration/STANDARDS.md",
+      "title": "Configuration Standards",
+      "purpose": "How a project sources, layers, types, validates, and evolves its configuration — and how it gates behavior behind feature flags.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 416,
+      "checklist": [
+        "Config schema is typed; resolution emits a typed object, not a string map",
+        "Every field declares type, default, env-var mapping, secret flag, and description",
+        "Cascade order is defaults → file → env → flags, merge not replace",
+        "Config resolved once at the edge, then frozen and passed inward",
+        "Core logic never reads environment variables directly",
+        "Startup log records the source of each value, secrets masked",
+        "No secret appears in any config file or anywhere in the repo",
+        "Secrets are injected at runtime and held by reference, never embedded",
+        "Secret-flagged fields masked in logs, errors, and config dumps",
+        "`.env` is gitignored; `.env.example` is committed with placeholders only",
+        "Production sources secrets from a secret manager, not `.env`",
+        "Validation runs at startup; the process exits on invalid config",
+        "All validation errors are collected and reported together",
+        "Every key has a default; zero-config startup works for the default case",
+        "No production values used as defaults",
+        "Staging mirrors production structure; no `if env ==` conditionals in code",
+        "Backing-service types match across environments",
+        "Every feature flag has an owner and a mandatory removal date",
+        "New flags default OFF; flags are evaluated once at the edge as a boolean",
+        "Kill switches evaluate independently of the subsystem they disable",
+        "Stale/expired flags are detected by lint/CI and removed within one release cycle",
+        "Dynamic fields declared in the schema; reload re-validates and rolls back on failure",
+        "Config reference generated from the schema; breaking changes carry a migration path"
+      ],
+      "owns": [
+        "config cascade + precedence",
+        "typed config schema",
+        "fail-fast startup validation",
+        "environment parity",
+        "defaults",
+        "config file formats",
+        "dynamic reload",
+        "feature flags (lifecycle",
+        "kill switches",
+        "rollout",
+        "flag debt)"
+      ],
+      "defers_to": [
+        {
+          "topic": "lifecycle",
+          "to": "security"
+        },
+        {
+          "topic": "vault + runtime injection mechanics",
+          "to": "devops"
+        },
+        {
+          "topic": "pipeline secret scoping",
+          "to": "cicd"
+        },
+        {
+          "topic": "never-commit enforcement + history scrubbing",
+          "to": "git"
+        },
+        {
+          "topic": "changelog format + semver",
+          "to": "git"
+        },
+        {
+          "topic": "layer/tier model",
+          "to": "architecture"
+        },
+        {
+          "topic": "file placement + naming",
+          "to": "directory"
+        }
+      ],
+      "load_with": [
+        "security",
+        "architecture",
+        "devops"
+      ]
+    },
+    {
+      "id": "data_pipeline",
+      "domain": "data_pipeline",
+      "path": "data_pipeline/STANDARDS.md",
+      "title": "Data Pipeline Standards",
+      "purpose": "Rules for pipelines that move and reshape data — ingestion, schema-on-write validation, transformation, batch orchestration, replay, and delivery.",
+      "tier": "Domain",
+      "version": "1.0",
+      "lines": 496,
+      "checklist": [
+        "ETL vs ELT choice recorded with its reason",
+        "Pipeline is an acyclic DAG with explicitly declared stage dependencies",
+        "Every stage declares input and output schema, and expected cardinality change",
+        "Pipeline contains at least Source → Validator → Sink",
+        "Source preflight checks existence, permission, size, freshness, and format",
+        "Encoding declared explicitly; undecodable bytes rejected, never substituted",
+        "Watermarks advance only after the downstream write commits",
+        "Validation runs schema → constraint → semantic, in that order",
+        "Rejected rows land in a dead letter with payload, reason, stage, and run id",
+        "`rows_in = rows_out + rows_rejected` asserted at every stage",
+        "Rejection-rate threshold configured and enforced cumulatively across chunks",
+        "Transform stages are pure — zero I/O, deterministic, no shared mutable state",
+        "Transform order is clean → validate → enrich → reshape → filter",
+        "All schemas registered; compatibility checked before registration",
+        "Schema drift halts the run; ✗ auto-adaptation",
+        "Quality thresholds configured not hardcoded; baseline profile compared each run",
+        "Full dataset never loaded into memory; chunk size and memory budget declared per stage",
+        "Windowed operations declare window size, allowed lateness, and trigger policy",
+        "Late data beyond allowed lateness goes to the dead letter, never dropped",
+        "Re-running with identical input produces identical output",
+        "Deduplication uses a deterministic business key, never a random id",
+        "Checkpoints persisted at stage and chunk boundaries, durably",
+        "Dead-letter output is replayable as pipeline input and retained as long as primary output",
+        "Poison pills are isolated, quarantined, and alerted; the pipeline continues",
+        "Backfill uses production code, is range-parameterized, and writes to staging first",
+        "Scheduled runs declare an overlap policy; overlapping runs never occur",
+        "Writes are atomic (temp → rename); no partial output is ever visible",
+        "Output validated: row count, schema, checksum; empty output explicitly handled",
+        "Freshness measured as data age, not run time, and alerted at 80% of the SLA window",
+        "Alerts carry pipeline, stage, run id, and dead-letter location"
+      ],
+      "owns": [
+        "ETL/ELT selection",
+        "pipeline DAG",
+        "stage contracts",
+        "ingestion",
+        "pipeline schema enforcement + schema registry",
+        "data quality",
+        "dead-letter queues",
+        "idempotent + replayable batches",
+        "watermarks + late data",
+        "backfill safety",
+        "batch orchestration",
+        "pipeline output"
+      ],
+      "defers_to": [
+        {
+          "topic": "secrets",
+          "to": "security"
+        },
+        {
+          "topic": "retry semantics",
+          "to": "error_handling"
+        },
+        {
+          "topic": "alert routing",
+          "to": "observability"
+        },
+        {
+          "topic": "migrations",
+          "to": "database"
+        },
+        {
+          "topic": "query style",
+          "to": "sql"
+        },
+        {
+          "topic": "coverage",
+          "to": "testing"
+        },
+        {
+          "topic": "CI stages",
+          "to": "cicd"
+        },
+        {
+          "topic": "drift",
+          "to": "ml"
+        },
+        {
+          "topic": "dependency direction",
+          "to": "architecture"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "observability",
+        "database"
+      ]
+    },
+    {
+      "id": "database",
+      "domain": "database",
+      "path": "database/STANDARDS.md",
+      "title": "Database Standards",
+      "purpose": "Rules for schema design, integrity, indexing, queries, transactions, migrations, and connection management in any relational store.",
+      "tier": "Interface",
+      "version": "1.0",
+      "lines": 461,
+      "checklist": [
+        "Every table has an explicit primary key; no mutable column serves as PK",
+        "Every relationship is a foreign key constraint with an explicit ON DELETE action",
+        "Every FK column is indexed",
+        "Every column is NOT NULL unless the nullable case is justified in a comment",
+        "Money is DECIMAL, timestamps are TIMESTAMPTZ stored UTC — no stringly-typed columns",
+        "CHECK constraints cover every bounded value range",
+        "Every denormalization has a documented source of truth and refresh mechanism",
+        "Composite indexes order equality columns before range columns",
+        "Unused indexes (zero reads / 30 days) dropped",
+        "List queries use keyset pagination; OFFSET appears only on datasets under 10K rows",
+        "Keyset queries order by a unique tiebreaker and are backed by a matching index",
+        "No query's count scales with result-set size (N+1 absent) — asserted in tests",
+        "Every query is parameterized; no user input is concatenated into SQL",
+        "No `SELECT *` and no unbounded query in application code",
+        "EXPLAIN reviewed for every new or changed query",
+        "Multi-row writes run in explicit transactions with an isolation level chosen per operation",
+        "Serialization failures and deadlocks are retried with backoff, not surfaced as fatal",
+        "No I/O (HTTP, file, message) inside an open transaction",
+        "Schema changes ship as expand → dual-write → backfill → flip → contract",
+        "Index creation uses CONCURRENTLY (or engine equivalent)",
+        "Schema and data changes live in separate migrations",
+        "Connection pool has a hard max and every timeout is explicitly configured",
+        "Soft-deleted rows are filtered by a view or default scope, not per-query discipline",
+        "Retention period defined and automated per table",
+        "WAL/binlog archiving enabled; PITR restore verified in an isolated environment",
+        "Replica lag monitored; reads requiring read-your-writes go to the primary"
+      ],
+      "owns": [
+        "schema design + normalization/denormalization",
+        "table + column naming",
+        "data types",
+        "constraints",
+        "indexing strategy",
+        "query patterns",
+        "**pagination strategy (keyset vs OFFSET)**",
+        "**N+1 prevention**",
+        "transactions + isolation levels",
+        "migrations (expand/contract)",
+        "connection pooling",
+        "data lifecycle",
+        "WAL/PITR + replica mechanics"
+      ],
+      "defers_to": [
+        {
+          "topic": "backup cadence + DR + RTO/RPO + failover testing",
+          "to": "devops"
+        },
+        {
+          "topic": "query syntax + formatting",
+          "to": "sql"
+        },
+        {
+          "topic": "N+1 detection + profiling + cache strategy",
+          "to": "performance"
+        },
+        {
+          "topic": "cursor + response-envelope contract",
+          "to": "api"
+        },
+        {
+          "topic": "input validation + secrets + credential storage",
+          "to": "security"
+        },
+        {
+          "topic": "alert thresholds",
+          "to": "observability"
+        },
+        {
+          "topic": "migration execution stage",
+          "to": "cicd"
+        },
+        {
+          "topic": "coverage + pyramid",
+          "to": "testing"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "sql",
+        "security",
+        "performance"
+      ]
+    },
+    {
+      "id": "dependencies",
+      "domain": "dependencies",
+      "path": "dependencies/STANDARDS.md",
+      "title": "Dependency Management Standards",
+      "purpose": "How a project acquires, pins, isolates, audits, licenses, and retires every external and internal dependency in its supply chain.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 393,
+      "checklist": [
+        "Every dependency has a written justification; ≥ 2 alternatives were considered",
+        "Standard library preferred where it covers the need",
+        "Each external library is wrapped; core logic imports no third-party types",
+        "The swap test passes — removing a library breaks only its wrapper",
+        "Exact versions pinned in the lockfile; ranges in the manifest",
+        "Lockfile committed; CI enforces its freshness and integrity hashes",
+        "Build is reproducible — identical inputs yield an identical artifact",
+        "SBOM generated every build in SPDX or CycloneDX and retained with the release",
+        "Install verifies integrity hashes; artifacts are signed/attested where available",
+        "Registry pinned per package — no dependency-confusion path to a public registry",
+        "New dependency names verified against typosquats by a second reviewer",
+        "Vulnerability scan runs on every CI build against the lockfile",
+        "Patch SLAs enforced: critical 24 h · high 1 week · medium 1 month",
+        "Vuln exceptions carry a mitigation, an expiry date, and a named owner",
+        "Updates land one dependency per commit with the lockfile diff reviewed",
+        "No `latest`/floating tags; no auto-merged dependency PRs",
+        "Every dependency license classified against the tier table",
+        "LGPL treated as weak-copyleft-caution (dynamic linking) — not flat-banned",
+        "No strong/network copyleft or unlicensed code in a proprietary product",
+        "License scan fails CI on a forbidden license; attribution file maintained",
+        "Transitive tree audited; critical transitives pinned",
+        "Vendored code carries a patch file, source URL, and its license",
+        "Internal deps use tagged releases and strict semver; the dependency graph is acyclic",
+        "Dev/test/build deps are stripped from the production artifact",
+        "Environment setup is a single command; base images pinned by digest or exact tag"
+      ],
+      "owns": [
+        "dependency minimization + evaluation",
+        "wrapper/adapter isolation",
+        "version pinning + lockfiles",
+        "reproducible builds",
+        "SBOM",
+        "supply-chain integrity (SLSA",
+        "signing",
+        "dependency-confusion",
+        "typosquatting)",
+        "vuln scanning + patch SLAs",
+        "**license tiers (sole owner)**",
+        "vendoring",
+        "internal + transitive dependencies"
+      ],
+      "defers_to": [
+        {
+          "topic": "CVE remediation vs exposure model",
+          "to": "security"
+        },
+        {
+          "topic": "pipeline stage placement",
+          "to": "cicd"
+        },
+        {
+          "topic": "container base-image supply chain",
+          "to": "devops"
+        },
+        {
+          "topic": "semver + release tagging",
+          "to": "git"
+        },
+        {
+          "topic": "dependency isolation vs layer model",
+          "to": "architecture"
+        }
+      ],
+      "load_with": [
+        "security",
+        "cicd",
+        "architecture"
+      ]
+    },
+    {
+      "id": "design",
+      "domain": "design",
+      "path": "design/STANDARDS.md",
+      "title": "Design Standards",
+      "purpose": "Rules for shaping modules, interfaces, abstractions, and patterns inside the structure architecture defines.",
+      "tier": "Foundation",
+      "version": "1.0",
+      "lines": 479,
+      "checklist": [
+        "Every module has one named responsibility (§1, §7)",
+        "No module named `utils` · `helpers` · `common` · `misc` (§2, §7)",
+        "Zero common coupling — no shared mutable module-level state (§2)",
+        "Fan-out ≤ 7 direct dependencies per module (§2)",
+        "Dependency chain depth ≤ 4 hops (§2)",
+        "Zero circular dependencies (§2)",
+        "Every pattern applied solves an existing problem, not a hypothetical one (§3)",
+        "No Factory/Strategy/Observer with exactly one variant (§3, §10)",
+        "Every interface has ≤ 5 methods, lifecycle interfaces excepted (§4)",
+        "Interfaces shaped by consumer needs, not implementation capability (§4)",
+        "No implementation detail leaks through return types or errors (§4, §6)",
+        "Fallible operations return a success-or-error union, never null (§4)",
+        "Interface changes are additive; new fields carry defaults (§4)",
+        "Inheritance depth ≤ 2 levels (§5)",
+        "Every composed piece is independently testable (§5)",
+        "Delegation targets interfaces, not concrete types (§5)",
+        "Middleware order declared explicitly (§5)",
+        "Every abstraction justified by rule-of-three or architecture mandate (§6)",
+        "No pass-through wrapper that adds nothing (§6, §10)",
+        "Swapping any implementation requires zero caller changes (§6)",
+        "Module public surface ≤ 7 functions, all exports explicit (§7)",
+        "Deleting the module would break exactly one feature (§7)",
+        "Entities with ≥ 3 states use a state machine with an enumerated transition table (§8)",
+        "Invalid state transitions raise an error, never a silent no-op (§8)",
+        "No state represented by a string or by nullable \"sometimes valid\" fields (§8, §10)",
+        "Every pipeline declares its failure policy (§9)",
+        "Events are immutable, schema-defined, and dead-lettered on failure (§9)",
+        "Every request has an explicit timeout (§9)",
+        "No anti-pattern from §10 present in the change"
+      ],
+      "owns": [
+        "SOLID",
+        "coupling",
+        "cohesion",
+        "design pattern selection",
+        "interface contracts",
+        "composition",
+        "abstraction rules",
+        "module design",
+        "state machines",
+        "data flow patterns"
+      ],
+      "defers_to": [
+        {
+          "topic": "interface versioning",
+          "to": "architecture"
+        },
+        {
+          "topic": "identifier naming",
+          "to": "code_writing"
+        },
+        {
+          "topic": "file + directory layout",
+          "to": "directory"
+        },
+        {
+          "topic": "retry policy",
+          "to": "error_handling"
+        },
+        {
+          "topic": "wire contracts",
+          "to": "api"
+        },
+        {
+          "topic": "seams",
+          "to": "testing"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "code_writing"
+      ]
+    },
+    {
+      "id": "devops",
+      "domain": "devops",
+      "path": "devops/STANDARDS.md",
+      "title": "DevOps & Infrastructure Standards",
+      "purpose": "Infrastructure provisioning, containers, deployment, environment management, incident response, on-call, backup/DR, and cost — the operational layer that keeps a service alive.",
+      "tier": "Delivery",
+      "version": "1.0",
+      "lines": 481,
+      "checklist": [
+        "Infrastructure defined in IaC, committed to version control (§1)",
+        "All resources tagged: environment, service, team, cost-center, managed-by (§1)",
+        "Container image: minimal base, non-root, read-only rootfs, health check, within size budget (§2)",
+        "Image scanned; no critical/high findings (§2)",
+        "Deployment strategy selected with automated rollback (§3)",
+        "All environments provisioned from IaC; parity validated (§4)",
+        "Infrastructure + application metrics collected; wired to observability alert/SLO layer (§5)",
+        "Incident severity levels assigned; escalation path defined (§6)",
+        "On-call rotation established: ≥ 2 engineers, primary + secondary, handoff documented (§6)",
+        "Paging policy: page only on SLO burn / user-facing impact (§6)",
+        "Scaling limits defined: min instances, max instances, scale triggers (§7)",
+        "Backup configured and first restore test passed (§8)",
+        "RTO/RPO tier assigned and validated (§8)",
+        "TLS on all endpoints; certificates auto-renewed (§9)",
+        "Network segmentation enforced; egress restricted (§9)",
+        "Secrets in vault; no static credentials in code or config (§10)",
+        "Cost tags applied; budget alert configured; token caps set if LLM/API spend (§11)",
+        "Monthly: cost review + right-sizing; restore test for critical-tier data (§8, §11)",
+        "Quarterly: capacity planning; resource right-sizing (§7, §11)",
+        "Semi-annually: DR failover drill (§8)",
+        "Per incident: blameless postmortem within SLA; action items tracked (§6)",
+        "All \"New Service\" items completed",
+        "Load test passed at 2x expected peak traffic (§7)",
+        "DR failover tested at least once (§8)",
+        "Runbooks written for all paging alerts (§6)",
+        "Deployment runbook written and rehearsed (§3)",
+        "Cost projection reviewed and approved (§11)"
+      ],
+      "owns": [
+        "infrastructure-as-code + drift detection",
+        "container standards (distroless/non-root/read-only rootfs)",
+        "immutable infrastructure",
+        "12-Factor",
+        "deployment patterns (infra mechanics)",
+        "environment management + parity",
+        "incident response (SEV levels + blameless postmortems)",
+        "**on-call rotation + escalation + paging policy**",
+        "scaling + autoscaling",
+        "**backup",
+        "DR",
+        "RTO/RPO",
+        "failover cadence**",
+        "networking + TLS",
+        "vault/secret-injection mechanics",
+        "**cost management (infra + LLM/API token spend)**"
+      ],
+      "defers_to": [
+        {
+          "topic": "alert design + resource thresholds",
+          "to": "observability"
+        },
+        {
+          "topic": "secrets rotation cadence + lifecycle + token classes",
+          "to": "security"
+        },
+        {
+          "topic": "deployment pipeline stages + release automation",
+          "to": "cicd"
+        },
+        {
+          "topic": "configuration cascade + sourcing",
+          "to": "configuration"
+        },
+        {
+          "topic": "WAL/PITR + replica lag + restore mechanics",
+          "to": "database"
+        },
+        {
+          "topic": "SLO definitions + log/metric formats",
+          "to": "observability"
+        },
+        {
+          "topic": "application security + authz",
+          "to": "security"
+        }
+      ],
+      "load_with": [
+        "cicd",
+        "observability",
+        "security",
+        "configuration"
+      ]
+    },
+    {
+      "id": "directory",
+      "domain": "directory",
+      "path": "directory/STANDARDS.md",
+      "title": "Directory Standards",
+      "purpose": "Rules for where files and directories live, what they are named, and how project layout scales.",
+      "tier": "Foundation",
+      "version": "1.0",
+      "lines": 413,
+      "checklist": [
+        "≤ 15 items visible at root (§2)",
+        "`README.md` · `src/` · `tests/` · `.gitignore` · manifest + lock file all present at root (§2)",
+        "Zero source files and zero test files at root (§2)",
+        "Exactly one entry point, or entry points collected in `scripts/` (§2)",
+        "Each architecture layer maps to exactly one top-level dir under `src/` (§3)",
+        "No directory mixes two layers (§3)",
+        "Subdirectories group by domain concept, not by file type (§3, §11)",
+        "Every source file has a mirrored test path under `tests/` (§4)",
+        "No test file lives beside source (§4, §9)",
+        "`.env` is gitignored; `.env.example` is committed with empty values (§5)",
+        "Config schema lives in source; config files hold only values (§5)",
+        "Zero secrets in any committed file (§5)",
+        "Every build/output directory is gitignored (§6)",
+        "No source file references a path inside a build/output dir (§6)",
+        "One file-naming case convention, applied to every source file (§7)",
+        "No file named `utils` · `helpers` · `misc` · `common` · `shared` (§7, §11)",
+        "No abbreviations in file names outside the allowed set (§7)",
+        "All directory names lowercase and singular, except the fixed plural conventions (§8)",
+        "Nesting under `src/` ≤ 3 levels (§8)",
+        "No generic container directory at any level (§8, §11)",
+        "Generated files never mixed with authored files (§9)",
+        "Monorepo: apps never import from other apps; shared code sits in `packages/` (§10)",
+        "Multi-repo: no cross-repo path references, no submodules for shared code (§10)",
+        "No anti-pattern from §11 present in the change"
+      ],
+      "owns": [
+        "root layout",
+        "source organization",
+        "test tree layout",
+        "build/output placement",
+        "file naming",
+        "directory naming",
+        "separation rules",
+        "repository topology"
+      ],
+      "defers_to": [
+        {
+          "topic": "identifier naming inside code",
+          "to": "code_writing"
+        },
+        {
+          "topic": "dependency direction",
+          "to": "architecture"
+        },
+        {
+          "topic": "cohesion",
+          "to": "design"
+        },
+        {
+          "topic": "secret storage",
+          "to": "configuration"
+        },
+        {
+          "topic": "coverage",
+          "to": "testing"
+        },
+        {
+          "topic": "history",
+          "to": "git"
+        },
+        {
+          "topic": "pipeline definitions",
+          "to": "cicd"
+        },
+        {
+          "topic": "doc content",
+          "to": "documentation"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "code_writing"
+      ]
+    },
+    {
+      "id": "documentation",
+      "domain": "documentation",
+      "path": "documentation/STANDARDS.md",
+      "title": "Documentation Standards",
+      "purpose": "How a project writes, places, and maintains every document — README, API docs, ADRs, runbooks, and comments — so the docs stay true to the code.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 385,
+      "checklist": [
+        "Every document serves exactly one Diátaxis mode",
+        "README present with all required sections in order",
+        "README Quick Start works by copy-paste on a clean machine",
+        "No \"TODO\" sections in the committed README",
+        "API docs generated from the schema; the endpoint list is not hand-maintained",
+        "Doc-generation failure fails the build",
+        "Every breaking API change reflected in docs before merge",
+        "ADR written for every decision debated more than 15 minutes",
+        "ADRs carry context, decision, all-three consequences, and alternatives",
+        "Accepted ADRs are never edited — superseded instead",
+        "Every alert links to a runbook",
+        "Runbook steps are atomic, copy-paste literal, with a rollback per destructive step",
+        "Runbooks tested quarterly on staging",
+        "Every public function, type, and module has a doc comment",
+        "Doc comments state why/when, never restate the signature",
+        "Inline comments explain why; TODOs/FIXMEs carry an issue link",
+        "No commented-out code survives review",
+        "Changelog lives at repo root and is updated by the change author in the same PR",
+        "Changelog defers semver bands and categories to git; no taxonomy restated here",
+        "Breaking changes ship with migration notes",
+        "Docs updated in the same commit as the code; reviewed in the diff",
+        "CI validates all links; generated docs build successfully",
+        "Docs co-located with code; no external wiki as source of truth"
+      ],
+      "owns": [
+        "Diátaxis mode discipline",
+        "README contract",
+        "API-doc sourcing",
+        "ADR format + lifecycle",
+        "runbook format",
+        "doc comments",
+        "inline comments",
+        "docs-as-code",
+        "doc-rot prevention",
+        "doc location"
+      ],
+      "defers_to": [
+        {
+          "topic": "semver + changelog format + categories",
+          "to": "git"
+        },
+        {
+          "topic": "release automation",
+          "to": "cicd"
+        },
+        {
+          "topic": "API contract design",
+          "to": "api"
+        },
+        {
+          "topic": "in-function comment mechanics",
+          "to": "code_writing"
+        },
+        {
+          "topic": "architecture principles ADRs cite",
+          "to": "architecture"
+        },
+        {
+          "topic": "runbook alert thresholds",
+          "to": "observability"
+        },
+        {
+          "topic": "file placement",
+          "to": "directory"
+        }
+      ],
+      "load_with": [
+        "git",
+        "api",
+        "code_writing"
+      ]
+    },
+    {
+      "id": "error_handling",
+      "domain": "error_handling",
+      "path": "error_handling/STANDARDS.md",
+      "title": "Error Handling Standards",
+      "purpose": "How every system classifies, represents, propagates, retries, and recovers from failure — the sole home for error taxonomy, boundaries, and never-swallow rules.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 446,
+      "checklist": [
+        "Every error maps to one category: programmer · data · environment · partial",
+        "Fatal vs recoverable classified; fatal crashes with diagnostic output",
+        "Programmer errors crash in production; ✗ caught or retried",
+        "Result types are the default return for fallible Tier 0–1 functions",
+        "Errors carry code + message + category + context; codes are stable strings",
+        "Errors propagate outward only; translated (not raw) at every boundary",
+        "Original error preserved as `cause`; ✗ lose the chain when wrapping",
+        "Catch-all only at the outermost Tier 3 boundary; ✗ elsewhere",
+        "User-facing messages expose no internals; developer messages no secrets/PII",
+        "Retries only for idempotent transient environment errors",
+        "Exponential backoff with full jitter; max count + total timeout budget",
+        "Every external call has a timeout; deadlines propagate downstream",
+        "Circuit breaker per external dependency (threshold · cooldown)",
+        "Non-recoverable async messages routed to a dead-letter queue",
+        "Batch ops accumulate errors; partial success is valid; per-item detail returned",
+        "Every external dependency has a defined, tested, visible fallback",
+        "Cleanup runs on success AND failure paths, in reverse order",
+        "Validation collects all field errors; ✗ stop at first",
+        "Errors logged once at the handling boundary; full cause chain included",
+        "No swallowed errors — every catch translates, propagates, or logs"
+      ],
+      "owns": [
+        "error taxonomy",
+        "error-as-data vs exceptions",
+        "result types",
+        "propagation + boundary placement",
+        "retry/backoff/timeout/circuit-breaker",
+        "partial failure",
+        "recovery + degradation",
+        "validation-error structure",
+        "internal vs user reporting",
+        "never-swallow rules"
+      ],
+      "defers_to": [
+        {
+          "topic": "layer/tier model",
+          "to": "architecture"
+        },
+        {
+          "topic": "input-validation boundary + info-exposure",
+          "to": "security"
+        },
+        {
+          "topic": "structured log format + SLO/error-budget math",
+          "to": "observability"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "security",
+        "observability"
+      ]
+    },
+    {
+      "id": "expectation",
+      "domain": "expectation",
+      "path": "expectation/STANDARDS.md",
+      "title": "Expectation Standards",
+      "purpose": "How to write the north-star comparators that define what peak output looks like — the quality bar standards do not set.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 329,
+      "checklist": [
+        "Peak behavior defined — what excellence looks like in this domain",
+        "5–12 quality dimensions, each measurable and independent",
+        "Every dimension observable from the output alone",
+        "Grading rubric with a concrete per-score behavioral description",
+        "Score 3 defined as \"meets requirements\", not \"average\"",
+        "Composite weights documented; no dimension exceeds 40% weight",
+        "Failure taxonomy: every known failure named with detection + recovery",
+        "Benchmark targets set: minimum / target / stretch per dimension",
+        "Benchmarks calibrated from a measured baseline, not aspiration",
+        "Baseline protocol run over N ≥ 50 scenarios and stored",
+        "Benchmarks refreshed within the last quarter",
+        "Design principles stated as inviolable rules for the domain",
+        "Defers coverage, pyramid, and mocking policy to testing",
+        "Expectation tests exist for each dimension",
+        "Composite score correlates with human judgment at r > 0.7",
+        "Every statement is evaluable without asking questions",
+        "Document is versioned with semver; dimensions are additive-only"
+      ],
+      "owns": [
+        "peak comparator model",
+        "quality dimensions",
+        "grading rubrics",
+        "failure taxonomy",
+        "benchmark targets",
+        "expectation-driven evaluation",
+        "the quality bar"
+      ],
+      "defers_to": [
+        {
+          "topic": "test classification",
+          "to": "testing"
+        },
+        {
+          "topic": "chaos execution",
+          "to": "testing/pressure"
+        },
+        {
+          "topic": "density + authoring rules",
+          "to": "agent"
+        },
+        {
+          "topic": "latency/throughput budgets",
+          "to": "performance"
+        }
+      ],
+      "load_with": [
+        "testing",
+        "agent"
+      ]
+    },
+    {
+      "id": "git",
+      "domain": "git",
+      "path": "git/STANDARDS.md",
+      "title": "Git & Version Control Standards",
+      "purpose": "Branching, commits, merges, tags, semantic versioning, changelog format, and history hygiene for every project regardless of stack.",
+      "tier": "Delivery",
+      "version": "1.0",
+      "lines": 396,
+      "checklist": [
+        "`main` created, set as default, branch protection configured",
+        "`.gitignore` from language/framework template + project additions",
+        "`.gitattributes` with LFS patterns if needed",
+        "`CODEOWNERS` file (production scale)",
+        "Hooks configured: pre-commit (lint + format + secret scan) · commit-msg (format)",
+        "CI triggered on push + PR ([cicd](../cicd/STANDARDS.md))",
+        "Merge strategy set in platform (squash default) · PR template with summary + test plan",
+        "`CHANGELOG.md` created with `[Unreleased]` section",
+        "One logical change per commit",
+        "Message follows Conventional Commits (§3): type prefix, imperative, ≤ 72-char subject",
+        "No secrets, credentials, or environment-specific values",
+        "No files > 5 MB (LFS or external storage) · no build artifacts or generated files",
+        "Tests pass · build succeeds · pre-commit hooks pass without `--no-verify`",
+        "Branch name follows convention (§1)",
+        "PR description: summary + test plan + issue reference",
+        "CI green before requesting review · all review comments resolved",
+        "Squash merged (feature/fix) or merge commit (release/hotfix) · branch deleted after merge",
+        "Annotated (signed at production scale) tag on `main`: `v<MAJOR>.<MINOR>.<PATCH>`",
+        "Version bumped per SemVer in the single source of truth",
+        "`CHANGELOG.md` `[Unreleased]` promoted to the version with date",
+        "All CI checks pass on the tagged commit",
+        "Pre-release tags used for RC/beta/alpha: `v1.0.0-rc.1`"
+      ],
+      "owns": [
+        "branching strategy",
+        "Conventional Commits format",
+        "atomic commits",
+        "merge strategy (squash/rebase/merge)",
+        "**semantic versioning (SemVer 2.0.0)**",
+        "**changelog format (Keep a Changelog 1.1.0)**",
+        "**release tagging**",
+        "signed commits",
+        "linear history + rebase policy",
+        "protected branches",
+        "history hygiene",
+        ".gitignore",
+        "git hooks",
+        "large files/LFS",
+        "monorepo git conventions",
+        "secret-in-VCS remediation"
+      ],
+      "defers_to": [
+        {
+          "topic": "PR size + reviewer counts + review criteria",
+          "to": "code_review"
+        },
+        {
+          "topic": "secrets management architecture + rotation",
+          "to": "security"
+        },
+        {
+          "topic": "release automation + artifact signing + pipeline",
+          "to": "cicd"
+        },
+        {
+          "topic": "branching ↔ lifecycle phase",
+          "to": "workflow"
+        },
+        {
+          "topic": "changelog rendering/publishing",
+          "to": "documentation"
+        }
+      ],
+      "load_with": [
+        "cicd",
+        "code_review",
+        "workflow"
+      ]
+    },
+    {
+      "id": "go",
+      "domain": "go",
+      "path": "go/STANDARDS.md",
+      "title": "Go Standards",
+      "purpose": "Idiomatic Go: package design, interfaces, the error-value mechanism, concurrency, context, and the go toolchain.",
+      "tier": "Language",
+      "version": "1.0",
+      "lines": 468,
+      "checklist": [
+        "`go.mod` declares the minimum supported Go version; `go.sum` committed",
+        "`go mod tidy` produces no diff",
+        "✗ `replace` directives in a library module",
+        "Package names short, lowercase, single word — ✗ `util` / `common` / `helpers`",
+        "✗ stutter — `auth.Client`, not `auth.AuthClient`",
+        "Domain code lives in `internal/`; `pkg/` only where an external consumer exists",
+        "Interfaces ≤3 methods, declared at the consumer",
+        "Functions accept interfaces and return concrete types",
+        "Every returned error is checked",
+        "Errors wrapped with `%w` and an operation-naming message",
+        "Errors compared with `errors.Is` / `errors.As` — ✗ `==` or a type assertion",
+        "✗ log-and-return the same error",
+        "✗ `panic` for an expected failure",
+        "`ctx context.Context` is the first parameter; ✗ stored in a struct",
+        "Every `context.WithTimeout`/`WithCancel` has a matching `defer cancel()`",
+        "Every goroutine has a known shutdown path; `errgroup` used when errors matter",
+        "Every long-running loop selects on `ctx.Done()`",
+        "Mutex scope minimal — ✗ a lock held across I/O",
+        "Structured logging via `log/slog`",
+        "Tests are table-driven with named subtests; helpers call `t.Helper()`",
+        "`gofmt -l .` is empty; `go vet ./...` and `golangci-lint run ./...` pass",
+        "`go test -race -count=1 ./...` passes",
+        "`govulncheck ./...` reports no known vulnerabilities",
+        "✗ package-level mutable state; ✗ `init()` doing real work"
+      ],
+      "owns": [
+        "package design",
+        "interface design",
+        "identifier naming",
+        "error values + %w wrapping",
+        "struct + constructor patterns",
+        "goroutine and channel idioms",
+        "context.Context rules",
+        "module layout",
+        "go toolchain invocation",
+        "Go anti-patterns"
+      ],
+      "defers_to": [
+        {
+          "topic": "test strategy + coverage thresholds + mocking policy",
+          "to": "testing"
+        },
+        {
+          "topic": "error taxonomy + boundaries + recovery",
+          "to": "error_handling"
+        },
+        {
+          "topic": "lockfile + pinning + supply-chain policy",
+          "to": "dependencies"
+        },
+        {
+          "topic": "layering + dependency direction",
+          "to": "architecture"
+        },
+        {
+          "topic": "file + directory naming",
+          "to": "directory"
+        },
+        {
+          "topic": "pipeline stages",
+          "to": "cicd"
+        },
+        {
+          "topic": "budgets + profiling method",
+          "to": "performance"
+        },
+        {
+          "topic": "log levels + structured fields",
+          "to": "observability"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "code_writing",
+        "error_handling",
+        "testing",
+        "dependencies"
+      ]
+    },
+    {
+      "id": "html_generation",
+      "domain": "html_generation",
+      "path": "html_generation/STANDARDS.md",
+      "title": "HTML Generation Standards",
+      "purpose": "Rules for programs that emit standalone HTML files — charts, dashboards, EDA and profiling reports — so every output opens offline, renders instantly, and is safe to hand to a browser.",
+      "tier": "Domain",
+      "version": "1.0",
+      "lines": 340,
+      "checklist": [
+        "Zero `http://` or `https://` in `src`, `href`, or `@import` of generated HTML",
+        "No CDN URL constant exists anywhere in the codebase, used or unused",
+        "No `fetch`, `XMLHttpRequest`, `WebSocket`, or `sendBeacon` in emitted JS",
+        "Chart library, CSS, and JS are inlined; output is exactly one file",
+        "Generated fixture renders fully with the network disabled",
+        "`theme` accepts `dark` | `light` | `device`, defaults to `dark`, rejects unknown values",
+        "`open_after` parameter present and defaults to true",
+        "Return payload contains absolute `output_path` and `filename`",
+        "Output path follows explicit → `~/Downloads` → input directory order",
+        "Writes are atomic (temp file → rename) with explicit `utf-8` encoding",
+        "Viewport meta, chart config, tokens, and height constants each defined exactly once",
+        "`html_theme` imports `html_layout`; no reverse import",
+        "No hardcoded chart height in layout dict or figure-theming helper",
+        "Doctype, `<html lang=\"en\">`, charset meta, viewport meta present in fixed order",
+        "Every report section has a stable `id` matching its sidebar anchor",
+        "Every data-derived value is HTML-escaped at its injection point",
+        "Attribute-context values are escaped and quoted",
+        "No `eval()`, no `new Function()`, no `innerHTML` with data",
+        "No inline event handlers ; the single `window.print()` exception",
+        "Python/host data reaches JS as JSON, never as native repr",
+        "CSP meta tag present with `default-src 'none'` and `connect-src 'none'`",
+        "Font stacks are system-only; no downloadable font referenced",
+        "Viewer launch is best-effort and never raises",
+        "Paths built with a path library, never string concatenation"
+      ],
+      "owns": [
+        "offline-first HTML output",
+        "asset inlining",
+        "output path resolution",
+        "generator module structure",
+        "standard function contracts",
+        "document skeleton",
+        "output-specific security"
+      ],
+      "defers_to": [
+        {
+          "topic": "UX patterns",
+          "to": "html_generation/theming"
+        },
+        {
+          "topic": "interactive controls",
+          "to": "html_generation/charts"
+        },
+        {
+          "topic": "injection classes",
+          "to": "security"
+        },
+        {
+          "topic": "boundaries",
+          "to": "error_handling"
+        },
+        {
+          "topic": "metrics",
+          "to": "observability"
+        },
+        {
+          "topic": "file/module naming",
+          "to": "directory"
+        },
+        {
+          "topic": "language idiom",
+          "to": "python"
+        },
+        {
+          "topic": "language idiom",
+          "to": "typescript"
+        }
+      ],
+      "load_with": [
+        "html_generation/theming",
+        "html_generation/charts",
+        "security"
+      ]
+    },
+    {
+      "id": "html_generation/charts",
+      "domain": "html_generation",
+      "path": "html_generation/CHARTS.md",
+      "title": "HTML Chart Standards",
+      "purpose": "Chart embedding, figure theming, dashboard composition, and the interactive controls that ship inside generated HTML reports.",
+      "tier": "Domain",
+      "version": "1.0",
+      "lines": 326,
+      "checklist": [
+        "Chart library inlined; zero CDN or `src` references",
+        "Library embedded exactly once per document",
+        "Figure theming applied immediately before every embed",
+        "Figure paper and plot backgrounds use `--surface`, font uses `--text`",
+        "No height set in the layout dict or the figure-theming helper",
+        "Row-driven heights come from the height calculator, clamped to [280, 1800]",
+        "No magic-number chart heights anywhere in engine or report code",
+        "One shared chart config; GL pixel ratio pinned to `0`",
+        "Charts revealed from modals, collapsed sections, or panels are relaid out on reveal",
+        "Series colors come from the shared categorical palette and are stable across charts",
+        "Every axis is labeled; count axes start at zero",
+        "Any sampled or truncated chart discloses it in its title or caption",
+        "Embedded JS is vanilla — no framework runtime, no `import`, no `require`",
+        "Every script block is an IIFE in strict mode with no globals",
+        "Every script block guards on missing elements and fails without breaking the page",
+        "Host data reaches JS as JSON, never as native repr",
+        "Cross-chart communication goes through custom events, not direct calls",
+        "Cross-filter uses the selection event, not the click event",
+        "Every filter and cross-filter has a visible Clear/Reset control",
+        "Table search and picker search are debounced ≥ 150 ms",
+        "Range filters validate min ≤ max and show an inline error",
+        "Sort indicator appears on the active column only",
+        "Expand modal closes on Escape and backdrop click, and restores the chart",
+        "Collapsible section state persists in the session store and expands for print",
+        "All controls are keyboard operable and carry accessible labels",
+        "Page stays within budget: ≤ 5 MB, ≤ 12 charts, ≤ 5,000 scatter points, ≤ 1,000 table rows"
+      ],
+      "owns": [
+        "chart-library embedding",
+        "figure theming contract",
+        "chart height rules",
+        "embedded JavaScript rules",
+        "cross-chart events",
+        "interactive controls",
+        "dashboard composition"
+      ],
+      "defers_to": [
+        {
+          "topic": "module structure",
+          "to": "html_generation"
+        },
+        {
+          "topic": "motion",
+          "to": "html_generation/theming"
+        },
+        {
+          "topic": "lint",
+          "to": "typescript"
+        },
+        {
+          "topic": "render + memory budgets",
+          "to": "performance"
+        },
+        {
+          "topic": "DOM assertion testing",
+          "to": "testing"
+        }
+      ],
+      "load_with": [
+        "html_generation",
+        "html_generation/theming"
+      ]
+    },
+    {
+      "id": "html_generation/theming",
+      "domain": "html_generation",
+      "path": "html_generation/THEMING.md",
+      "title": "HTML Theming Standards",
+      "purpose": "Theme tokens, CSS architecture, responsive layout, and UX patterns for generated HTML reports and dashboards.",
+      "tier": "Domain",
+      "version": "1.0",
+      "lines": 387,
+      "checklist": [
+        "Exactly three themes: `dark` (default) · `light` · `device`; unknown values rejected",
+        "All nine color tokens defined in both dark and light, with identical names",
+        "No literal hex color outside the theme registry",
+        "Chart surfaces use `--surface`, not `--bg`",
+        "Spatial tokens defined once and referenced everywhere; no inline spacing literals",
+        "`device` theme emits the dark media query **and** the chart-retint switcher",
+        "Device switcher re-runs on live OS preference change",
+        "No `px` outside `1px` borders and the `16px` root font size",
+        "Media query thresholds expressed in `rem` or `em`",
+        "CSS emitted in the fixed layer order: tokens → reset → scrollbar → type → components → layout → responsive → print",
+        "`overflow-wrap: break-word` applied globally; `code`/`pre` exempted",
+        "Grids use `auto-fill` + `minmax()`; every grid/flex child has `min-width: 0`",
+        "Tables wrapped in an `overflow-x: auto` container",
+        "Mobile sidebar is off-canvas with a hamburger toggle, backdrop, and Escape close",
+        "Chart container heights use `clamp()` and are capped at `80vh`",
+        "Every z-index value appears in the z-index scale table",
+        "All transitions ≤ `0.2s`; content animations ≤ `600ms`",
+        "`prefers-reduced-motion: reduce` skips every animation and smooth scroll",
+        "Print stylesheet present: chrome hidden, sections avoid breaks, collapsed sections expanded",
+        "Scroll spy uses an intersection observer, not scroll events",
+        "CSV export includes only currently visible rows, generated in-page",
+        "UI state persisted in the tab-scoped session store, never persistent local storage",
+        "Text contrast ≥ 4.5:1; status never conveyed by color alone",
+        "Every interactive element is keyboard reachable with a visible focus ring",
+        "Icon-only buttons carry accessible labels",
+        "No horizontal page scroll at any breakpoint"
+      ],
+      "owns": [
+        "theme model",
+        "color + spatial tokens",
+        "device-mode switching",
+        "CSS layer order",
+        "units",
+        "responsive breakpoints",
+        "z-index scale",
+        "print + motion rules",
+        "report UX patterns"
+      ],
+      "defers_to": [
+        {
+          "topic": "CSP",
+          "to": "html_generation"
+        },
+        {
+          "topic": "interactive controls",
+          "to": "html_generation/charts"
+        },
+        {
+          "topic": "auth",
+          "to": "web"
+        },
+        {
+          "topic": "rendering budgets",
+          "to": "performance"
+        }
+      ],
+      "load_with": [
+        "html_generation",
+        "html_generation/charts"
+      ]
+    },
+    {
+      "id": "local_mcp",
+      "domain": "local_mcp",
+      "path": "local_mcp/STANDARDS.md",
+      "title": "Local MCP Standards",
+      "purpose": "Architecture, repository structure, and engine/server split for self-hosted MCP servers driven by a local LLM.",
+      "tier": "Domain",
+      "version": "1.0",
+      "lines": 370,
+      "checklist": [
+        "Every tool completes its primary operation with the network disconnected",
+        "Every network exception is documented in the tool docstring and README",
+        "Language chosen by local library availability, not preference",
+        "`requires-python = \"==3.12.*\"` — strict pin, not `>=`",
+        "`fastmcp` pinned to a major range (`>=2.0,<3.0`)",
+        "`uv` is the package manager; `pip` · `conda` · `poetry` absent",
+        "`shared/` code is not duplicated into any server package",
+        "Server directory is `servers/{domain}_{tier}/`",
+        "Server targets exactly one tier; tool count within that tier's range",
+        "`engine.py` has zero MCP imports",
+        "Every `server.py` tool body is a single call into `engine.py`",
+        "No file exceeds 1,000 lines; `server.py` under 300",
+        "Sub-modules are prefixed `_{tier_abbr}_` and grouped by function",
+        "Tests import `engine.py`, not a running server",
+        "scipy · statsmodels · numpy · sklearn imported at module level with an `_OK` flag",
+        "Optional-dependency calls guarded by `is not None`, not by boolean flag",
+        "No `importlib.util.exec_module` inside any function body",
+        "Tool names are `verb_noun` with a verb from the approved list",
+        "Every dependency cleared the vetting gate in `dependencies/STANDARDS.md`",
+        "Every runtime dependency installs from the lockfile with no post-install fetch",
+        "No prohibited library (`pywin32`, `Spire.*`, `Aspose.*`, cloud SDK as engine)",
+        "No violation of any item in §13"
+      ],
+      "owns": [
+        "MCP architecture",
+        "self-hosted execution principle",
+        "engine/server split",
+        "repo + tier structure",
+        "MCP naming",
+        "MCP dependency policy"
+      ],
+      "defers_to": [
+        {
+          "topic": "token budget",
+          "to": "local_mcp/tools"
+        },
+        {
+          "topic": "resource tiers",
+          "to": "local_mcp/runtime"
+        },
+        {
+          "topic": "docs",
+          "to": "local_mcp/delivery"
+        },
+        {
+          "topic": "layering + dependency direction",
+          "to": "architecture"
+        },
+        {
+          "topic": "Python idiom + packaging",
+          "to": "python"
+        },
+        {
+          "topic": "lock files",
+          "to": "dependencies"
+        },
+        {
+          "topic": "theming",
+          "to": "html_generation"
+        },
+        {
+          "topic": "generic layout + naming",
+          "to": "directory"
+        }
+      ],
+      "load_with": [
+        "local_mcp/tools",
+        "local_mcp/runtime",
+        "local_mcp/delivery"
+      ]
+    },
+    {
+      "id": "local_mcp/delivery",
+      "domain": "local_mcp",
+      "path": "local_mcp/DELIVERY.md",
+      "title": "Local MCP Delivery Standards",
+      "purpose": "How an MCP server is tested, built, installed, distributed, and documented for a non-technical local user.",
+      "tier": "Domain",
+      "version": "1.0",
+      "lines": 260,
+      "checklist": [
+        "Tests import `engine.py` directly; no unit test spins up a server process",
+        "stdio and HTTP smoke tests exist and assert a clean protocol channel",
+        "Every write tool has all 11 contract tests from §2",
+        "A test proves an invalid op array leaves no `.bak` file behind",
+        "Every read tool has a truncation test asserting `\"truncated\"` and `\"total_available\"`",
+        "Fixtures include `simple`, `messy`, and `large` categories, committed to the repo",
+        "The `messy` fixture carries encoding variants and malformed rows",
+        "Path-traversal tests use a genuinely outside-home path per platform",
+        "CI matrix runs Linux, macOS, and Windows with `fail-fast: false`",
+        "CI sets `MCP_CONSTRAINED_MODE=1` and the repo root on the import path",
+        "CI installs `libomp` on the macOS runner when OpenMP libraries are used",
+        "CI fails the build on any tool docstring over 80 characters",
+        "CI type-checks the full server package including `_{tier}_*` sub-modules",
+        "Notebook exclusion is configured in the project file, not as a CLI flag",
+        "Release runs the full three-OS matrix before publishing",
+        "Install requires zero terminal commands from the user",
+        "Launch command guards on the `.git` subfolder, not the directory",
+        "Launch command uses fetch + hard reset, never `git pull`",
+        "Launch command sets a 10-minute timeout and syncs from the lockfile",
+        "Install path is `~/.mcp_servers/{REPO_NAME}`; the user is never asked to choose",
+        "Config writer is append-only, idempotent, and writes atomically",
+        "README follows the §10 section order and carries the first-run timeout note",
+        "README states honestly which platforms were hand-verified vs CI-only",
+        "`CLAUDE.md` exists and carries the prohibitions list",
+        "Tool docstrings and engine docstrings use their correct separate registers"
+      ],
+      "owns": [
+        "MCP test delta",
+        "MCP CI delta",
+        "self-updating install model",
+        "client config registration",
+        "README + CLAUDE.md contract",
+        "domain reference table"
+      ],
+      "defers_to": [
+        {
+          "topic": "engine/server split",
+          "to": "local_mcp"
+        },
+        {
+          "topic": "patch protocol",
+          "to": "local_mcp/tools"
+        },
+        {
+          "topic": "constrained mode",
+          "to": "local_mcp/runtime"
+        },
+        {
+          "topic": "fixtures discipline",
+          "to": "testing"
+        },
+        {
+          "topic": "release automation",
+          "to": "cicd"
+        },
+        {
+          "topic": "semver",
+          "to": "git"
+        },
+        {
+          "topic": "runbooks",
+          "to": "documentation"
+        },
+        {
+          "topic": "lock files",
+          "to": "dependencies"
+        }
+      ],
+      "load_with": [
+        "local_mcp",
+        "local_mcp/tools",
+        "local_mcp/runtime"
+      ]
+    },
+    {
+      "id": "local_mcp/runtime",
+      "domain": "local_mcp",
+      "path": "local_mcp/RUNTIME.md",
+      "title": "Local MCP Runtime Standards",
+      "purpose": "Execution-time rules for an MCP server: state and snapshots, receipts, progress, resource tiers, I/O, and transports.",
+      "tier": "Domain",
+      "version": "1.0",
+      "lines": 297,
+      "checklist": [
+        "Every path parameter passes through `resolve_path()` before use",
+        "Every subprocess uses an argument list, `shell=False`, and an explicit timeout",
+        "No `eval()` or `exec()` on user-supplied expressions anywhere",
+        "No response, progress entry, or error leaks credentials or absolute paths",
+        "Every write snapshots first, and only after validation passes",
+        "Snapshots are atomic (temp + rename) and collision-guarded",
+        "`restore_version` exists in every tier 1 server",
+        "Irreversible operations require `confirm=True`",
+        "No transform tool defaults `output_path` to the input file",
+        "Every file-writing tool returns `\"output_path\"` and `\"output_file\"`",
+        "`append_receipt` never raises; a receipt failure never fails the operation",
+        "Every tier 1 server exposes `read_receipt`",
+        "Zero `print()` calls in any server or engine module; logs go to stderr",
+        "Every response carries a `\"progress\"` array built with the shared helpers",
+        "No engine file imports CUDA, ROCm, or Metal; no tool branches on GPU availability",
+        "`MCP_CONSTRAINED_MODE` is read at call time, never at import time",
+        "Every limit comes from `get_max_*()`; no hardcoded size constants",
+        "Compute-heavy tools check available memory and fail fast with a hint",
+        "Operations over ~30 s are async with an explicit timeout",
+        "A failed live-reload never fails the write",
+        "Report tools return a path; no HTML body or raw bytes crosses the MCP channel",
+        "Every CSV read routes through the shared reader",
+        "Numeric aggregations coerce the column first; date parsing uses mixed format",
+        "Every output file is written temp-then-rename",
+        "Paths are built with path objects, never string concatenation",
+        "Both stdio and HTTP transports work; the HTTP token is installer-generated"
+      ],
+      "owns": [
+        "snapshot + restore protocol",
+        "output path safety",
+        "companion state",
+        "receipt log",
+        "progress channel",
+        "constrained mode + resource tiers",
+        "async execution",
+        "shared data I/O",
+        "cross-platform runtime",
+        "transports",
+        "multi-client"
+      ],
+      "defers_to": [
+        {
+          "topic": "import strategy",
+          "to": "local_mcp"
+        },
+        {
+          "topic": "token budget",
+          "to": "local_mcp/tools"
+        },
+        {
+          "topic": "CI",
+          "to": "local_mcp/delivery"
+        },
+        {
+          "topic": "chart bundling",
+          "to": "html_generation"
+        },
+        {
+          "topic": "access control",
+          "to": "security"
+        },
+        {
+          "topic": "traces",
+          "to": "observability"
+        },
+        {
+          "topic": "caching",
+          "to": "performance"
+        }
+      ],
+      "load_with": [
+        "local_mcp",
+        "local_mcp/tools",
+        "local_mcp/delivery"
+      ]
+    },
+    {
+      "id": "local_mcp/tools",
+      "domain": "local_mcp",
+      "path": "local_mcp/TOOLS.md",
+      "title": "Local MCP Tool Standards",
+      "purpose": "Rules for designing, shaping, and budgeting the tools an MCP server exposes to a local language model.",
+      "tier": "Domain",
+      "version": "1.0",
+      "lines": 323,
+      "checklist": [
+        "Server exposes ≤ 10 tools (target 6–8 at the 8 GB reference target)",
+        "Every read/write task is expressible as LOCATE → INSPECT → PATCH → VERIFY",
+        "Index, search, and bounded-read tools all exist for the domain",
+        "No tool returns surrounding context, parent structure, or full datasets",
+        "Every bounded read enforces its limit in the engine, not via the model",
+        "Every truncated response sets `\"truncated\"`, `\"returned\"`, `\"total_available\"`, `\"hint\"`",
+        "Every response includes `\"token_estimate\"`",
+        "Every tool docstring is ≤ 80 characters",
+        "Every parameter type is in the allowed list; no `Optional`, `Union`, `Any`, `dict`, `Enum`",
+        "Every write tool takes `dry_run: bool = False` and honours it",
+        "Annotations set on every tool; `destructiveHint=true` on every irreversible one",
+        "Op arrays are capped at 50 ops and applied sequentially",
+        "Op array fully validated BEFORE any snapshot or file write",
+        "A failed validation leaves no `.bak` file behind",
+        "Op names use `verb_noun` with a verb from the approved list",
+        "Every tool returns a dict on every code path, async included",
+        "`\"success\"` is the first key of every response",
+        "Every write response carries `\"backup\"`, `\"output_path\"`, `\"output_file\"`",
+        "No exception escapes the engine; each becomes an error dict",
+        "Every error dict has a `\"hint\"` naming a specific tool or value",
+        "No error or progress message leaks credentials or absolute system paths",
+        "Combined tool schemas stay under 700 tokens",
+        "No size limit is hardcoded; all come from `get_max_*()`",
+        "Op-array tools coerce malformed ops and accept dual-key spellings",
+        "Non-string `\"op\"` values are type-checked before use as a lookup key"
+      ],
+      "owns": [
+        "tool count discipline",
+        "four-tool pattern",
+        "surgical read protocol",
+        "tool schema",
+        "annotations",
+        "patch protocol",
+        "return + error contract",
+        "token budget",
+        "LLM input resilience"
+      ],
+      "defers_to": [
+        {
+          "topic": "naming",
+          "to": "local_mcp"
+        },
+        {
+          "topic": "output paths",
+          "to": "local_mcp/runtime"
+        },
+        {
+          "topic": "docstring CI gate",
+          "to": "local_mcp/delivery"
+        },
+        {
+          "topic": "error taxonomy + boundaries",
+          "to": "error_handling"
+        },
+        {
+          "topic": "input validation boundary",
+          "to": "security"
+        },
+        {
+          "topic": "API contract + versioning",
+          "to": "api"
+        }
+      ],
+      "load_with": [
+        "local_mcp",
+        "local_mcp/runtime",
+        "local_mcp/delivery"
+      ]
+    },
+    {
+      "id": "ml",
+      "domain": "ml",
+      "path": "ml/STANDARDS.md",
+      "title": "Machine Learning Standards",
+      "purpose": "Rules for the ML lifecycle — data versioning, experiment tracking, training, evaluation, registry, deployment, drift monitoring, and reproducibility.",
+      "tier": "Domain",
+      "version": "1.0",
+      "lines": 467,
+      "checklist": [
+        "Every lifecycle stage produced its artifact; no stage skipped",
+        "Dataset versioned with a content hash and lineage back to raw in ≤ 3 hops",
+        "Raw data never modified in place; external sources snapshotted with retrieval hash",
+        "Leakage audit passed: target · temporal · group · preprocessing · feature-store · duplicate",
+        "Preprocessing fitted on train only, applied to val/test with train parameters",
+        "Splits reproducible from seed + dataset version",
+        "Training-time and serving-time features come from one implementation",
+        "Every training run tracked with data version, params, metrics, environment, and seeds",
+        "Failed runs logged, never deleted; records append-only",
+        "Hyperparameters in a versioned config; search strategy and budget declared up front",
+        "Early stopping, checkpointing, and resume configured; resource budgets enforced",
+        "Primary metric and pass threshold declared before evaluation",
+        "Model beats a documented baseline",
+        "Holdout evaluated exactly once per candidate; eval set frozen and never trained on",
+        "Per-segment metrics computed; sub-5% differences backed by a significance test",
+        "Global feature importance generated; single-feature dominance > 50% investigated",
+        "Explainability level matches the risk level",
+        "Model in the registry with artifact hash, dataset version, code commit, and metrics",
+        "Serialization validated by load → predict → compare",
+        "Latency p50/p95/p99 measured against the declared budget",
+        "Rollback path identified and tested before traffic shifts",
+        "Canary or shadow completed before full rollout",
+        "Input validated at the serving boundary; failure degrades gracefully",
+        "Drift, performance, input-quality, and prediction logs configured before promotion",
+        "Retraining triggers defined; retraining re-passes every gate with human approval",
+        "Seeds set globally and per framework; dependencies locked; environment hash recorded",
+        "Run reproduces in a clean environment from recorded metadata alone",
+        "PII removed or pseudonymized before the pipeline; never in the feature matrix",
+        "Fairness audit passed with a domain-justified metric before production",
+        "Model card written and versioned with the model"
+      ],
+      "owns": [
+        "ML lifecycle gates",
+        "dataset versioning + lineage",
+        "leakage prevention",
+        "split strategy",
+        "experiment tracking",
+        "training discipline",
+        "evaluation + baselines",
+        "explainability",
+        "model registry + promotion",
+        "serving + rollout",
+        "drift monitoring + retraining triggers",
+        "reproducibility",
+        "fairness audit + model cards"
+      ],
+      "defers_to": [
+        {
+          "topic": "backfill",
+          "to": "data_pipeline"
+        },
+        {
+          "topic": "coverage",
+          "to": "testing"
+        },
+        {
+          "topic": "retry",
+          "to": "error_handling"
+        },
+        {
+          "topic": "alert routing",
+          "to": "observability"
+        },
+        {
+          "topic": "migrations",
+          "to": "database"
+        },
+        {
+          "topic": "CI stages",
+          "to": "cicd"
+        },
+        {
+          "topic": "PII policy",
+          "to": "security"
+        },
+        {
+          "topic": "versioning",
+          "to": "api"
+        },
+        {
+          "topic": "latency budgets",
+          "to": "performance"
+        }
+      ],
+      "load_with": [
+        "data_pipeline",
+        "testing",
+        "observability"
+      ]
+    },
+    {
+      "id": "observability",
+      "domain": "observability",
+      "path": "observability/STANDARDS.md",
+      "title": "Observability Standards",
+      "purpose": "Structured logging, metrics, traces, SLOs, health, and alerting that make production operable — the single source for alert design and resource thresholds.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 412,
+      "checklist": [
+        "Instrumented via OpenTelemetry; logs/metrics/traces share correlation/trace IDs",
+        "Structured JSON logging; static message templates, variables in fields",
+        "All five log levels applied per strict criteria; one level per event",
+        "PII and secrets excluded from logs, receipts, traces, audit (→ security §8)",
+        "Operation receipts returned from every write; secrets/PII excluded",
+        "Rate, error, and duration metrics emitted; naming + base-unit conventions",
+        "Latency tracked as p50/p95/p99 histograms; ✗ average latency",
+        "Metric labels low-cardinality; ✗ IDs/timestamps as labels",
+        "`/health/live` and `/health/ready` separate; readiness checks dependencies",
+        "Trace context (`traceparent`) propagated to/from every external call",
+        "SLOs defined for user-facing journeys with error budgets",
+        "Burn-rate alerting: fast burn pages, slow burn tickets",
+        "Alerts fire on symptoms/SLO burn, not raw causes; each has a runbook",
+        "Resource saturation alerts: CPU > 85%, memory > 90%, disk > 85%, sustained 10 min",
+        "Alerts use windowed thresholds; ✗ single-event alerts; auto-resolve on recovery",
+        "Audit events structured, separate storage, synchronous, no gaps (→ security §13)",
+        "Retention + rotation configured per data type; audit logs never auto-deleted"
+      ],
+      "owns": [
+        "structured logging",
+        "log levels/content",
+        "operation receipts",
+        "metrics (golden signals/RED/USE)",
+        "health checks",
+        "distributed tracing",
+        "SLOs + error budgets",
+        "alert design rules + resource thresholds",
+        "log retention"
+      ],
+      "defers_to": [
+        {
+          "topic": "error taxonomy/classification",
+          "to": "error_handling"
+        },
+        {
+          "topic": "security audit event catalog + PII basis",
+          "to": "security"
+        },
+        {
+          "topic": "performance budgets + caching",
+          "to": "performance"
+        },
+        {
+          "topic": "backup/DR",
+          "to": "devops"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "error_handling",
+        "security"
+      ]
+    },
+    {
+      "id": "performance",
+      "domain": "performance",
+      "path": "performance/STANDARDS.md",
+      "title": "Performance Standards",
+      "purpose": "How systems are budgeted, measured, profiled, cached, and kept fast under load.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 499,
+      "checklist": [
+        "Performance budgets defined for every critical path and committed to the repo",
+        "Latency reported as p50 · p95 · p99 — no average-latency metric anywhere",
+        "CI checks budgets on every merge; hard-ceiling breach fails the build",
+        "No budget was relaxed without written justification and review",
+        "Every optimization traces to a profile — none justified by intuition",
+        "Profiles captured under realistic load, in optimized builds only",
+        "USE method applied when hunting a bottleneck (utilization · saturation · errors)",
+        "Every cache has a max size, an eviction policy, and a TTL",
+        "Stampede protection on every cache fronting an expensive origin",
+        "Cache keys deterministic, schema-versioned, namespaced per tenant/user",
+        "Cache hit rate monitored per layer; error responses never cached",
+        "No unbounded collection, queue, or buffer anywhere",
+        "Every spawned task has a cancellation path and a timeout",
+        "Pools have an explicit max size and a declared exhaustion policy",
+        "I/O batched with both a size trigger and an interval trigger",
+        "Every outbound call has an explicit timeout derived from measured p99",
+        "Caller timeout exceeds callee timeout across the whole chain",
+        "Backpressure at every queue; load shedding rejects early when over capacity",
+        "Circuit breaker on every external dependency",
+        "Query count per request measured and budgeted; N+1 caught by a test",
+        "Every list query has a LIMIT",
+        "Algorithm complexity appropriate for production data size",
+        "Benchmarks reproducible: isolated environment, ≥ 30 iterations, deterministic data",
+        "Benchmark regression gate in CI (> 10% warn · > 20% fail)"
+      ],
+      "owns": [
+        "performance budgets",
+        "percentile measurement",
+        "profiling method",
+        "caching strategy",
+        "memory + I/O optimization",
+        "algorithmic discipline",
+        "timeouts + load shedding",
+        "benchmark regression gates"
+      ],
+      "defers_to": [
+        {
+          "topic": "pagination + N+1 remediation",
+          "to": "database"
+        },
+        {
+          "topic": "CLS)",
+          "to": "web"
+        },
+        {
+          "topic": "chaos execution",
+          "to": "testing/pressure"
+        },
+        {
+          "topic": "coverage + pyramid",
+          "to": "testing"
+        },
+        {
+          "topic": "alert thresholds + SLO burn-rate",
+          "to": "observability"
+        },
+        {
+          "topic": "pipeline stages",
+          "to": "cicd"
+        },
+        {
+          "topic": "layer model + backpressure architecture",
+          "to": "architecture"
+        },
+        {
+          "topic": "infra cost + capacity spend",
+          "to": "devops"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "observability",
+        "database"
+      ]
+    },
+    {
+      "id": "python",
+      "domain": "python",
+      "path": "python/STANDARDS.md",
+      "title": "Python Standards",
+      "purpose": "Idiomatic Python: style, typing, packaging, async, and the uv · ruff · mypy toolchain.",
+      "tier": "Language",
+      "version": "1.0",
+      "lines": 490,
+      "checklist": [
+        "`requires-python = \">=3.12\"` in `pyproject.toml`",
+        "`uv.lock` and `.python-version` committed; `.venv/` gitignored",
+        "✗ `setup.py` · `setup.cfg` · `requirements.txt` as dependency source",
+        "`py.typed` marker present in every distributed package",
+        "src layout used for any package published to an index",
+        "`__init__.py` contains only imports + `__all__` — no logic, no side effects",
+        "Every public function annotated, including `-> None` returns",
+        "Every `# type: ignore` carries an error code; every `Any` carries a comment",
+        "Imports ordered stdlib → third-party → first-party; ✗ wildcard imports",
+        "External input parsed into a validated model, never a raw `dict`",
+        "✗ mutable default arguments",
+        "✗ bare `except:`; broad `except Exception` only at the boundary",
+        "Every re-raise chains with `from`",
+        "Logging calls use `%`-style deferred args, ✗ f-strings",
+        "✗ blocking calls inside coroutines; `asyncio.TaskGroup` over bare `gather`",
+        "`pathlib.Path` used; `encoding=\"utf-8\"` on every `open()`",
+        "`datetime.now(tz=UTC)` — no naive datetimes",
+        "✗ `assert` used for runtime validation",
+        "`ruff check .` exits 0",
+        "`ruff format --check .` exits 0",
+        "`mypy --strict` exits 0",
+        "`pytest` passes at the coverage threshold set in [testing](../testing/STANDARDS.md)",
+        "Pre-commit hooks run the identical commands CI runs",
+        "Lock file regenerated in the same commit as any dependency change"
+      ],
+      "owns": [
+        "Python style",
+        "identifier naming",
+        "type hints",
+        "uv packaging",
+        "import order",
+        "dataclass/Pydantic selection",
+        "asyncio idioms",
+        "pytest/ruff/mypy invocation",
+        "Python anti-patterns"
+      ],
+      "defers_to": [
+        {
+          "topic": "test strategy + coverage thresholds + mocking policy",
+          "to": "testing"
+        },
+        {
+          "topic": "error taxonomy + boundaries + recovery",
+          "to": "error_handling"
+        },
+        {
+          "topic": "lockfile + pinning + supply-chain policy",
+          "to": "dependencies"
+        },
+        {
+          "topic": "layering + dependency direction",
+          "to": "architecture"
+        },
+        {
+          "topic": "file + directory naming",
+          "to": "directory"
+        },
+        {
+          "topic": "pipeline stages",
+          "to": "cicd"
+        },
+        {
+          "topic": "budgets + profiling method",
+          "to": "performance"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "code_writing",
+        "testing",
+        "error_handling",
+        "dependencies"
+      ]
+    },
+    {
+      "id": "rust",
+      "domain": "rust",
+      "path": "rust/STANDARDS.md",
+      "title": "Rust Standards",
+      "purpose": "Idiomatic Rust: ownership, the Result/panic error mechanism, crate structure, traits, unsafe, async, and the cargo toolchain.",
+      "tier": "Language",
+      "version": "1.0",
+      "lines": 471,
+      "checklist": [
+        "`edition = \"2024\"` and `rust-version` (MSRV) set in `Cargo.toml`",
+        "`Cargo.lock` committed",
+        "`[lints.rust] unsafe_code = \"forbid\"` unless the crate genuinely needs unsafe",
+        "`[lints.clippy]` sets `all = \"deny\"`, `pedantic = \"warn\"`, `unwrap_used = \"deny\"`",
+        "Shared dependency versions declared once in `[workspace.dependencies]`",
+        "Parameters take `&str` / `&[T]` / `&Path`, ✗ `&String` / `&Vec<T>` / `&PathBuf`",
+        "Every `.clone()` justified — borrow was tried first",
+        "✗ `.unwrap()` outside tests; `.expect()` messages name the invariant",
+        "Library errors are a `thiserror` enum; binaries use `anyhow` with `.context()`",
+        "✗ `Result<T, String>` and ✗ `Box<dyn Error>` in a public library API",
+        "Public error enums are `#[non_exhaustive]`",
+        "Newtypes used for IDs, units, and validated strings — ✗ bare `u64` / `String`",
+        "✗ boolean parameters — enums instead",
+        "`match` on owned enums is exhaustive — ✗ wildcard arm",
+        "Every `unsafe` block has a `// SAFETY:` comment; Miri runs over unsafe paths in CI",
+        "✗ mutex guard held across an `.await`",
+        "Channels are bounded; every spawned task is tracked (`JoinSet`), ✗ detached",
+        "Blocking work runs on `spawn_blocking`, not on the async runtime",
+        "Every public item has a doc comment; every public function has a doc test",
+        "`cargo fmt --check` exits 0",
+        "`cargo clippy --all-targets -- -D warnings` exits 0",
+        "`cargo test` and `cargo doc --no-deps` exit 0",
+        "`cargo deny check` passes — licenses and advisories",
+        "✗ `todo!()` / `unimplemented!()` / `dbg!()` in committed code"
+      ],
+      "owns": [
+        "ownership + borrowing idioms",
+        "Result/Option/? mechanism",
+        "thiserror/anyhow selection",
+        "crate + module layout",
+        "trait design",
+        "type-state + newtype patterns",
+        "unsafe rules",
+        "tokio async idioms",
+        "cargo + workspace config",
+        "clippy + rustfmt invocation"
+      ],
+      "defers_to": [
+        {
+          "topic": "test strategy + coverage thresholds + mocking policy",
+          "to": "testing"
+        },
+        {
+          "topic": "error taxonomy + boundaries + recovery",
+          "to": "error_handling"
+        },
+        {
+          "topic": "lockfile + pinning + supply-chain policy",
+          "to": "dependencies"
+        },
+        {
+          "topic": "layering + dependency direction",
+          "to": "architecture"
+        },
+        {
+          "topic": "file + directory naming",
+          "to": "directory"
+        },
+        {
+          "topic": "pipeline stages",
+          "to": "cicd"
+        },
+        {
+          "topic": "budgets + profiling method",
+          "to": "performance"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "code_writing",
+        "error_handling",
+        "testing",
+        "dependencies"
+      ]
+    },
+    {
+      "id": "security",
+      "domain": "security",
+      "path": "security/STANDARDS.md",
+      "title": "Security Standards",
+      "purpose": "Application-level security for every project: the validation boundary, access control, secrets, and supply-chain integrity every input and credential passes through.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 496,
+      "checklist": [
+        "Data classification defined for all data types",
+        "Input validated once at the Tier 3 boundary; core logic trusts typed data",
+        "All validation errors returned at once; ✗ stop at first",
+        "Parameterized queries / structured APIs for every injection vector",
+        "Output encoded per target context; ✗ raw user data in any output",
+        "One canonical auth method per interface; unauthenticated → reject",
+        "Access tokens: user ≤ 15 min + refresh rotation · service-to-service ≤ 1 h",
+        "Passwords hashed with Argon2id/scrypt/bcrypt + per-user salt; ✗ plaintext",
+        "Authorization deny-by-default; resource-level checks on every access path",
+        "Secrets in env/vault; ✗ in code, config, or commit history",
+        "Rotation by class: service-account ≤ 90 days · CI/deploy token ≤ 24 h",
+        "Derived values pass inward; raw secrets never leave Tier 3",
+        "PII minimized, encrypted, retention-limited; ✗ PII in logs/errors/receipts",
+        "TLS 1.3 (1.2 floor); legacy TLS/SSL disabled; HSTS enabled",
+        "Lock files committed; CVE scan blocks critical/high; dependency-confusion pinned",
+        "SBOM generated; artifacts + commits signed; secret scanning in CI",
+        "CI authenticates via OIDC short-lived tokens; ✗ long-lived static keys",
+        "File ops scoped to allowed root; subprocess args as arrays; commands allowlisted",
+        "Error responses return correlation ID, ✗ stack traces / internal detail",
+        "Security headers + CORS allowlist + CSRF on state-changing endpoints",
+        "Security audit trail immutable, access-restricted, retained ≥ 1 year"
+      ],
+      "owns": [
+        "input-validation boundary",
+        "injection prevention",
+        "authn/authz (RBAC/ABAC",
+        "token lifetimes",
+        "default-deny)",
+        "secrets (token classes",
+        "rotation cadence",
+        "derived values)",
+        "PII/data protection",
+        "supply-chain integrity (SLSA",
+        "SBOM)",
+        "output encoding",
+        "transport/TLS",
+        "security audit events"
+      ],
+      "defers_to": [
+        {
+          "topic": "tier/layer model",
+          "to": "architecture"
+        },
+        {
+          "topic": "error taxonomy + boundaries",
+          "to": "error_handling"
+        },
+        {
+          "topic": "structured log format + retention",
+          "to": "observability"
+        },
+        {
+          "topic": "license policy",
+          "to": "dependencies"
+        },
+        {
+          "topic": "config cascade",
+          "to": "configuration"
+        },
+        {
+          "topic": "vault/injection mechanics",
+          "to": "devops"
+        },
+        {
+          "topic": "pipeline secret scoping",
+          "to": "cicd"
+        },
+        {
+          "topic": "cookie/CSRF/frontend gating",
+          "to": "web"
+        },
+        {
+          "topic": "API protocol specifics",
+          "to": "api"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "error_handling",
+        "observability"
+      ]
+    },
+    {
+      "id": "shell",
+      "domain": "shell",
+      "path": "shell/STANDARDS.md",
+      "title": "Shell Standards",
+      "purpose": "Structure, error handling, variable, and function rules for every shell script that runs unattended.",
+      "tier": "Language",
+      "version": "1.0",
+      "lines": 495,
+      "checklist": [
+        "Shebang is `#!/usr/bin/env bash` (or `sh`) — no hardcoded interpreter path",
+        "`set -euo pipefail` on line 2, before any `source`",
+        "`set -E` present whenever an `ERR` trap is used",
+        "Description block declares purpose, usage, dependencies, and env vars",
+        "Exit codes defined as `readonly` constants; none above `125`",
+        "`die()` and `warn()` present and writing to stderr",
+        "`trap cleanup EXIT` registered before the first temp file is created",
+        "Trap handler guards every variable it touches (`\"${var:-}\"`)",
+        "Zero `set +e` blocks — expected failures use `if !`, `||`, or `|| status=$?`",
+        "Command substitutions assigned separately from `local` / `export`",
+        "Every variable expansion double-quoted",
+        "Every function variable declared `local`",
+        "Arrays iterated as `\"${arr[@]}\"`; command lines built as arrays, not strings",
+        "Functions declared with `name() {`, defined before `main`, ≤ 40 lines",
+        "Positional arguments named on the first lines of each function",
+        "Functions return data on stdout and status via `return` — no global writes",
+        "Argument count validated before any side effect",
+        "`usage()` present, writes to stdout, does not exit",
+        "`--` handled as the end-of-options marker",
+        "Dependencies checked with `command -v` before work begins",
+        "stdout carries data only; all messages go to stderr",
+        "`printf` used everywhere; zero `echo`; no variable used as a format string",
+        "Colour gated on `[[ -t 2 ]]` · `TERM` · `NO_COLOR`",
+        "`main \"$@\"` is the final line of every executable script",
+        "Libraries have an include guard and a direct-execution guard, and set no shell options",
+        "Prompts guarded by `[[ -t 0 ]]` with a non-interactive override flag"
+      ],
+      "owns": [
+        "script header",
+        "strict mode",
+        "exit codes",
+        "traps",
+        "variables",
+        "quoting",
+        "functions",
+        "argument parsing",
+        "output channels",
+        "script layout"
+      ],
+      "defers_to": [
+        {
+          "topic": "bats",
+          "to": "shell/hardening"
+        },
+        {
+          "topic": "recovery policy",
+          "to": "error_handling"
+        },
+        {
+          "topic": "access control",
+          "to": "security"
+        },
+        {
+          "topic": "help text contract",
+          "to": "cli"
+        },
+        {
+          "topic": "naming",
+          "to": "code_writing"
+        },
+        {
+          "topic": "pipeline stages",
+          "to": "cicd"
+        }
+      ],
+      "load_with": [
+        "shell/hardening",
+        "code_writing",
+        "cli",
+        "security"
+      ]
+    },
+    {
+      "id": "shell/hardening",
+      "domain": "shell",
+      "path": "shell/HARDENING.md",
+      "title": "Shell Hardening Standards",
+      "purpose": "Portability, file operations, injection defence, and test tooling for shell scripts that must survive hostile input and foreign platforms.",
+      "tier": "Language",
+      "version": "1.0",
+      "lines": 400,
+      "checklist": [
+        "Target shell (bash | POSIX `sh`) chosen deliberately and matched by the shebang",
+        "bash 4+ features guarded by a `BASH_VERSINFO` assertion, or avoided for macOS support",
+        "Zero bashisms in any script whose shebang is `sh`",
+        "Every GNU-only flag (`sed -i`, `readlink -f`, `date -d`, `stat -c`, `grep -P`, `base64 -w0`) either avoided or capability-detected",
+        "Capability detection uses a probe, never `uname`",
+        "Every temp file and directory created with `mktemp`; zero hardcoded `/tmp` paths",
+        "Temp cleanup trap registered before the first write",
+        "Every file write is atomic: temp file on the same filesystem → `chmod` → `mv -f`",
+        "Existence tests assert the specific property (`-f`, `-d`, `-r`, `-s`) — not bare `-e`",
+        "Directory traversal is NUL-delimited (`find -print0` + `read -r -d ''`); zero `for f in $(find …)`",
+        "`--` terminates option parsing before every user-supplied path",
+        "Zero `eval`, zero `bash -c \"$var\"`, zero command names taken from variables",
+        "Dispatch on user input goes through an allowlist `case`",
+        "Every user-supplied path resolved with `realpath` then prefix-checked against a base directory",
+        "Variables are never used as `printf` format strings",
+        "`PATH` and `IFS` set explicitly in cron, systemd, and setuid contexts",
+        "Zero secrets in command arguments — environment scope or stdin only",
+        "Zero `set -x` in any code path that touches a secret",
+        "`umask 077` set before any sensitive file is written",
+        "Ownership and mode verified before `source`ing any file",
+        "`shellcheck -x -s <shell>` passes with zero warnings; the CI gate is blocking",
+        "Zero file-level `shellcheck disable`; per-line suppressions carry a reason",
+        "`shfmt -d` passes in CI",
+        "Lint gate runs before the test gate",
+        "Every script has a `.bats` file covering success AND failure paths",
+        "Every test asserts an exit code, not just output",
+        "Entry point guarded (`[[ \"${BASH_SOURCE[0]}\" == \"${0}\" ]]`) so tests can source the script"
+      ],
+      "owns": [
+        "bash vs POSIX",
+        "GNU vs BSD divergence",
+        "temp files",
+        "atomic writes",
+        "filename-safe traversal",
+        "shell injection vectors",
+        "secret handling in shell",
+        "shellcheck",
+        "shfmt",
+        "bats"
+      ],
+      "defers_to": [
+        {
+          "topic": "functions",
+          "to": "shell"
+        },
+        {
+          "topic": "secret storage",
+          "to": "security"
+        },
+        {
+          "topic": "mocking policy",
+          "to": "testing"
+        },
+        {
+          "topic": "gates",
+          "to": "cicd"
+        }
+      ],
+      "load_with": [
+        "shell",
+        "security",
+        "testing"
+      ]
+    },
+    {
+      "id": "sql",
+      "domain": "sql",
+      "path": "sql/STANDARDS.md",
+      "title": "SQL Standards",
+      "purpose": "How SQL is written: formatting, identifier naming, query construction, parameterization, and migration file format.",
+      "tier": "Language",
+      "version": "1.0",
+      "lines": 478,
+      "checklist": [
+        "Keywords uppercase, identifiers lowercase `snake_case`",
+        "Leading commas, leading `AND`/`OR`, one column per line, statement ends with `;`",
+        "Table names singular; no reserved words as identifiers",
+        "Every constraint explicitly named with the `pk_`/`fk_`/`uq_`/`ck_`/`ix_` prefix",
+        "Every table has `id`, `created_at`, `updated_at`; columns `NOT NULL` unless justified",
+        "Money is `NUMERIC`, timestamps are `TIMESTAMPTZ` in UTC, booleans are `BOOLEAN`",
+        "✗ `SELECT *` in application code",
+        "ANSI `JOIN ... ON` — ✗ comma joins",
+        "`INSERT` statements name their columns",
+        "Every `UPDATE`/`DELETE` has a `WHERE` clause",
+        "Every external value is a bound parameter — ✗ string interpolation anywhere",
+        "Dynamic identifiers validated against an allowlist",
+        "Recursive CTEs have a termination condition and a depth guard",
+        "Window function used instead of a self-join or correlated subquery where applicable",
+        "Migration file has both `-- migrate:up` and `-- migrate:down` sections",
+        "One logical change per migration; schema and data changes in separate files",
+        "✗ edits to an already-applied migration",
+        "`EXPLAIN ANALYZE` run on any query touching >10K rows or joining 3+ tables",
+        "No function wrapped around an indexed column in a `WHERE` clause",
+        "Pagination uses keyset, or `OFFSET` with a documented bound",
+        "✗ queries issued inside a loop",
+        "SQLite connections set `foreign_keys = ON`, `journal_mode = WAL`, `busy_timeout`",
+        "Business logic lives in the application, not in triggers or procedures"
+      ],
+      "owns": [
+        "SQL formatting",
+        "identifier + constraint naming",
+        "data type selection",
+        "query style",
+        "parameterization at the call site",
+        "CTE + window function usage",
+        "migration file format",
+        "engine-specific SQL (Postgres",
+        "DuckDB",
+        "SQLite)"
+      ],
+      "defers_to": [
+        {
+          "topic": "schema design + normalization + indexing strategy + transaction isolation + migration safety and orchestration",
+          "to": "database"
+        },
+        {
+          "topic": "injection prevention policy + least-privilege DB users",
+          "to": "security"
+        },
+        {
+          "topic": "performance budgets + profiling method",
+          "to": "performance"
+        },
+        {
+          "topic": "pipeline stages",
+          "to": "cicd"
+        }
+      ],
+      "load_with": [
+        "database",
+        "security",
+        "performance"
+      ]
+    },
+    {
+      "id": "testing",
+      "domain": "testing",
+      "path": "testing/STANDARDS.md",
+      "title": "Testing Standards",
+      "purpose": "How a project proves its code works: test pyramid, size classes, tier classification, mocking policy, contract tests, and the coverage gate every language standard defers to.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 498,
+      "checklist": [
+        "Confidence target declared in the repo (§2)",
+        "Pyramid proportions within range · suite under 15 min total (§3)",
+        "Every test declares a size class · no test exceeds its class hard cap (§4)",
+        "Small suite blocks network + disk at the harness level (§4)",
+        "Every function classified logic | shell; T0–T1 tests contain zero mocks (§5, §11)",
+        "Unit tests build their own input · pass in any order (§6)",
+        "Each integration test crosses exactly one boundary (§7)",
+        "≤ 20 E2E tests · each under 5 s · cleanup runs on failure (§8)",
+        "Every service-to-service boundary has a consumer-driven contract published to the broker (§9)",
+        "Provider deploy blocked until the broker verification matrix is green for the target environment (§9)",
+        "≥ 1 fuzz target per parser/decoder · seeded generation · seed printed on failure (§10)",
+        "Branch coverage meets the tier gate: T0 95% · T1 90% · T2 80% · T3 60% (§12)",
+        "No flat line-coverage gate exists in any pipeline or language config (§12)",
+        "Coverage exclusion list version-controlled and reviewed (§12)",
+        "Suite flake rate < 0.1% · zero tests quarantined beyond 24 h · no retry-to-green (§13)",
+        "Test names state behavior + outcome, not implementation or index (§14)",
+        "Test tree mirrors source · helpers never imported by production (§15)",
+        "No production data in tests · dates hardcoded · generators seeded (§16)",
+        "Suite green in random order, in parallel, and test-by-test in isolation (§17)",
+        "Full unit + integration suite green on every target OS (§18)",
+        "Reality dimensions covered per tier table (§5, [REALITY.md](REALITY.md))",
+        "System-level gates green at production tier ([PRESSURE.md](PRESSURE.md))"
+      ],
+      "owns": [
+        "test pyramid",
+        "size classes",
+        "tier classification",
+        "unit/integration/E2E rules",
+        "contract tests",
+        "property-based tests",
+        "fuzzing",
+        "mocking policy",
+        "coverage gate",
+        "flake budget",
+        "test data",
+        "test independence"
+      ],
+      "defers_to": [
+        {
+          "topic": "perf",
+          "to": "testing/reality"
+        },
+        {
+          "topic": "penetration",
+          "to": "testing/pressure"
+        },
+        {
+          "topic": "where suites execute",
+          "to": "cicd"
+        },
+        {
+          "topic": "validation boundary",
+          "to": "security"
+        },
+        {
+          "topic": "error shape",
+          "to": "error_handling"
+        },
+        {
+          "topic": "trace formats",
+          "to": "observability"
+        },
+        {
+          "topic": "benchmark rubrics",
+          "to": "expectation"
+        },
+        {
+          "topic": "test framework choice + invocation",
+          "to": "python"
+        },
+        {
+          "topic": "[go](../go/STANDARDS.md)",
+          "to": "go"
+        },
+        {
+          "topic": "[rust](../rust/STANDARDS.md)",
+          "to": "rust"
+        },
+        {
+          "topic": "[typescript](../typescript/STANDARDS.md)",
+          "to": "typescript"
+        }
+      ],
+      "load_with": [
+        "testing/reality",
+        "testing/pressure",
+        "cicd",
+        "architecture"
+      ]
+    },
+    {
+      "id": "testing/pressure",
+      "domain": "testing",
+      "path": "testing/PRESSURE.md",
+      "title": "Testing Pressure Standards",
+      "purpose": "System-level testing for the worst day: sustained load to the breaking point, cascading and simultaneous failures, and an active adversary probing a running system.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 416,
+      "checklist": [
+        "Stress test run · peak QPS at SLO documented (§3)",
+        "Capacity number published to every team operating the system (§3)",
+        "Bottleneck inventory documented, top 3 ranked (§3)",
+        "Endurance run · N hours at 70% capacity · no degradation (§3)",
+        "Multi-fault matrix top 5 dependency pairs run · outcomes documented (§4)",
+        "Pen corpus seeded: auth · authz · session · server-side flaws (§5)",
+        "Every pen test asserts both attack-blocked and detection-signal-emitted (§5)",
+        "Custom harness built: load · fault · attack · observe · report (§6)",
+        "Tests + vectors live in repo, version-locked · no external tool as the gate (§6)",
+        "Dedicated infrastructure provisioned (§9)",
+        "Gate thresholds wired: stress 20% · capacity 15% · pen Critical/High (§8)",
+        "Stress regression within 20% of baseline (§8)",
+        "Capacity regression within 15% of baseline (§8)",
+        "Endurance 1 h sample green (§3)",
+        "Multi-fault matrix run · no new failures (§4)",
+        "Pen corpus run · no new Critical/High findings (§5)",
+        "New pressure scenarios added for new features (§2)",
+        "Endurance N-hour run green (§3)",
+        "Chaos suite run · findings triaged within 24 h (§4)",
+        "Pen full corpus run · findings triaged (§5)",
+        "Survival multi-fault sample run (§4)",
+        "Quarterly game day · team participates · findings recorded (§4)",
+        "Annual internal red-team · external per L5 cadence (§7)",
+        "Year's findings converted to permanent automated tests (§2)",
+        "Pressure-test infra audited for drift from production (§9)"
+      ],
+      "owns": [
+        "stress",
+        "endurance",
+        "capacity",
+        "multi-fault survival",
+        "cascading failure",
+        "thundering herd",
+        "chaos engineering",
+        "penetration testing",
+        "manual red-team boundary",
+        "custom pressure harness",
+        "pressure infrastructure"
+      ],
+      "defers_to": [
+        {
+          "topic": "flake budget",
+          "to": "testing"
+        },
+        {
+          "topic": "observability assertions",
+          "to": "testing/reality"
+        },
+        {
+          "topic": "secrets",
+          "to": "security"
+        },
+        {
+          "topic": "rollback automation",
+          "to": "cicd"
+        },
+        {
+          "topic": "backup + DR",
+          "to": "devops"
+        },
+        {
+          "topic": "alert design",
+          "to": "observability"
+        },
+        {
+          "topic": "profiling",
+          "to": "performance"
+        }
+      ],
+      "load_with": [
+        "testing",
+        "testing/reality",
+        "security",
+        "devops"
+      ]
+    },
+    {
+      "id": "testing/reality",
+      "domain": "testing",
+      "path": "testing/REALITY.md",
+      "title": "Testing Reality Standards",
+      "purpose": "The reality dimensions a test suite must simulate — faults, adversarial input, concurrency, resource limits, time, state accumulation, drift — plus the assertions and audits that prove the suite actually catches bugs.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 414,
+      "checklist": [
+        "Every shell function has a fault test paired with a recovery test (§3, §11)",
+        "Faults injected at the adapter boundary, ✗ via flags in production code (§3)",
+        "Fault tests assert structured error + log + metric + receipt (§3, §10)",
+        "Retry behavior asserted: max attempts · backoff · jitter · circuit breaker (§3)",
+        "Every input boundary has an adversarial suite · no \"trusted input\" exemptions (§4)",
+        "Adversarial corpus version-controlled and grown on every incident (§4)",
+        "Every shared-state path has a deterministic concurrency test · race detector on in CI (§5)",
+        "Production stress meets 100 concurrent × 1000 iterations (§5)",
+        "Resource limits set explicitly in tests, ✗ inherited from the dev machine (§6)",
+        "Leak tests return every resource to baseline within a documented tolerance (§6, §8)",
+        "No wall clock, randomness, or UUID generation without injection — enforced by lint (§7)",
+        "Tests run on a frozen clock and a seeded RNG; seed printed on failure (§7)",
+        "Long-run test at N ≥ 1000 iterations | 1 h runs nightly (§8)",
+        "Replay corpus ≥ 1000 requests, PII scrubbed at capture, refreshed weekly (§9)",
+        "Replay runs pre-production and blocks promotion on regression (§9)",
+        "Error and retry paths assert emitted signals, ✗ log prose (§10)",
+        "Crash-mid-operation → restart → state consistent, for every durable-state operation (§11)",
+        "Mutation score ≥ 80% for T0–T1 · surviving mutants classified (§12)",
+        "Performance budgets stated per operation · regression > 20% fails the build (§13)",
+        "Effectiveness audit run on schedule · findings tracked as test debt (§14)",
+        "Each incident this quarter classified gap | flaw | architecture (§14)"
+      ],
+      "owns": [
+        "reality dimension model",
+        "fault injection",
+        "adversarial input generation technique",
+        "concurrency tests",
+        "resource-exhaustion tests",
+        "time + determinism rules",
+        "state-accumulation tests",
+        "drift + replay",
+        "observability assertions",
+        "recovery verification",
+        "mutation testing",
+        "performance-regression tests",
+        "test effectiveness audit"
+      ],
+      "defers_to": [
+        {
+          "topic": "flake budget",
+          "to": "testing"
+        },
+        {
+          "topic": "penetration",
+          "to": "testing/pressure"
+        },
+        {
+          "topic": "validation boundary",
+          "to": "security"
+        },
+        {
+          "topic": "error shape",
+          "to": "error_handling"
+        },
+        {
+          "topic": "SLO definitions",
+          "to": "observability"
+        },
+        {
+          "topic": "caching",
+          "to": "performance"
+        },
+        {
+          "topic": "runners",
+          "to": "cicd"
+        },
+        {
+          "topic": "benchmark rubrics",
+          "to": "expectation"
+        }
+      ],
+      "load_with": [
+        "testing",
+        "testing/pressure",
+        "observability"
+      ]
+    },
+    {
+      "id": "typescript",
+      "domain": "typescript",
+      "path": "typescript/STANDARDS.md",
+      "title": "TypeScript Standards",
+      "purpose": "Type system, module, async, null, and error rules for every TypeScript source file.",
+      "tier": "Language",
+      "version": "1.0",
+      "lines": 478,
+      "checklist": [
+        "`strict: true` — no flag disabled individually",
+        "Zero `any` outside a `.d.ts` wrapping an untyped dependency",
+        "Every union of object types has a literal discriminant",
+        "Type predicates validate at runtime",
+        "`satisfies` used for config/route/const tables — ✗ widening annotation, ✗ bare assertion",
+        "Domain identifiers are branded; the `as` cast lives only in the constructor",
+        "One convention chosen for `interface` vs `type`, applied uniformly",
+        "ESM: `\"type\": \"module\"` · `verbatimModuleSyntax` · `import type` on type-only imports",
+        "Node built-ins imported with `node:` prefix",
+        "Zero circular imports (`import/no-cycle` clean)",
+        "Zero default exports; barrels contain no logic",
+        "Zero floating promises — awaited, returned, or `void` with a `.catch`",
+        "Every I/O call accepts an `AbortSignal` or carries a timeout",
+        "Concurrency over a collection is bounded",
+        "One absence value (`null` or `undefined`) chosen project-wide",
+        "`??` used for defaults, never `||`",
+        "Zero non-null assertions outside tests and immediate guards",
+        "Zero `enum` outside numeric bit flags",
+        "Every generic constrained",
+        "Every exported function has an explicit return type",
+        "Functions take ≤ 3 positional parameters",
+        "Errors extend a base `AppError` with `code` + `statusCode`; `cause` uses the native option",
+        "Expected failures return `Result<T, E>`; `throw` reserved for programmer errors",
+        "Every `catch` narrows `unknown` before use and handles, transforms, or propagates",
+        "Zero `@ts-ignore` — `@ts-expect-error` with a ticket where unavoidable"
+      ],
+      "owns": [
+        "type system",
+        "interface vs type",
+        "module system",
+        "async patterns",
+        "null handling",
+        "TS error mechanism"
+      ],
+      "defers_to": [
+        {
+          "topic": "runtime validation",
+          "to": "typescript/tooling"
+        },
+        {
+          "topic": "recovery",
+          "to": "error_handling"
+        },
+        {
+          "topic": "mocking policy",
+          "to": "testing"
+        },
+        {
+          "topic": "tier model",
+          "to": "architecture"
+        },
+        {
+          "topic": "naming",
+          "to": "code_writing"
+        }
+      ],
+      "load_with": [
+        "typescript/tooling",
+        "architecture",
+        "code_writing",
+        "error_handling"
+      ]
+    },
+    {
+      "id": "typescript/tooling",
+      "domain": "typescript",
+      "path": "typescript/TOOLING.md",
+      "title": "TypeScript Tooling Standards",
+      "purpose": "Compiler config, package manifest, source layout, lint, test, and runtime-validation rules for a TypeScript repository.",
+      "tier": "Language",
+      "version": "1.0",
+      "lines": 366,
+      "checklist": [
+        "`strict: true` plus `noUncheckedIndexedAccess` · `exactOptionalPropertyTypes` · `noImplicitOverride` · `noFallthroughCasesInSwitch`",
+        "`verbatimModuleSyntax: true` and `isolatedModules: true` set",
+        "`skipLibCheck: true` — dependency types are not typechecked",
+        "`package.json` has `\"type\": \"module\"` and an `exports` map with `types` listed first",
+        "`engines.node` declared; `packageManager` field pins the manager version",
+        "Path aliases absent from published libraries",
+        "Monorepo packages use project references with `composite: true`",
+        "Scripts named `typecheck` · `lint` · `format:check` · `test` · `build`",
+        "`tsc --noEmit` runs in CI as a gate separate from the bundler build",
+        "CI installs with `--frozen-lockfile` (or `npm ci`), never a plain install",
+        "`src/` mirrors the tier model: `types/` · `engine/` · `services/` · `adapters/`",
+        "ESLint flat config with `typescript-eslint` `strictTypeChecked` enabled",
+        "`projectService: true` set — type-aware rules actually active",
+        "`no-floating-promises` · `no-misused-promises` · `switch-exhaustiveness-check` all `error`",
+        "Prettier owns formatting; zero formatting rules in ESLint",
+        "Zero file-level `eslint-disable`; zero `@ts-ignore`",
+        "Pre-commit hook runs `eslint --fix` + `prettier --write` on staged files",
+        "Vitest configured; coverage reported through `--coverage`",
+        "Exported generics, brands, and inferred schemas covered by `expectTypeOf` tests",
+        "Mocks are typed — zero `as any`, zero partial mocks of required fields",
+        "One runtime-validation library across the repo",
+        "Every schema-backed type is `z.infer`'d — no hand-written twin",
+        "Every I/O boundary parses `unknown` with `safeParse` before use",
+        "Environment parsed once at startup into an exported `env` object",
+        "`process.env` is never read outside the env schema module"
+      ],
+      "owns": [
+        "tsconfig",
+        "package manifest",
+        "project structure",
+        "lint",
+        "format",
+        "TS test framework",
+        "runtime validation at boundaries"
+      ],
+      "defers_to": [
+        {
+          "topic": "TS error mechanism",
+          "to": "typescript"
+        },
+        {
+          "topic": "mocking policy",
+          "to": "testing"
+        },
+        {
+          "topic": "supply chain",
+          "to": "dependencies"
+        },
+        {
+          "topic": "gates",
+          "to": "cicd"
+        },
+        {
+          "topic": "secrets",
+          "to": "security"
+        },
+        {
+          "topic": "tier model",
+          "to": "architecture"
+        }
+      ],
+      "load_with": [
+        "typescript",
+        "testing",
+        "cicd",
+        "dependencies"
+      ]
+    },
+    {
+      "id": "web",
+      "domain": "web",
+      "path": "web/STANDARDS.md",
+      "title": "Web Application Standards",
+      "purpose": "Rules for structuring web applications — frontend, backend, their contract, accessibility, and internationalization.",
+      "tier": "Interface",
+      "version": "1.0",
+      "lines": 495,
+      "checklist": [
+        "One primary rendering strategy per app; per-route exceptions explicit",
+        "Core content and primary actions work without JavaScript",
+        "Route handlers thin — no business logic in handlers or middleware",
+        "Middleware ordered per §3; error middleware at the outer edge",
+        "All input validated at the boundary before reaching domain logic",
+        "`Content-Type` enforced · body size limits set → 415 / 413",
+        "`X-Request-Id` generated, propagated, and returned",
+        "`Cache-Control` set explicitly on every response",
+        "Static assets content-hashed + immutable; HTML entry point `no-cache`; served via CDN",
+        "CSP enforced without `unsafe-inline` / `unsafe-eval`; HSTS + `nosniff` set",
+        "Output context-encoded against XSS; no raw HTML injection without a sanitizer",
+        "CORS uses an explicit origin allowlist (no wildcard for authenticated APIs)",
+        "Auth cookies `HttpOnly` · `Secure` · `SameSite`; auth tokens never in `localStorage`",
+        "CSRF protection on every state-changing request; no state mutation via GET",
+        "Session ID rotated on login and privilege change; explicit logout destroys it",
+        "Server re-authorizes every request; frontend gating is UX only",
+        "Single source of truth per state type; shareable state encoded in the URL",
+        "Bundle sizes within budget; tree shaking on; code split per route",
+        "Semantic HTML first; every interactive element keyboard-operable with a visible focus indicator",
+        "Text contrast ≥ 4.5:1 (normal) / 3:1 (large + UI); color never the sole signal",
+        "Every form input has an associated label and programmatically linked errors",
+        "`prefers-reduced-motion` honored; ARIA only where semantic HTML cannot express it",
+        "axe check gates CI; keyboard + screen-reader walkthrough on primary flows",
+        "All user-facing strings externalized; plurals/gender via ICU; no concatenated fragments",
+        "Dates, numbers, and currency formatted per locale; timestamps stored UTC, rendered local",
+        "RTL supported via logical CSS; layout tolerates ~30-40% text expansion",
+        "`Accept-Language` negotiated with a persisted explicit user override",
+        "LCP ≤ 2.5s · INP ≤ 200ms · CLS ≤ 0.1 met on field data",
+        "Real-time connections authenticated at handshake; critical state persisted, not WS-only"
+      ],
+      "owns": [
+        "rendering strategy (SSR/CSR/SSG/hydration)",
+        "progressive enhancement",
+        "frontend routing + state",
+        "browser security (CSP",
+        "XSS escaping)",
+        "cookie attributes + CSRF + browser token storage + frontend route gating",
+        "Core Web Vitals",
+        "**accessibility (WCAG)**",
+        "**i18n/l10n**",
+        "HTTP/CDN caching + static-asset delivery"
+      ],
+      "defers_to": [
+        {
+          "topic": "authn/authz model + token lifetimes + secrets",
+          "to": "security"
+        },
+        {
+          "topic": "API design + status codes + envelope + versioning",
+          "to": "api"
+        },
+        {
+          "topic": "rate limiting",
+          "to": "api"
+        },
+        {
+          "topic": "caching strategy + profiling",
+          "to": "performance"
+        },
+        {
+          "topic": "pagination mechanics",
+          "to": "database"
+        },
+        {
+          "topic": "CDN/edge infra + deploy",
+          "to": "devops"
+        },
+        {
+          "topic": "alert thresholds",
+          "to": "observability"
+        },
+        {
+          "topic": "coverage + pyramid",
+          "to": "testing"
+        },
+        {
+          "topic": "pipeline stages",
+          "to": "cicd"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "api",
+        "security",
+        "performance"
+      ]
+    },
+    {
+      "id": "workflow",
+      "domain": "workflow",
+      "path": "workflow/STANDARDS.md",
+      "title": "Development Workflow Standards",
+      "purpose": "The idea-to-production lifecycle: phase gates, task management, technical debt, and AI-assisted development — *when* each standard applies, not *how* each works.",
+      "tier": "Delivery",
+      "version": "1.0",
+      "lines": 428,
+      "checklist": [
+        "Current phase documented in README or tracker",
+        "Idea: problem statement · feasibility · scope · measurable acceptance criteria · scale classified",
+        "PoC: hypothesis + binary success criteria + time-box; code in separate branch/directory; written conclusion",
+        "PoC code ✗ carried into MVP — new codebase",
+        "MVP: architecture applied · core-path tests · error handling · input validation + secrets · README · debt documented",
+        "Production: full pyramid · observability · security · CI/CD · devops · performance budgets · rollback tested · monitoring configured",
+        "Every phase transition is an explicit, dated, approved decision (§7)",
+        "Every non-trivial task tracked with priority + acceptance criteria (§8)",
+        "Definition of Done met before a task is closed (§8)",
+        "Technical debt tracked with impact, effort, repayment deadline (§9)",
+        "15–20% of each cycle allocated to debt repayment (§9)",
+        "No new feature increases debt in an already-indebted area (§9)",
+        "Relevant standards provided in AI context; task scoped to one objective (§10)",
+        "AI output reviewed for correctness, standards compliance, security (§10)",
+        "Every import + dependency verified (no phantom packages) (§10)",
+        "AI-generated code passes all CI checks before merge (§10)",
+        "Decision records created at decision time for significant choices (§12)",
+        "MVP+ decisions in formal records, numbered sequentially (§12)",
+        "Maintenance cadence active: bug triage · dependency updates · security advisories (§6)",
+        "Documentation matches current code (§6)"
+      ],
+      "owns": [
+        "development lifecycle (idea → PoC → MVP → production → maintenance)",
+        "phase transition criteria",
+        "task decomposition + management",
+        "technical-debt tracking + repayment",
+        "AI-assisted development workflow",
+        "standards-application-by-phase mapping",
+        "lifecycle decision-record timing"
+      ],
+      "defers_to": [
+        {
+          "topic": "project-type + surface routing",
+          "to": "/router"
+        },
+        {
+          "topic": "full ADR format",
+          "to": "documentation"
+        },
+        {
+          "topic": "branching per phase",
+          "to": "git"
+        },
+        {
+          "topic": "scale definitions + tier model",
+          "to": "architecture"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "git",
+        "documentation",
+        "/router"
+      ]
+    }
+  ]
+}

@@ -177,7 +177,7 @@ Always-On Set (§3) is implied in every row — only the additions are listed.
 |---|---|
 | Python CLI tool | `python` · `cli` · `performance` |
 | Python data pipeline | `python` · `data_pipeline` · `database` · `sql` · `performance` |
-| MCP server | `local_mcp/*` · `python` (or `typescript`) · `cli` · `performance` |
+| MCP server | `local_mcp/*` · `python` \| `typescript` \| `rust` · `cli` · `performance` |
 | Web app (TS front + back) | `typescript/*` · `web` · `api` · `database` · `sql` · `performance` · `devops` |
 | REST/gRPC service (Go/Rust) | `go` \| `rust` · `api` · `database` · `sql` · `performance` · `devops` |
 | ML project | `python` · `ml` · `data_pipeline` · `database` · `performance` |
