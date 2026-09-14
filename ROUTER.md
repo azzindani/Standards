@@ -133,7 +133,8 @@ Scale relief: at **Prototype** scale, `cicd` reduces to lint+test on push and `c
 | [git/STANDARDS.md](git/STANDARDS.md) | Branching · commits · tags · history |
 | [cicd/STANDARDS.md](cicd/STANDARDS.md) | Build · test · lint · deploy · release stages |
 | [code_review/STANDARDS.md](code_review/STANDARDS.md) | Review criteria · approval flow · feedback style |
-| [devops/STANDARDS.md](devops/STANDARDS.md) | Infrastructure · containers · deployment · monitoring |
+| [devops/STANDARDS.md](devops/STANDARDS.md) | Infrastructure · deployment · environments · incident · backup · cost |
+| [devops/CONTAINERS.md](devops/CONTAINERS.md) | Base image · build · runtime hardening · image lifecycle |
 | [workflow/STANDARDS.md](workflow/STANDARDS.md) | Idea → PoC → production lifecycle · task management |
 
 ### Interface

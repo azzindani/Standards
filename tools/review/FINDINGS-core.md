@@ -88,12 +88,29 @@ also defective.
 
 ---
 
+## Pass 3 — Delivery tier
+
+| # | Standard | Finding | Source | Change |
+|---|---|---|---|---|
+| 13 | `devops/` | **Container runtime hardening absent entirely.** Image hygiene was strong — distroless, digest pinning, non-root, read-only rootfs, no secrets in layers, multi-stage, health checks, graceful shutdown — but nothing constrained what a container may *do* once running. A hardened image on an unconstrained runtime is one escape from the host | NIST SP 800-190 · CIS Docker Benchmark | New §3 in `devops/CONTAINERS.md`: ✗ `--privileged` · `--cap-drop=ALL` · `no-new-privileges` · default seccomp kept · AppArmor \| SELinux · ✗ Docker socket mount · memory + CPU + PID limits · ✗ host namespaces · user namespace remapping |
+
+The addition pushed `devops/` to 508 lines, over the 499 cap, so §2 Container
+Standards split into `devops/CONTAINERS.md` per TEMPLATE §8 — a natural seam,
+since what goes *into* an image and what the container may *do* are different
+questions. The split file carries its own anti-patterns and scale matrix rather
+than existing as a fragment.
+
+Rule worth noting: **a hardening flag removed to make something work is a
+finding, ✗ a fix.** The failure mode is not omitting the flag, it is removing it
+under delivery pressure and leaving the exception as the permanent default.
+
+---
+
 ## Remaining tiers
 
 Not yet reviewed: Foundation (5) · Core (9 of 10) · Delivery (5) · Interface (4) · Domain (5) · Language (6). Highest expected yield, in order:
 
-1. `devops/` against NIST SP 800-190 + CIS Benchmarks — container thresholds are externally fixed.
-2. `api/` against OpenAPI 3.1 + the Microsoft and Google API design guides.
+1. `api/` against OpenAPI 3.1 + the Microsoft and Google API design guides.
 3. `web/` against the current OWASP Top 10 and browser platform changes.
 4. `database/` · `sql/` — index, isolation and migration guidance ages quietly.
 5. Remaining language standards (`python/` `go/` `typescript/` `shell/`) against current toolchain defaults — these age fastest.

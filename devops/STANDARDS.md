@@ -4,26 +4,25 @@
 
 **ID** `devops` · **Tier** Delivery · **Version** 1.0
 **Owns** infrastructure-as-code + drift detection · container standards (distroless/non-root/read-only rootfs) · immutable infrastructure · 12-Factor · deployment patterns (infra mechanics) · environment management + parity · incident response (SEV levels + blameless postmortems) · **on-call rotation + escalation + paging policy** · scaling + autoscaling · **backup · DR · RTO/RPO · failover cadence** · networking + TLS · vault/secret-injection mechanics · **cost management (infra + LLM/API token spend)**
-**Defers to** alert design + resource thresholds → [observability](../observability/STANDARDS.md) · secrets rotation cadence + lifecycle + token classes → [security](../security/STANDARDS.md) · deployment pipeline stages + release automation → [cicd](../cicd/STANDARDS.md) · configuration cascade + sourcing → [configuration](../configuration/STANDARDS.md) · WAL/PITR + replica lag + restore mechanics → [database](../database/STANDARDS.md) · SLO definitions + log/metric formats → [observability](../observability/STANDARDS.md) · application security + authz → [security](../security/STANDARDS.md)
-**Load with** [cicd](../cicd/STANDARDS.md) · [observability](../observability/STANDARDS.md) · [security](../security/STANDARDS.md) · [configuration](../configuration/STANDARDS.md)
+**Defers to** base image · build · runtime hardening · image lifecycle → [CONTAINERS.md](CONTAINERS.md) · alert design + resource thresholds → [observability](../observability/STANDARDS.md) · secrets rotation cadence + lifecycle + token classes → [security](../security/STANDARDS.md) · deployment pipeline stages + release automation → [cicd](../cicd/STANDARDS.md) · configuration cascade + sourcing → [configuration](../configuration/STANDARDS.md) · WAL/PITR + replica lag + restore mechanics → [database](../database/STANDARDS.md) · SLO definitions + log/metric formats → [observability](../observability/STANDARDS.md) · application security + authz → [security](../security/STANDARDS.md)
+**Load with** [CONTAINERS.md](CONTAINERS.md) · [cicd](../cicd/STANDARDS.md) · [observability](../observability/STANDARDS.md) · [security](../security/STANDARDS.md) · [configuration](../configuration/STANDARDS.md)
 
 ---
 
 ## Table of Contents
 
 1. [Infrastructure as Code](#1-infrastructure-as-code)
-2. [Container Standards](#2-container-standards)
-3. [Deployment Patterns](#3-deployment-patterns)
-4. [Environment Management](#4-environment-management)
-5. [Metrics Collection](#5-metrics-collection)
-6. [Incident Response](#6-incident-response)
-7. [Scaling Strategy](#7-scaling-strategy)
-8. [Backup & Disaster Recovery](#8-backup--disaster-recovery)
-9. [Networking](#9-networking)
-10. [Secrets & Credentials](#10-secrets--credentials)
-11. [Cost Management](#11-cost-management)
-12. [Scale Matrix](#12-scale-matrix)
-13. [Checklist](#13-checklist)
+2. [Deployment Patterns](#2-deployment-patterns)
+3. [Environment Management](#3-environment-management)
+4. [Metrics Collection](#4-metrics-collection)
+5. [Incident Response](#5-incident-response)
+6. [Scaling Strategy](#6-scaling-strategy)
+7. [Backup & Disaster Recovery](#7-backup--disaster-recovery)
+8. [Networking](#8-networking)
+9. [Secrets & Credentials](#9-secrets--credentials)
+10. [Cost Management](#10-cost-management)
+11. [Scale Matrix](#11-scale-matrix)
+12. [Checklist](#12-checklist)
 
 ---
 
@@ -59,40 +58,7 @@ Every provisioned resource tagged: `environment` · `service` · `team` · `cost
 
 ---
 
-## 2. Container Standards
-
-### Base Image
-
-| Rule | Detail |
-|---|---|
-| Minimal base | Distroless or alpine. ✗ full OS images unless required by runtime |
-| Pinned by digest | Tag with digest hash, ✗ `latest` or mutable tags in production |
-| Trusted sources | Official or internal registry only. ✗ unverified third-party images |
-| Regular rebuilds | Base images rebuilt ≥ monthly for security patches |
-| Scanned | Every image scanned for CVEs before registry push. Block critical/high |
-
-### Build
-
-| Rule | Detail |
-|---|---|
-| Layer optimization | Least-changing layers first; frequently-changing last |
-| Multi-stage builds | Build deps ✗ in final image. Compile in builder, copy artifacts only |
-| Single process | One process per container ; exception: log sidecar. ✗ init systems inside |
-| No secrets in layers | ✗ secrets in build args, ENV, COPY. Runtime injection only (§10) |
-| Size budget | App images < 500 MB (alert if exceeded). Distroless targets < 100 MB |
-| Reproducible | Same source commit → same image (content-addressable). Pin all package versions |
-| Non-root | Container runs as non-root user. ✗ root in production containers |
-| Read-only rootfs | Root filesystem mounted read-only. Writable volumes for data paths only |
-| Health checks | Every container defines health check endpoint/command |
-| Graceful shutdown | SIGTERM → drain connections → exit within termination grace period |
-
-### Lifecycle
-
-Build (CI on merge to `main`) → Scan (CVE + policy) → Tag (SemVer + git SHA) → Push (internal registry only) → Promote (dev → staging → production, same image, ✗ rebuild) → Retain (last 10 versions per service; purge untagged > 7 days).
-
----
-
-## 3. Deployment Patterns
+## 2. Deployment Patterns
 
 Deployment strategy = infra mechanics. Pipeline integration + progressive-delivery gating → [cicd](../cicd/STANDARDS.md).
 
@@ -121,7 +87,7 @@ Automatic rollback triggers: health check failure > 50% within first 5 min · er
 
 ---
 
-## 4. Environment Management
+## 3. Environment Management
 
 Every environment reproducible from IaC + configuration + secrets vault. ✗ environment-specific code paths — behavior differences via configuration only (cascade → [configuration](../configuration/STANDARDS.md)).
 
@@ -154,7 +120,7 @@ Every environment reproducible from IaC + configuration + secrets vault. ✗ env
 
 ---
 
-## 5. Metrics Collection
+## 4. Metrics Collection
 
 Which infrastructure + application metrics to collect and at what interval. **Alert design rules, resource thresholds, and SLO burn-rate policy → [observability](../observability/STANDARDS.md)** — ✗ restate thresholds here.
 
@@ -191,7 +157,7 @@ Which infrastructure + application metrics to collect and at what interval. **Al
 
 ---
 
-## 6. Incident Response
+## 5. Incident Response
 
 ### Severity Levels
 
@@ -243,7 +209,7 @@ Postmortem completed blameless within 5 business days (SEV-1/2), 10 days (SEV-3)
 
 ---
 
-## 7. Scaling Strategy
+## 6. Scaling Strategy
 
 | Factor | Horizontal (add instances) | Vertical (add resources) |
 |---|---|---|
@@ -273,7 +239,7 @@ Postmortem completed blameless within 5 business days (SEV-1/2), 10 days (SEV-3)
 
 ---
 
-## 8. Backup & Disaster Recovery
+## 7. Backup & Disaster Recovery
 
 Sole owner of backup cadence, DR patterns, RTO/RPO, and failover testing. `database` keeps only WAL/PITR + replica lag + restore mechanics and defers cadence/RTO/RPO here.
 
@@ -320,7 +286,7 @@ Sole owner of backup cadence, DR patterns, RTO/RPO, and failover testing. `datab
 
 ---
 
-## 9. Networking
+## 8. Networking
 
 ### Service Discovery
 
@@ -355,7 +321,7 @@ Sole owner of backup cadence, DR patterns, RTO/RPO, and failover testing. `datab
 
 ---
 
-## 10. Secrets & Credentials
+## 9. Secrets & Credentials
 
 Infrastructure secrets managed through centralized vault. ✗ secrets in source · env files in repo · container images · CI/CD config files. Vault + injection **mechanics** live here; **rotation cadence + lifecycle + token classes → [security](../security/STANDARDS.md)**.
 
@@ -383,7 +349,7 @@ Infrastructure secrets managed through centralized vault. ✗ secrets in source 
 
 ---
 
-## 11. Cost Management
+## 10. Cost Management
 
 ### Infrastructure Cost
 
@@ -420,7 +386,7 @@ First-class cost class for agent + ML systems. `agent` and `ml` cross-reference 
 
 ---
 
-## 12. Scale Matrix
+## 11. Scale Matrix
 
 | Rule | Side Project / PoC | Small Production | Large Production |
 |---|---|---|---|
@@ -442,13 +408,21 @@ Graduate incrementally (strangler fig, [architecture](../architecture/STANDARDS.
 
 ---
 
-## 13. Checklist
+## 12. Checklist
 
 ### New Service — Infrastructure Setup
 
 - [ ] Infrastructure defined in IaC, committed to version control (§1)
 - [ ] All resources tagged: environment, service, team, cost-center, managed-by (§1)
 - [ ] Container image: minimal base, non-root, read-only rootfs, health check, within size budget (§2)
+- [ ] No container runs with `--privileged`
+- [ ] Capabilities dropped to ALL, with additions justified per workload
+- [ ] `no-new-privileges` is set
+- [ ] The default seccomp profile is in force, not `unconfined`
+- [ ] An AppArmor or SELinux profile is applied
+- [ ] The Docker socket is not mounted into any container
+- [ ] Every container declares memory and CPU limits, and a PID limit
+- [ ] Host network, PID and IPC namespaces are not shared without a recorded justification
 - [ ] Image scanned; no critical/high findings (§2)
 - [ ] Deployment strategy selected with automated rollback (§3)
 - [ ] All environments provisioned from IaC; parity validated (§4)

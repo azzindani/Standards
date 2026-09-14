@@ -93,7 +93,7 @@ All standards are complete. Tier determines when a project loads them — see [R
 | 16 | `git/` | Branching · commits · tags · workflows · history |
 | 17 | `cicd/` | Build · test · lint · deploy · release stages |
 | 18 | `code_review/` | Review criteria · approval flow · feedback style |
-| 19 | `devops/` | Infrastructure · containers · deployment · monitoring |
+| 19 | `devops/` | Infrastructure · deployment · environments · incident · backup · cost (STANDARDS.md) · base image · build · runtime hardening (CONTAINERS.md) |
 | 20 | `workflow/` | Idea → PoC → production lifecycle · task management |
 
 ### Interface — loaded per surface
