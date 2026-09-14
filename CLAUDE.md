@@ -76,10 +76,10 @@ All standards are complete. Tier determines when a project loads them — see [R
 | # | Directory | Standard |
 |---|---|---|
 | 6 | `maturity/` | Maturity levels · proof breadth · numeric evidence · motion + resource metrics |
-| 7 | `testing/` | Pyramid · coverage · mocking (STANDARDS.md) · reality dimensions (REALITY.md) · pressure · survival · penetration (PRESSURE.md) |
+| 7 | `testing/` | Pyramid · coverage · mocking (STANDARDS.md) · reality dimensions (REALITY.md) · pressure · survival · penetration (PRESSURE.md) · probes against a running deployment · response+log dual assertion (PROBES.md) |
 | 8 | `error_handling/` | Error types · boundaries · recovery · reporting |
 | 9 | `security/` | Validation boundary · secrets · access control · supply chain (STANDARDS.md) · token format · signing · claims · rotation · revocation (TOKENS.md) · OAuth + OIDC flow security (OAUTH.md) |
-| 10 | `observability/` | Structured logging · metrics · traces · SLOs · health |
+| 10 | `observability/` | Structured logging · metrics · traces · SLOs · health (STANDARDS.md) · log store as a database · correlation · verbosity modes · machine consumers (LOGS.md) |
 | 11 | `performance/` | Budgets · profiling · caching · optimization |
 | 12 | `configuration/` | Cascade · environment · secrets · feature flags |
 | 13 | `dependencies/` | Versioning · isolation · wrappers · lock files |
@@ -101,7 +101,7 @@ All standards are complete. Tier determines when a project loads them — see [R
 | # | Directory | Standard |
 |---|---|---|
 | 21 | `api/` | API design · protocols · contracts · versioning · serialization |
-| 22 | `database/` | Schema design · migrations · queries · transactions |
+| 22 | `database/` | Schema design · migrations · queries · transactions (STANDARDS.md) · production engine default — PostgreSQL · second-store bar · versions · parity (ENGINES.md) |
 | 23 | `cli/` | Argument parsing · output format · exit codes · help |
 | 24 | `web/` | Rendering · routing · middleware · state · a11y · i18n · Core Web Vitals (STANDARDS.md) · headers · SRI · XSS · CORS · cookies · CSRF (SECURITY.md) |
 
@@ -141,6 +141,7 @@ architecture ← foundation for all standards
 ├── testing ← cicd · code_review · expectation
 ├── security ← api · database · web · devops · dependencies
 ├── llm ← agent · expectation · ml · security (prompt injection · evals · token cost)
+├── observability/logs ← testing/probes · database · security (the log store both read and written)
 ├── observability ← devops · data_pipeline · ml
 ├── git ← cicd · workflow · code_review
 └── workflow ← references all standards as lifecycle phases

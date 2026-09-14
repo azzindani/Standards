@@ -114,11 +114,13 @@ Scale relief: at **Prototype** scale, `cicd` reduces to lint+test on push and `c
 | [testing/STANDARDS.md](testing/STANDARDS.md) | Pyramid · classification · coverage · mocking · contract tests |
 | [testing/REALITY.md](testing/REALITY.md) | Reality dimensions · faults · concurrency · time · drift |
 | [testing/PRESSURE.md](testing/PRESSURE.md) | Load · soak · chaos · survival · penetration |
+| [testing/PROBES.md](testing/PROBES.md) | Probes against a running deployment · dual response+log assertion · continuous QA |
 | [error_handling/STANDARDS.md](error_handling/STANDARDS.md) | Error types · boundaries · recovery · reporting |
 | [security/STANDARDS.md](security/STANDARDS.md) | Validation boundary · secrets · access control · supply chain |
 | [security/TOKENS.md](security/TOKENS.md) | Token format · signing policy · claim validation · key rotation · revocation |
 | [security/OAUTH.md](security/OAUTH.md) | OAuth + OIDC flow security · PKCE · codes · redirect validation · consent |
 | [observability/STANDARDS.md](observability/STANDARDS.md) | Structured logging · metrics · traces · SLOs · health |
+| [observability/LOGS.md](observability/LOGS.md) | Log store as a database · correlation · verbosity modes · machine consumers |
 | [performance/STANDARDS.md](performance/STANDARDS.md) | Budgets · profiling · caching · optimization |
 | [configuration/STANDARDS.md](configuration/STANDARDS.md) | Cascade · environment · secrets · feature flags |
 | [dependencies/STANDARDS.md](dependencies/STANDARDS.md) | Versioning · isolation · wrappers · lock files |
@@ -143,6 +145,7 @@ Scale relief: at **Prototype** scale, `cicd` reduces to lint+test on push and `c
 |---|---|
 | [api/STANDARDS.md](api/STANDARDS.md) | API design · protocols · contracts · versioning |
 | [database/STANDARDS.md](database/STANDARDS.md) | Schema design · migrations · queries · transactions |
+| [database/ENGINES.md](database/ENGINES.md) | Production engine default (PostgreSQL) · second-store bar · versions · parity |
 | [cli/STANDARDS.md](cli/STANDARDS.md) | Argument parsing · output format · exit codes · help |
 | [web/STANDARDS.md](web/STANDARDS.md) | Rendering · routing · middleware · state · a11y · i18n · Core Web Vitals |
 | [web/SECURITY.md](web/SECURITY.md) | Security headers · SRI · XSS · CORS · cookies · CSRF · route gating |
@@ -207,10 +210,10 @@ Add per surface the system actually exposes. A system with three surfaces loads 
 | Surface | Add | Trigger |
 |---|---|---|
 | HTTP / gRPC API | `api` · `security` · `performance` | Any network-callable endpoint |
-| Persistent store | `database` · `sql` | Any durable state beyond files |
+| Persistent store | `database/*` · `sql` | Any durable state beyond files |
 | Command line | `cli` | Any user-invoked binary or entrypoint |
 | Browser UI | `web` · `html_generation/*` | Any rendered UI |
-| Deployed service | `devops` · `observability` · `testing/PRESSURE.md` | Anything with uptime expectations |
+| Deployed service | `devops` · `observability/*` · `testing/PRESSURE.md` · `testing/PROBES.md` | Anything with uptime expectations |
 | Public package | `dependencies` · `documentation` · `api` | Anything others import |
 | Batch / scheduled job | `data_pipeline` · `observability` | Anything running unattended |
 | Model artifact | `ml` | Anything with trained weights |
@@ -245,6 +248,10 @@ Topics that multiple standards are tempted to claim. The **Owner** states the ru
 | Semver · changelog format · release tagging | [git](git/STANDARDS.md) | cicd: release automation · documentation: changelog rendering · cli: compatibility promise |
 | Backup · DR · RTO/RPO · failover cadence | [devops](devops/STANDARDS.md) | database: WAL/PITR · replica lag · restore mechanics |
 | Alert design rules · resource thresholds | [observability](observability/STANDARDS.md) | devops: which infra metrics to collect |
+| Log levels · content · retention duration | [observability](observability/STANDARDS.md) | observability/logs: where logs are stored and queried, ✗ what to log |
+| Log store · correlation · verbosity modes | [observability/logs](observability/LOGS.md) | database: schema + index mechanics · security: PII classes |
+| Which database engine runs in production | [database/engines](database/ENGINES.md) | sql: dialect + syntax · devops: hosting + backup cadence |
+| Probes against a running deployment | [testing/probes](testing/PROBES.md) | observability: health-check semantics · testing: pyramid + tier classification |
 | License policy · allowed license tiers | [dependencies](dependencies/STANDARDS.md) | every other standard: cross-reference only |
 | Coverage thresholds · mocking policy · pyramid | [testing](testing/STANDARDS.md) | language standards: framework choice + invocation only |
 | Offline-first HTML output · theming | [html_generation](html_generation/STANDARDS.md) | local_mcp: cross-reference only |
@@ -269,6 +276,7 @@ These were conflicting across standards. The value below is now authoritative �
 | Coverage gate | Tiered **branch** coverage by tier — ✗ flat line-coverage gate. Stated in `testing` |
 | LGPL | Permitted with caution — dynamic linking only. ✗ flat ban |
 | OFFSET pagination | Keyset by default · OFFSET only on datasets < 10K rows (stricter of the two prior values wins) |
+| Production database engine | **PostgreSQL** by default for every project · SQLite only where every embedded condition holds · anything else needs an ADR with the measured limit. Stated in `database/engines` |
 
 ---
 
