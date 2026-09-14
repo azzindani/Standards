@@ -4,7 +4,7 @@
 
 **ID** `code_writing` · **Tier** Foundation · **Version** 1.0
 **Owns** identifier naming · function style + size · variables + constants · control flow · loops · comment discipline · complexity thresholds · file internal structure · formatting + readability
-**Defers to** layer model · purity · CQS · idempotency → [architecture](../architecture/STANDARDS.md) · patterns · abstraction · rule of three · module surface → [design](../design/STANDARDS.md) · file + directory names · file placement → [directory](../directory/STANDARDS.md) · error taxonomy · result types → [error_handling](../error_handling/STANDARDS.md) · doc comment content · API docs → [documentation](../documentation/STANDARDS.md) · language syntax · idiom · formatter config → language standards
+**Defers to** layer model · purity · CQS · idempotency → [architecture](../architecture/STANDARDS.md) · patterns · abstraction · rule of three · module surface → [design](../design/STANDARDS.md) · file + directory names · file placement → [directory](../directory/STANDARDS.md) · error taxonomy · result types → [error_handling](../error_handling/STANDARDS.md) · doc comment content · API docs → [documentation](../documentation/STANDARDS.md) · reuse promotion · duplication budget · unit kinds → [primitives](../primitives/STANDARDS.md) · language syntax · idiom · formatter config → language standards
 **Load with** [architecture](../architecture/STANDARDS.md) · [design](../design/STANDARDS.md)
 
 ---

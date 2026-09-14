@@ -4,7 +4,7 @@
 
 **ID** `design` · **Tier** Foundation · **Version** 1.0
 **Owns** SOLID · coupling · cohesion · design pattern selection · interface contracts · composition · abstraction rules · module design · state machines · data flow patterns
-**Defers to** layer model · dependency direction · CQS · idempotency · extension registry · interface versioning → [architecture](../architecture/STANDARDS.md) · function body style · parameter count · identifier naming → [code_writing](../code_writing/STANDARDS.md) · file + directory layout → [directory](../directory/STANDARDS.md) · error taxonomy · result types · retry policy → [error_handling](../error_handling/STANDARDS.md) · public API versioning · wire contracts → [api](../api/STANDARDS.md) · test doubles · seams → [testing](../testing/STANDARDS.md)
+**Defers to** layer model · dependency direction · CQS · idempotency · extension registry · interface versioning → [architecture](../architecture/STANDARDS.md) · function body style · parameter count · identifier naming → [code_writing](../code_writing/STANDARDS.md) · file + directory layout → [directory](../directory/STANDARDS.md) · error taxonomy · result types · retry policy → [error_handling](../error_handling/STANDARDS.md) · public API versioning · wire contracts → [api](../api/STANDARDS.md) · test doubles · seams → [testing](../testing/STANDARDS.md) · unit taxonomy · promotion path · reuse registry · duplication budget → [primitives](../primitives/STANDARDS.md)
 **Load with** [architecture](../architecture/STANDARDS.md) · [code_writing](../code_writing/STANDARDS.md)
 
 ---

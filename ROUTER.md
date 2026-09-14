@@ -69,6 +69,7 @@ Non-negotiable. Every project, every size, from first commit.
 | [design](design/STANDARDS.md) | Module + abstraction rules govern all modules |
 | [directory](directory/STANDARDS.md) | Layout + naming govern all files |
 | [code_writing](code_writing/STANDARDS.md) | Readability + function style govern all functions |
+| [primitives](primitives/STANDARDS.md) | Reusable-unit taxonomy + duplication control govern all code |
 | [error_handling](error_handling/STANDARDS.md) | Every system fails; failure is not optional |
 | [testing](testing/STANDARDS.md) | Untested code is unproven code |
 | [security](security/STANDARDS.md) | Validation boundary + secrets apply to all input |
@@ -103,6 +104,7 @@ Scale relief: at **Prototype** scale, `cicd` reduces to lint+test on push and `c
 | [design/STANDARDS.md](design/STANDARDS.md) | Design patterns · module design · abstraction rules |
 | [directory/STANDARDS.md](directory/STANDARDS.md) | Project layout · file organization · naming |
 | [code_writing/STANDARDS.md](code_writing/STANDARDS.md) | Clean code · readability · function style · naming |
+| [primitives/STANDARDS.md](primitives/STANDARDS.md) | Unit taxonomy · promotion path · reuse contract · registry · duplication budget |
 
 ### Core
 
