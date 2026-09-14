@@ -144,7 +144,8 @@ Scale relief: at **Prototype** scale, `cicd` reduces to lint+test on push and `c
 | [api/STANDARDS.md](api/STANDARDS.md) | API design · protocols · contracts · versioning |
 | [database/STANDARDS.md](database/STANDARDS.md) | Schema design · migrations · queries · transactions |
 | [cli/STANDARDS.md](cli/STANDARDS.md) | Argument parsing · output format · exit codes · help |
-| [web/STANDARDS.md](web/STANDARDS.md) | Routing · middleware · state · auth · frontend/backend |
+| [web/STANDARDS.md](web/STANDARDS.md) | Rendering · routing · middleware · state · a11y · i18n · Core Web Vitals |
+| [web/SECURITY.md](web/SECURITY.md) | Security headers · SRI · XSS · CORS · cookies · CSRF · route gating |
 
 ### Domain
 

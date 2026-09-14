@@ -104,6 +104,24 @@ Rule worth noting: **a hardening flag removed to make something work is a
 finding, ✗ a fix.** The failure mode is not omitting the flag, it is removing it
 under delivery pressure and leaving the exception as the permanent default.
 
+| 14 | `web/` | **Newer browser primitives absent.** CSP, HSTS, `nosniff`, `frame-ancestors` and `Referrer-Policy` were all present and correct; Subresource Integrity, Trusted Types, `Permissions-Policy`, COOP and CORP were not. Without SRI a CDN compromise runs as first-party code and CSP's origin allowlist still permits it — the allowlist trusts the origin, ✗ the bytes | Current browser platform | Added to `web/SECURITY.md` §1, with report-before-enforce generalised from CSP to every header |
+
+Same cap pressure as `devops/`: `web/` reached 508 lines, so browser security
+and session/CSRF split into `web/SECURITY.md`. The seam is real — what a page
+renders and what the browser enforces on its behalf are different questions,
+and the split file now sits beside `security/TOKENS.md` and `security/OAUTH.md`
+with cross-references rather than restatement.
+
+---
+
+## Verified current, no change (pass 3)
+
+| Standard | Checked against | Result |
+|---|---|---|
+| `api/` | RFC 9457 · pagination · idempotency practice | Already on **RFC 9457** problem details — the 2023 replacement for RFC 7807, which much secondary material still cites. Cursor pagination contract, idempotency keys, rate limiting, versioning + deprecation protocol all present |
+| `web/` (non-security) | Core Web Vitals · WCAG | Core Web Vitals with budgets, WCAG accessibility with semantic structure, keyboard and focus, ARIA, i18n including time zones and layout negotiation |
+| `devops/` (non-container) | — | IaC + drift detection, deployment patterns, incident response with SEV levels and blameless postmortems, RTO/RPO, on-call, cost including LLM token spend |
+
 ---
 
 ## Remaining tiers
@@ -112,8 +130,7 @@ Not yet reviewed: Foundation (5) · Core (9 of 10) · Delivery (5) · Interface 
 
 1. `api/` against OpenAPI 3.1 + the Microsoft and Google API design guides.
 3. `web/` against the current OWASP Top 10 and browser platform changes.
-4. `database/` · `sql/` — index, isolation and migration guidance ages quietly.
-5. Remaining language standards (`python/` `go/` `typescript/` `shell/`) against current toolchain defaults — these age fastest.
+2. Remaining language standards (`python/` `go/` `typescript/` `shell/`) against current toolchain defaults — these age fastest.
 6. `testing/` · `ml/` · `data_pipeline/` — mutation-testing and eval practice moved with AI tooling.
 
 Expectation after pass 1: the yield is low and the findings are additive rather

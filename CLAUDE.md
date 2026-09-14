@@ -103,7 +103,7 @@ All standards are complete. Tier determines when a project loads them — see [R
 | 21 | `api/` | API design · protocols · contracts · versioning · serialization |
 | 22 | `database/` | Schema design · migrations · queries · transactions |
 | 23 | `cli/` | Argument parsing · output format · exit codes · help |
-| 24 | `web/` | Routing · middleware · state · auth · frontend/backend |
+| 24 | `web/` | Rendering · routing · middleware · state · a11y · i18n · Core Web Vitals (STANDARDS.md) · headers · SRI · XSS · CORS · cookies · CSRF (SECURITY.md) |
 
 ### Domain — loaded per domain
 
