@@ -3,7 +3,7 @@
 > Rules for building systems from small reusable units — what qualifies as a primitive, how parts compose into components, and how a unit earns reuse.
 
 **ID** `primitives` · **Tier** Foundation · **Version** 1.0
-**Owns** unit taxonomy · primitive qualification · part/component/composite model · promotion path · reuse contract · primitive registry · duplication budget · primitive versioning + deprecation
+**Owns** unit taxonomy · primitive qualification · part/component/composite model · promotion path · reuse contract · primitive registry · duplication budget · primitive versioning + deprecation · project tool conventions
 **Defers to** layer model · dependency direction · module boundaries → [architecture](../architecture/STANDARDS.md) · SOLID · coupling · cohesion · abstraction rules · pattern selection → [design](../design/STANDARDS.md) · function size · identifier naming · complexity thresholds → [code_writing](../code_writing/STANDARDS.md) · file placement · directory naming → [directory](../directory/STANDARDS.md) · error taxonomy · result types → [error_handling](../error_handling/STANDARDS.md) · coverage thresholds · test doubles → [testing](../testing/STANDARDS.md) · package versioning · lock files → [dependencies](../dependencies/STANDARDS.md) · public wire contracts → [api](../api/STANDARDS.md)
 **Load with** [architecture](../architecture/STANDARDS.md) · [design](../design/STANDARDS.md) · [directory](../directory/STANDARDS.md)
 
@@ -21,9 +21,10 @@
 8. [Versioning and Deprecation](#8-versioning-and-deprecation)
 9. [Testing Primitives](#9-testing-primitives)
 10. [Agent Construction Rules](#10-agent-construction-rules)
-11. [Anti-Patterns](#11-anti-patterns)
-12. [Scale Matrix](#12-scale-matrix)
-13. [Checklist](#13-checklist)
+11. [Project Tools](#11-project-tools)
+12. [Anti-Patterns](#12-anti-patterns)
+13. [Scale Matrix](#13-scale-matrix)
+14. [Checklist](#14-checklist)
 
 ---
 
@@ -251,7 +252,27 @@ Rules for coding agents building under this model. Agents duplicate more than hu
 
 ---
 
-## 11. Anti-Patterns
+## 11. Project Tools
+
+A project tool (`dev_tool`) is a unit whose consumer is the development process rather than the product. Same taxonomy (§1), same promotion path (§3), same contract (§4) — the only difference is who calls it.
+
+| Rule | Detail |
+|---|---|
+| Location | Project-local and committed. ✗ a global install, ✗ an uncommitted script on one machine |
+| Authorship | Written for this project's specifics. A tool needing no project knowledge is a dependency, ✗ a project tool |
+| Contract | Declared like any unit (§4): typed inputs, enumerated failures, declared side effects |
+| Registration | Appears in the registry (§6) with `kind: component` and its entry point |
+| Invocation | One documented entry point per tool. ✗ a tool reachable only by reading its source |
+| Destructiveness | A tool that mutates source | state declares it and defaults to dry-run |
+| Testing | Tested at the level its kind demands (§9). An untested tool that rewrites code is a liability |
+| Promotion | A tool wanted by a second project is promoted per §3, ✗ copied |
+| Retirement | Removed when its task is gone. A stale tool that silently no-ops is worse than an absent one |
+
+Project tools are held to the same duplication budget (§7) as product code: two tools answering one question is the same defect as two primitives answering one question.
+
+---
+
+## 12. Anti-Patterns
 
 | Anti-pattern | Symptom | Correction |
 |---|---|---|
@@ -270,7 +291,7 @@ Rules for coding agents building under this model. Agents duplicate more than hu
 
 ---
 
-## 12. Scale Matrix
+## 13. Scale Matrix
 
 | Dimension | Prototype | Production | Scale |
 |---|---|---|---|
@@ -285,7 +306,7 @@ Rules for coding agents building under this model. Agents duplicate more than hu
 
 ---
 
-## 13. Checklist
+## 14. Checklist
 
 - [ ] Every unit declares its kind — primitive · part · component · composite
 - [ ] Dependency direction is downward only; no unit imports a kind above it
@@ -312,5 +333,8 @@ Rules for coding agents building under this model. Agents duplicate more than hu
 - [ ] Every primitive has standalone tests importing nothing from the project
 - [ ] Every failure variant of every primitive is exercised by a test
 - [ ] Primitive regression tests live with the primitive, not the call site
+- [ ] Every project tool is committed, registered, and has one documented entry point
+- [ ] Every destructive project tool defaults to dry-run
+- [ ] No project tool was copied to a second project instead of being promoted
 - [ ] Agent changes query the registry before writing new units
 - [ ] No unit merged with zero declared call sites

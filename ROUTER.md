@@ -72,6 +72,7 @@ Non-negotiable. Every project, every size, from first commit.
 | [primitives](primitives/STANDARDS.md) | Reusable-unit taxonomy + duplication control govern all code |
 | [error_handling](error_handling/STANDARDS.md) | Every system fails; failure is not optional |
 | [testing](testing/STANDARDS.md) | Untested code is unproven code |
+| [maturity](maturity/STANDARDS.md) | Every project needs to know how much of it is actually proven |
 | [security](security/STANDARDS.md) | Validation boundary + secrets apply to all input |
 | [observability](observability/STANDARDS.md) | Unobservable production is unoperable production |
 | [configuration](configuration/STANDARDS.md) | Every project has environments and secrets |
@@ -121,6 +122,7 @@ Scale relief: at **Prototype** scale, `cicd` reduces to lint+test on push and `c
 | [dependencies/STANDARDS.md](dependencies/STANDARDS.md) | Versioning · isolation · wrappers · lock files |
 | [documentation/STANDARDS.md](documentation/STANDARDS.md) | Code docs · API docs · ADRs · runbooks |
 | [expectation/STANDARDS.md](expectation/STANDARDS.md) | Peak comparator · quality dimensions · failure taxonomy |
+| [maturity/STANDARDS.md](maturity/STANDARDS.md) | Maturity levels · proof breadth · numeric evidence · motion + resource metrics |
 
 ### Delivery
 

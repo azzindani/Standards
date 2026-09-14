@@ -69,61 +69,62 @@ All standards are complete. Tier determines when a project loads them — see [R
 | 2 | `design/` | Design patterns · module design · abstraction rules |
 | 3 | `directory/` | Project layout · file organization · naming |
 | 4 | `code_writing/` | Clean code · readability · function style · identifier naming |
-| 5 | `primitives/` | Unit taxonomy · promotion path · reuse contract · registry · duplication budget |
+| 5 | `primitives/` | Unit taxonomy · promotion path · reuse contract · registry · duplication budget · project tools |
 
 ### Core — always loaded
 
 | # | Directory | Standard |
 |---|---|---|
-| 6 | `testing/` | Pyramid · coverage · mocking (STANDARDS.md) · reality dimensions (REALITY.md) · pressure · survival · penetration (PRESSURE.md) |
-| 7 | `error_handling/` | Error types · boundaries · recovery · reporting |
-| 8 | `security/` | Validation boundary · secrets · access control · supply chain |
-| 9 | `observability/` | Structured logging · metrics · traces · SLOs · health |
-| 10 | `performance/` | Budgets · profiling · caching · optimization |
-| 11 | `configuration/` | Cascade · environment · secrets · feature flags |
-| 12 | `dependencies/` | Versioning · isolation · wrappers · lock files |
-| 13 | `documentation/` | Code docs · API docs · ADRs · runbooks |
-| 14 | `expectation/` | Peak comparator model · quality dimensions · failure taxonomy · benchmarks |
+| 6 | `maturity/` | Maturity levels · proof breadth · numeric evidence · motion + resource metrics |
+| 7 | `testing/` | Pyramid · coverage · mocking (STANDARDS.md) · reality dimensions (REALITY.md) · pressure · survival · penetration (PRESSURE.md) |
+| 8 | `error_handling/` | Error types · boundaries · recovery · reporting |
+| 9 | `security/` | Validation boundary · secrets · access control · supply chain |
+| 10 | `observability/` | Structured logging · metrics · traces · SLOs · health |
+| 11 | `performance/` | Budgets · profiling · caching · optimization |
+| 12 | `configuration/` | Cascade · environment · secrets · feature flags |
+| 13 | `dependencies/` | Versioning · isolation · wrappers · lock files |
+| 14 | `documentation/` | Code docs · API docs · ADRs · runbooks |
+| 15 | `expectation/` | Peak comparator model · quality dimensions · failure taxonomy · benchmarks |
 
 ### Delivery — always loaded
 
 | # | Directory | Standard |
 |---|---|---|
-| 15 | `git/` | Branching · commits · tags · workflows · history |
-| 16 | `cicd/` | Build · test · lint · deploy · release stages |
-| 17 | `code_review/` | Review criteria · approval flow · feedback style |
-| 18 | `devops/` | Infrastructure · containers · deployment · monitoring |
-| 19 | `workflow/` | Idea → PoC → production lifecycle · task management |
+| 16 | `git/` | Branching · commits · tags · workflows · history |
+| 17 | `cicd/` | Build · test · lint · deploy · release stages |
+| 18 | `code_review/` | Review criteria · approval flow · feedback style |
+| 19 | `devops/` | Infrastructure · containers · deployment · monitoring |
+| 20 | `workflow/` | Idea → PoC → production lifecycle · task management |
 
 ### Interface — loaded per surface
 
 | # | Directory | Standard |
 |---|---|---|
-| 20 | `api/` | API design · protocols · contracts · versioning · serialization |
-| 21 | `database/` | Schema design · migrations · queries · transactions |
-| 22 | `cli/` | Argument parsing · output format · exit codes · help |
-| 23 | `web/` | Routing · middleware · state · auth · frontend/backend |
+| 21 | `api/` | API design · protocols · contracts · versioning · serialization |
+| 22 | `database/` | Schema design · migrations · queries · transactions |
+| 23 | `cli/` | Argument parsing · output format · exit codes · help |
+| 24 | `web/` | Routing · middleware · state · auth · frontend/backend |
 
 ### Domain — loaded per domain
 
 | # | Directory | Standard |
 |---|---|---|
-| 24 | `local_mcp/` | MCP architecture · engine/server split (STANDARDS.md) · tool design (TOOLS.md) · state · transports (RUNTIME.md) · install · distribution (DELIVERY.md) |
-| 25 | `data_pipeline/` | ETL · data validation · schema enforcement · batch |
-| 26 | `ml/` | Model lifecycle · experiment tracking · data versioning |
-| 27 | `agent/` | CLAUDE.md · AGENTS.md · context engineering · density rules |
-| 28 | `html_generation/` | Offline-first output (STANDARDS.md) · theming · CSS (THEMING.md) · charts · controls (CHARTS.md) |
+| 25 | `local_mcp/` | MCP architecture · engine/server split (STANDARDS.md) · tool design (TOOLS.md) · state · transports (RUNTIME.md) · install · distribution (DELIVERY.md) |
+| 26 | `data_pipeline/` | ETL · data validation · schema enforcement · batch |
+| 27 | `ml/` | Model lifecycle · experiment tracking · data versioning |
+| 28 | `agent/` | CLAUDE.md · AGENTS.md · context engineering · density rules |
+| 29 | `html_generation/` | Offline-first output (STANDARDS.md) · theming · CSS (THEMING.md) · charts · controls (CHARTS.md) |
 
 ### Language — loaded per language
 
 | # | Directory | Standard |
 |---|---|---|
-| 29 | `python/` | Style · typing · packaging · virtual envs · tooling |
-| 30 | `rust/` | Ownership idioms · crate structure · error handling · unsafe |
-| 31 | `go/` | Package layout · interfaces · error returns · concurrency |
-| 32 | `typescript/` | Types · modules · async (STANDARDS.md) · build · lint (TOOLING.md) |
-| 33 | `shell/` | Script structure · error handling (STANDARDS.md) · portability · security (HARDENING.md) |
-| 34 | `sql/` | Query style · schema conventions · migration format |
+| 30 | `python/` | Style · typing · packaging · virtual envs · tooling |
+| 31 | `rust/` | Ownership idioms · crate structure · error handling · unsafe |
+| 32 | `go/` | Package layout · interfaces · error returns · concurrency |
+| 33 | `typescript/` | Types · modules · async (STANDARDS.md) · build · lint (TOOLING.md) |
+| 34 | `shell/` | Script structure · error handling (STANDARDS.md) · portability · security (HARDENING.md) |
+| 35 | `sql/` | Query style · schema conventions · migration format |
 
 ---
 
@@ -133,6 +134,7 @@ All standards are complete. Tier determines when a project loads them — see [R
 architecture ← foundation for all standards
 ├── design · code_writing · directory ← structure the code itself
 ├── primitives ← reusable-unit taxonomy under design + architecture
+├── maturity ← proof breadth over testing · observability · performance
 ├── error_handling ← boundaries referenced by every tier
 ├── api ← database · web · local_mcp
 ├── testing ← cicd · code_review · expectation

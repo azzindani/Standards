@@ -4,7 +4,7 @@
 
 **ID** `observability` · **Tier** Core · **Version** 1.0
 **Owns** structured logging · log levels/content · operation receipts · metrics (golden signals/RED/USE) · health checks · distributed tracing · SLOs + error budgets · alert design rules + resource thresholds · log retention
-**Defers to** error taxonomy/classification → [error_handling](../error_handling/STANDARDS.md) · security audit event catalog + PII basis → [security](../security/STANDARDS.md) · performance budgets + caching → [performance](../performance/STANDARDS.md) · which infra metrics to collect · backup/DR → [devops](../devops/STANDARDS.md)
+**Defers to** error taxonomy/classification → [error_handling](../error_handling/STANDARDS.md) · security audit event catalog + PII basis → [security](../security/STANDARDS.md) · performance budgets + caching → [performance](../performance/STANDARDS.md) · which infra metrics to collect · backup/DR → [devops](../devops/STANDARDS.md) · maturity levels · numeric-evidence rule · motion + resource metric sets → [maturity](../maturity/STANDARDS.md)
 **Load with** [architecture](../architecture/STANDARDS.md) · [error_handling](../error_handling/STANDARDS.md) · [security](../security/STANDARDS.md)
 
 ---
