@@ -4,7 +4,25 @@
 
 Pass 1 · security tier. Method: search for current authoritative guidance, compare rule by rule, apply the clear-cut, record the rest.
 
-! Egress limits: `datatracker.ietf.org` · `rfc-editor.org` · `oauth.net` · `cheatsheetseries.owasp.org` · `workos.com` are blocked by this environment's proxy. Findings below rest on search-result summaries of those sources, ✗ on the primary text. Re-verify against primaries before treating any threshold as settled.
+**Primary-source access — solved.** `datatracker.ietf.org` · `rfc-editor.org` ·
+`oauth.net` · `cheatsheetseries.owasp.org` are blocked by this environment's
+proxy, but **`github.com` and `raw.githubusercontent.com` are not**, and the
+sources that matter are maintained there in the open:
+
+| Source | Location | Status |
+|---|---|---|
+| OWASP ASVS 5.0 | `github.com/OWASP/ASVS` → `5.0/en/*.md` | ✓ read directly |
+| OWASP Cheat Sheets | `github.com/OWASP/CheatSheetSeries` | ✓ available |
+| OpenTelemetry semantic conventions | `github.com/open-telemetry/semantic-conventions` | ✓ available |
+| NIST SP 800-63-4 | `github.com/usnistgov/800-63-4` | ✓ available |
+| RFC text | ✗ on GitHub · IETF mirrors blocked | ✗ search summaries only |
+
+Method: `git clone --depth 1` the source repo, read the requirement text, cite by
+requirement id. Pass 2 below used it for ASVS V9 and V10.
+
+! Still unverified against primaries: RFC 9700 · RFC 9449 · RFC 7636 language.
+ASVS restates their requirements with ids, which is a strong secondary citation,
+✗ the normative text itself.
 
 ---
 
@@ -20,11 +38,36 @@ Pass 1 · security tier. Method: search for current authoritative guidance, comp
 
 ---
 
+## Pass 2 — applied from ASVS primary text
+
+Read from `OWASP/ASVS` `5.0/en/0x18-V9-Self-contained-Tokens.md` and
+`0x19-V10-OAuth-and-OIDC.md`. Three gaps that the search summaries did not
+surface, and one confirmation that mattered.
+
+| # | Standard | Finding | Requirement | Change |
+|---|---|---|---|---|
+| 9 | `security/TOKENS.md` | **Key-source headers unaddressed.** `kid` and JWKS were covered, but nothing forbade a token naming its *own* key source. A verifier that fetches the JWKS a token points at validates the attacker's signature against the attacker's key, and every other rule becomes decorative | ASVS 9.1.3 — `jku` · `x5u` · `jwk` validated against an allowlist of trusted sources | New table in §3 · the token ✗ choose its key source |
+| 10 | `security/TOKENS.md` | **Token type confusion unaddressed.** A verifier accepting any well-signed token from its issuer accepts the wrong one — same signature, same `aud`, different purpose | ASVS 9.2.2 — only access tokens authorize, only ID tokens prove authentication | Rule in §4 · type validated, ✗ assumed |
+| 11 | `security/TOKENS.md` | Algorithm allowlist permitted mixing families without comment | ASVS 9.1.2 — ideally only symmetric **or** asymmetric; both needs extra controls against key confusion | §3 prefers one family |
+| 12 | `security/TOKENS.md` | Audience rule missed the shared-key and dynamic-provisioning case | ASVS 9.2.4 | Rule in §4 |
+
+**Confirmation.** ASVS 10.4.5 states the sender-constraining rule added in pass 1
+almost verbatim — sender-constrained refresh tokens preferred (DPoP | mTLS), with
+rotation permitted at L1/L2 **provided** the server invalidates the used token
+and *revokes all refresh tokens for that authorization* when an already-used one
+is presented. That is both the standard's §2/§6 rule and the behaviour
+implemented in Pipeline's `oauth.rs` this session, now confirmed against primary
+text rather than inferred.
+
+ASVS 10.4.14 raises it at L3: issue **only** sender-constrained access tokens.
+
+---
+
 ## Raised, not applied
 
 | # | Standard | Finding | Why not applied |
 |---|---|---|---|
-| 6 | `security/TOKENS.md` | PKCE and exact redirect-URI matching are RFC 9700 requirements and appear in no standard | Flow security, ✗ token mechanics. Belongs in `api/` | `web/`, or a new `security/OAUTH.md`. Placing it wrongly is worse than a tracked gap |
+| 6 | `security/TOKENS.md` | PKCE · exact redirect-URI matching · authorization-code lifetime and single-use · grant restriction appear in no standard | **Resolved in principle:** ASVS separates V9 (self-contained tokens) from V10 (OAuth and OIDC), which settles the placement question — these belong in a sibling `security/OAUTH.md`, ✗ in TOKENS.md. Writing it is its own task |
 | 7 | `security/TOKENS.md` | DPoP stated as "use where advertised". Of 18 issuers surveyed in 2026, none advertised support | The rule is right for now and will age. Revisit when adoption moves — a standard that mandates an unavailable mechanism gets ignored wholesale |
 | 8 | `security/STANDARDS.md` | ASVS 5.0 restructured: token requirements moved from V7 to a standalone V9 | Structural alignment with ASVS is a larger decision than one edit |
 

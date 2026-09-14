@@ -110,6 +110,8 @@ Rules:
 - ✗ trust a claim a client can set. Roles and scopes come from the issuer, ✗ from a claim the client supplied at token request.
 - Validate before use, ✗ alongside it. A handler that reads `sub` before signature verification is exploitable regardless of what follows.
 - Unknown claims are ignored, ✗ rejected — forward compatibility. Unknown *critical* claims are rejected.
+- **Token type is validated, ✗ assumed.** Only an access token authorizes; only an ID token proves authentication. A verifier that accepts any well-signed token from its issuer accepts the wrong one — same signature, same `aud`, different purpose.
+- Where one issuer key serves several audiences, the audience restriction must uniquely identify the intended one; a dynamically provisioned audience is validated by the issuer, else a client names an audience it may then impersonate.
 
 ---
 
@@ -247,6 +249,9 @@ An empty scope claim meaning "everything" is a standing outage: any bug that dro
 - [ ] DPoP is used where the authorization server advertises it, and its absence does not block rollout
 - [ ] Verifier validates against an algorithm allowlist it owns
 - [ ] `alg: none` rejected unconditionally in every environment
+- [ ] The algorithm allowlist holds one family; mixing symmetric and asymmetric carries extra key-confusion controls
+- [ ] `jku`, `x5u`, `jwk` and `x5c` are validated against an allowlist of trusted sources, never fetched as given
+- [ ] Token type is validated — only access tokens authorize, only ID tokens prove authentication
 - [ ] Asymmetric signing wherever verifiers are independent of the issuer
 - [ ] Signature verified before any claim is read
 - [ ] `exp` required and enforced; clock skew tolerance ≤ 60 s
