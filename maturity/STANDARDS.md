@@ -195,10 +195,10 @@ Rules:
 | Baseline scope | One per environment per route per hardware class. A single global baseline is meaningless |
 | Baseline creation | Explicit action, ✗ automatic on first run. An accidental baseline encodes a bad state as correct |
 | Comparison | Every change compares against the baseline for its environment |
-| Budget | Declared per metric as an absolute threshold | a percentage delta. Both may apply |
+| Budget | Declared per metric as an absolute threshold \| a percentage delta. Both may apply |
 | Failure | Exceeding a budget fails the gate. ✗ warn-only for level 5 |
 | Baseline move | Deliberate, reviewed, and recorded with the reason. ✗ move a baseline to clear a red gate |
-| Noise | A metric whose run-to-run variance exceeds its budget is ✗ usable as a gate — widen the budget | stabilize the capture, and record which |
+| Noise | A metric whose run-to-run variance exceeds its budget is ✗ usable as a gate — widen the budget \| stabilize the capture, and record which |
 
 Regression direction is declared per metric. Lower is better for latency; higher is better for throughput. A gate that does not know the direction cannot fail correctly.
 

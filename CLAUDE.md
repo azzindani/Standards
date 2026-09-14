@@ -9,6 +9,7 @@
   - **Strip:** articles (`a/an/the`) · weak modals (`should/would/may`) · scaffolding (`make sure to`, `always remember to`, `be careful to`) · meta (`note that`, `keep in mind`, `it is important`) · hedging (`generally/typically/usually`) · obvious subjects · restatements
   - **Operators:** `→` leads-to/use-instead · `·` co-required · `|` alternative · `✗` never/forbidden · `;` except · `!` critical
   - **Structure over prose:** comparisons → tables · condition+action → `X → Y` · workflow → `A → B → C` · related bullets → one merged line
+  - **! Escape `\|` inside table cells.** The `|` operator collides with markdown's column separator — an unescaped one silently splits the cell and CI's markdownlint fails on column count
   - **✗ compress (load-bearing):** negations (`never/not/no` — stripping inverts rule) · hard thresholds · exception clauses · code blocks · technical names · ordered sequences
 
 ---
@@ -46,6 +47,15 @@ python3 tools/validate.py
 ```
 
 Checks: line cap · header schema · ID↔directory match · tier validity · TOC↔section parity · sequential numbering · checklist present and unticked · code-block policy · dead cross-references · router registration.
+
+`index.json` is the machine-readable contract Pipeline reads instead of re-parsing markdown. Regenerate it in the same commit as any standard, route, or header change:
+
+```bash
+python3 tools/validate.py --emit-index   # regenerate
+python3 tools/validate.py --check-index  # CI runs this — stale index fails the build
+```
+
+! CI runs only on `main` and on PRs to it, so a feature branch never proves itself. Before every commit run the full gate locally: `validate.py` · `--check-index` · `npx markdownlint-cli2 "**/*.md" "#node_modules"` · no trailing whitespace · no tabs · newline at EOF.
 
 Must pass before every commit. CI runs it on push and PR — see `.github/workflows/standards.yml`.
 

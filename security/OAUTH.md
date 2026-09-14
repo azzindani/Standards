@@ -101,7 +101,7 @@ Reuse is the load-bearing rule and the one most often half-implemented. Deleting
 
 | Rule | Detail |
 |---|---|
-| CSRF defence | PKCE | `state` validation on the authorization response · one of them, verified |
+| CSRF defence | PKCE \| `state` validation on the authorization response · one of them, verified |
 | Mix-up defence | A client talking to more than one authorization server validates the `iss` returned in the authorization and token responses |
 | Token confinement | Tokens reach only components that need them · in a backend-for-frontend, access and refresh tokens stay in the backend |
 | Accept only own transactions | A code or ID token is accepted only when it results from a flow this user-agent session started |
@@ -117,7 +117,7 @@ Performed **after** token validation ([TOKENS.md §4](TOKENS.md#4-claim-validati
 
 | Rule | Detail |
 |---|---|
-| Audience | Accept only tokens intended for this service · by `aud` claim | introspection |
+| Audience | Accept only tokens intended for this service · by `aud` claim \| introspection |
 | Decide from claims | `sub` · `scope` · `authorization_details` are part of the decision when present, ✗ decoration |
 | Stable identity | Identify the user by claims that cannot be reassigned — `iss` + `sub` together, ✗ email, ✗ username |
 | Authentication strength | Where an operation requires a strength, method, or recency, verify it — `acr` · `amr` · `auth_time` |
@@ -132,7 +132,7 @@ Identifying a user by a reassignable claim means a recycled email address inheri
 | Rule | Detail |
 |---|---|
 | Backchannel authentication | Confidential clients authenticate on token, PAR, and revocation requests |
-| Strong client auth (L3) | Public-key and replay-resistant — mTLS (`tls_client_auth` · `self_signed_tls_client_auth`) | `private_key_jwt` |
+| Strong client auth (L3) | Public-key and replay-resistant — mTLS (`tls_client_auth` · `self_signed_tls_client_auth`) \| `private_key_jwt` |
 | Scope assignment | The server assigns each client only the scopes it needs |
 | Open dynamic registration | Permitted only with metadata validation, explicit user consent, and a warning before an untrusted client's authorization request |
 | Registration caps | Anonymous registration is capped and aged out · uncapped, it is memory exhaustion by design |
@@ -190,7 +190,7 @@ Issuer metadata that the client accepts on trust lets a malicious authorization 
 | Dimension | Prototype | Production | Scale |
 |---|---|---|---|
 | Grant set | Code + PKCE | Code + PKCE · per-client restriction | Per-client restriction · PAR required |
-| PKCE | Required · S256 | Required · S256 · `plain` refused | Same, plus JAR | PAR protecting the request |
+| PKCE | Required · S256 | Required · S256 · `plain` refused | Same, plus JAR \| PAR protecting the request |
 | Code lifetime | ≤ 10 min | ≤ 10 min · single use · reuse revokes | ≤ 1 min · reuse revokes · alerted |
 | Client authentication | Secret for confidential clients | Secret + backchannel auth | mTLS \| `private_key_jwt` |
 | Access-token replay | Bearer | Bearer + short lifetime | Sender-constrained only |

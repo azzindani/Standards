@@ -98,7 +98,7 @@ Every claim is **verified**, ✗ read. A decoded token is untrusted input until 
 | `exp` | Present and in the future · required, ✗ optional |
 | `nbf` | If present, in the past |
 | `iat` | Present · rejected if implausibly future-dated |
-| `iss` | Matches the expected issuer exactly. ✗ prefix | substring match |
+| `iss` | Matches the expected issuer exactly. ✗ prefix \| substring match |
 | `aud` | Contains this service's identifier. A token for another audience is rejected |
 | `sub` | Present · the identity the request acts as |
 | `jti` | Required when a denylist (§6) is in use |
@@ -126,7 +126,7 @@ Rules:
 | Rotation cadence | Signing keys rotate on a schedule, ✗ only after an incident. Cadence → [security §7](STANDARDS.md#7-secrets-management) |
 | Overlap window | Old key stays in the verification set for at least one max token lifetime after the new key starts signing |
 | Retirement | Key removed from the verification set only after the overlap window, ✗ at rotation |
-| Storage | Private keys from the config cascade | a vault · ✗ in the repo, ✗ in an image layer |
+| Storage | Private keys from the config cascade \| a vault · ✗ in the repo, ✗ in an image layer |
 
 Rotation without an overlap window invalidates every live token at the instant of rotation. The overlap is what makes rotation a non-event, so it is a hard requirement, ✗ a convenience.
 
@@ -163,7 +163,7 @@ Rules:
 | Memory only, for the page's lifetime | ✓ for an access token in a SPA |
 | `localStorage` · `sessionStorage` | ✗ for any token · readable by any script the page loads, including a compromised dependency |
 | URL · query string · path | ✗ always · leaks to logs, referrer headers, browser history, proxies |
-| Native secure enclave | ✓ on mobile · Keychain | Keystore |
+| Native secure enclave | ✓ on mobile · Keychain \| Keystore |
 
 Rules:
 
@@ -213,7 +213,7 @@ An empty scope claim meaning "everything" is a standing outage: any bug that dro
 | Long-lived access token | 24 h access token "to avoid refresh complexity" | Short access + rotating refresh (§6) |
 | Revocation deferred | JWT chosen, revocation "later" | Choose the strategy before the format (§6) |
 | Client-side logout | Token deleted in the browser, still valid | Revoke the chain server-side (§6) |
-| Token in `localStorage` | Any injected script exfiltrates it | `HttpOnly` cookie | memory (§7) |
+| Token in `localStorage` | Any injected script exfiltrates it | `HttpOnly` cookie \| memory (§7) |
 | Token in a URL | Appears in access logs and referrers | Header only (§7) |
 | Empty scope = full access | A dropped claim grants everything | Absent means none (§8) |
 | Shared service credential | One key used by every service | Per-service identity (§9) |
@@ -221,7 +221,7 @@ An empty scope claim meaning "everything" is a standing outage: any bug that dro
 | Key rotation without overlap | Every live token dies at rotation | Overlap ≥ one max lifetime (§5) |
 | Unknown `kid` falls back | Verifier tries a default key | Reject unknown `kid` (§5) |
 | Tokens in logs | Bearer values in request logs | Redact at the logging boundary (§7) |
-| Bearer-only public client | Agent | browser holds a bearer with no rotation and no binding | Rotate with reuse detection, | bind (§2) |
+| Bearer-only public client | Agent \| browser holds a bearer with no rotation and no binding | Rotate with reuse detection, \| bind (§2) |
 | DPoP made a blocker | Rollout stalls waiting for issuer support | Rotation is the conforming fallback (§2) |
 
 ---
@@ -230,8 +230,8 @@ An empty scope claim meaning "everything" is a standing outage: any bug that dro
 
 | Dimension | Prototype | Production | Scale |
 |---|---|---|---|
-| Format | Opaque session token | Opaque, | JWT with a chosen revocation strategy | JWT + JWKS + denylist |
-| Sender constraining | Rotation only | Rotation with reuse detection | DPoP | mTLS where the AS supports it |
+| Format | Opaque session token | Opaque, \| JWT with a chosen revocation strategy | JWT + JWKS + denylist |
+| Sender constraining | Rotation only | Rotation with reuse detection | DPoP \| mTLS where the AS supports it |
 | Signing | HS256, single domain | Asymmetric when verifiers are independent | Asymmetric · `kid` required · per-environment keys |
 | Key rotation | Manual | Scheduled with overlap window | Automated · overlap ≥ one max lifetime · audited |
 | Revocation | Short expiry | Refresh-chain revocation | Immediate by `jti` denylist |

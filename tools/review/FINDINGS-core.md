@@ -129,9 +129,9 @@ with cross-references rather than restatement.
 Not yet reviewed: Foundation (5) · Core (9 of 10) · Delivery (5) · Interface (4) · Domain (5) · Language (6). Highest expected yield, in order:
 
 1. `api/` against OpenAPI 3.1 + the Microsoft and Google API design guides.
-3. `web/` against the current OWASP Top 10 and browser platform changes.
-2. Remaining language standards (`python/` `go/` `typescript/` `shell/`) against current toolchain defaults — these age fastest.
-6. `testing/` · `ml/` · `data_pipeline/` — mutation-testing and eval practice moved with AI tooling.
+2. `web/` against the current OWASP Top 10 and browser platform changes.
+3. Remaining language standards (`python/` `go/` `typescript/` `shell/`) against current toolchain defaults — these age fastest.
+4. `testing/` · `ml/` · `data_pipeline/` — mutation-testing and eval practice moved with AI tooling.
 
 Expectation after pass 1: the yield is low and the findings are additive rather
 than corrective. Both standards examined in depth were substantially right, and

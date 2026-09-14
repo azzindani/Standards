@@ -42,7 +42,7 @@ CSP: ✗ `unsafe-inline` (nonce/hash any inline script) · ✗ `unsafe-eval` · 
 
 | Rule | Detail |
 |---|---|
-| Subresource Integrity | Every third-party script | stylesheet loaded by URL carries `integrity` + `crossorigin`. Without it a CDN compromise runs as first-party code, and CSP's origin allowlist still permits it |
+| Subresource Integrity | Every third-party script \| stylesheet loaded by URL carries `integrity` + `crossorigin`. Without it a CDN compromise runs as first-party code, and CSP's origin allowlist still permits it |
 | Trusted Types | `require-trusted-types-for 'script'` where browser support allows · removes DOM XSS sinks by construction rather than by escaping discipline |
 | Report before enforce | Applies to every header above, ✗ CSP alone. A header enforced blind breaks the app for users before it is measured |
 
@@ -71,10 +71,9 @@ Runs at middleware position 4 (§3) — before authentication.
 
 ---
 
+## 4. Browser Token Storage
 
 The authn/authz model — RBAC/ABAC, default-deny, resource-level checks, least privilege, **token lifetimes**, secret rotation — is owned by [security](../security/STANDARDS.md). This section covers the web delta only: how credentials live in the browser and how requests are protected. ✗ restate a token lifetime number — token lifetimes (browser-facing and service-to-service classes) are stated in [security](../security/STANDARDS.md).
-
-## 4. Browser Token Storage
 
 | Store | Verdict |
 |---|---|

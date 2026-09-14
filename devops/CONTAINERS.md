@@ -56,7 +56,7 @@ Image hygiene above limits what is *in* a container; these limit what it can *do
 | Drop all capabilities | `--cap-drop=ALL`, then add back only what the workload proves it needs |
 | `no-new-privileges` | Set. Blocks setuid binaries escalating inside the container |
 | Default seccomp | Keep it. ✗ `--security-opt seccomp=unconfined` — disabling it to fix one syscall removes the whole filter |
-| Mandatory access control | AppArmor | SELinux profile applied, ✗ `unconfined` |
+| Mandatory access control | AppArmor \| SELinux profile applied, ✗ `unconfined` |
 | ✗ Docker socket mount | `/var/run/docker.sock` inside a container is host root. ✗ mount it; use a scoped API proxy where orchestration is genuinely needed |
 | Memory + CPU limits | Every container declares both. An unlimited container starves its neighbours — resource exhaustion is a denial of service, ✗ a performance issue |
 | PID limit | Set, so a fork bomb cannot exhaust the host process table |

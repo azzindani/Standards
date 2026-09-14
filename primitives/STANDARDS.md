@@ -127,7 +127,7 @@ Build order is fixed: search for an existing unit → compose existing units →
 | Step | Action | Failure to follow |
 |---|---|---|
 | 1 | Search registry (§6) for a unit answering the need | Duplicate primitive enters the tree |
-| 2 | Compose two | more existing units | Logic reimplemented at a higher level |
+| 2 | Compose two \| more existing units | Logic reimplemented at a higher level |
 | 3 | Write new local code | Premature abstraction |
 
 Composition constraints:
@@ -138,7 +138,7 @@ Composition constraints:
 | Fan-in | A unit called by > 12 call sites is a dependency hub — freeze its contract, version it (§8) |
 | Fan-out | A Part importing > 7 primitives is doing two jobs — split it |
 | Glue | Code that only adapts one unit to another belongs in the caller, ✗ in a new primitive |
-| Wrapping | ✗ wrap a primitive solely to rename it. Rename the primitive | call it directly |
+| Wrapping | ✗ wrap a primitive solely to rename it. Rename the primitive \| call it directly |
 | Partial use | Calling a unit and using < half its output → the unit is over-scoped, split it |
 
 Composition never mutates a lower unit to serve one caller. A caller needing different behavior passes different arguments | uses a different unit.
@@ -159,7 +159,7 @@ Every project maintains one machine-readable index of its reusable units. Unregi
 | `call_sites` | Count, refreshed by tooling ✗ by hand |
 | `version` | Semver of the contract (§8) |
 | `status` | active · frozen · deprecated |
-| `owner` | Team | person accountable for the contract |
+| `owner` | Team \| person accountable for the contract |
 
 Registry rules:
 
@@ -180,7 +180,7 @@ Duplication is measured, budgeted, and paid down. It is never assumed to be zero
 |---|---|
 | Identical logic blocks across units | 0 above 20 lines |
 | Near-identical blocks (≥ 85% similarity) | ≤ 3 per 10k LOC · each carries a tracked promotion task |
-| Primitives with overlapping purpose | 0. Two units answering one question → merge | delete one |
+| Primitives with overlapping purpose | 0. Two units answering one question → merge \| delete one |
 | Unregistered reusable-looking units | 0 |
 
 Rules:
@@ -263,7 +263,7 @@ A project tool (`dev_tool`) is a unit whose consumer is the development process 
 | Contract | Declared like any unit (§4): typed inputs, enumerated failures, declared side effects |
 | Registration | Appears in the registry (§6) with `kind: component` and its entry point |
 | Invocation | One documented entry point per tool. ✗ a tool reachable only by reading its source |
-| Destructiveness | A tool that mutates source | state declares it and defaults to dry-run |
+| Destructiveness | A tool that mutates source \| state declares it and defaults to dry-run |
 | Testing | Tested at the level its kind demands (§9). An untested tool that rewrites code is a liability |
 | Promotion | A tool wanted by a second project is promoted per §3, ✗ copied |
 | Retirement | Removed when its task is gone. A stale tool that silently no-ops is worse than an absent one |
@@ -278,8 +278,8 @@ Project tools are held to the same duplication budget (§7) as product code: two
 |---|---|---|
 | Speculative primitive | Unit with one call site, written "for reuse" | Inline it back. Promote on the third call site (§3) |
 | Utils drawer | `utils` · `helpers` · `common` holding unrelated units | Split by question answered; name by behavior |
-| Domain leak | Primitive named for a business noun | Rename to behavior | demote to Component |
-| Config reader inside a primitive | Primitive reads env | file | Pass configuration as an argument (§4) |
+| Domain leak | Primitive named for a business noun | Rename to behavior \| demote to Component |
+| Config reader inside a primitive | Primitive reads env \| file | Pass configuration as an argument (§4) |
 | Inverted dependency | Primitive imports a Part | Move shared logic down, ✗ import up (§1) |
 | Wrapper tax | Every primitive wrapped once per component | Delete wrappers; call directly (§5) |
 | Frozen-by-fear | Contract never changes because call-site count is unknown | Generate the registry (§6); version deliberately (§8) |
