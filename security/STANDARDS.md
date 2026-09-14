@@ -157,7 +157,7 @@ Two access-token classes — both apply, scope decides which. ✗ collapse into 
 |---|---|
 | Server-side state | Session data on server; client holds only session ID |
 | Regenerate on auth change | New session ID after login, logout, privilege elevation |
-| Absolute + idle timeout | Expire after max lifetime AND after idle period |
+| Absolute + idle timeout | Both required. NIST SP 800-63B-4 AAL2: absolute ≤ 24 h · idle ≤ 1 h · AAL1: absolute ≤ 30 d |
 | Invalidate on logout | Destroy server-side; ✗ rely on client-side deletion |
 
 Cookie attributes (`Secure` · `HttpOnly` · `SameSite`) → [web](../web/STANDARDS.md).
@@ -168,7 +168,7 @@ Cookie attributes (`Secure` · `HttpOnly` · `SameSite`) → [web](../web/STANDA
 |---|---|
 | Hash with memory-hard algorithm | **Argon2id** (preferred) · scrypt · bcrypt — per-user salt |
 | ✗ plaintext or reversible encryption | — |
-| Minimum length ≥ 12 | ✗ maximum length below 64 |
+| Minimum length ≥ 15 for single-factor · ≥ 12 with a second factor | NIST SP 800-63B-4 · ✗ maximum length below 64 |
 | ✗ composition rules | ✗ require uppercase/special — length matters more |
 | Check breach databases | Reject known-compromised passwords |
 

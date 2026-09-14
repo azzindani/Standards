@@ -3,7 +3,7 @@
 > How bearer tokens are chosen, signed, validated, rotated, revoked, and stored — the mechanics behind the token classes security defines.
 
 **ID** `security/tokens` · **Tier** Core · **Version** 1.0
-**Owns** token format selection · signing algorithm policy · claim set + validation rules · key management + rotation · JWKS · revocation strategy · client-side storage · scope + audience separation · service-to-service tokens · token anti-patterns
+**Owns** token format selection · sender constraining · signing algorithm policy · claim set + validation rules · key management + rotation · JWKS · revocation strategy · client-side storage · scope + audience separation · service-to-service tokens · token anti-patterns
 **Defers to** token classes · lifetimes · session management · password rules · rate limiting → [security](STANDARDS.md) · RBAC/ABAC · default-deny · resource checks → [security §6](STANDARDS.md#6-authorization) · secret storage + rotation cadence → [security §7](STANDARDS.md#7-secrets-management) · cookie attributes · CSRF · frontend gating → [web](../web/STANDARDS.md) · wire contracts · versioning · error shape → [api](../api/STANDARDS.md) · config cascade for key material → [configuration](../configuration/STANDARDS.md) · vault + injection mechanics → [devops](../devops/STANDARDS.md) · audit event format → [observability](../observability/STANDARDS.md)
 **Load with** [security](STANDARDS.md) · [api](../api/STANDARDS.md) · [web](../web/STANDARDS.md)
 
@@ -12,16 +12,17 @@
 ## Table of Contents
 
 1. [Format Selection](#1-format-selection)
-2. [Signing Policy](#2-signing-policy)
-3. [Claim Validation](#3-claim-validation)
-4. [Key Management](#4-key-management)
-5. [Revocation](#5-revocation)
-6. [Client Storage](#6-client-storage)
-7. [Scope and Audience](#7-scope-and-audience)
-8. [Service-to-Service](#8-service-to-service)
-9. [Anti-Patterns](#9-anti-patterns)
-10. [Scale Matrix](#10-scale-matrix)
-11. [Checklist](#11-checklist)
+2. [Sender Constraining](#2-sender-constraining)
+3. [Signing Policy](#3-signing-policy)
+4. [Claim Validation](#4-claim-validation)
+5. [Key Management](#5-key-management)
+6. [Revocation](#6-revocation)
+7. [Client Storage](#7-client-storage)
+8. [Scope and Audience](#8-scope-and-audience)
+9. [Service-to-Service](#9-service-to-service)
+10. [Anti-Patterns](#10-anti-patterns)
+11. [Scale Matrix](#11-scale-matrix)
+12. [Checklist](#12-checklist)
 
 ---
 
@@ -33,12 +34,17 @@ Format follows the revocation requirement, ✗ familiarity. Choose before writin
 |---|---|---|
 | Opaque session token | Single trust domain · immediate revocation required | Verifier cannot reach the session store |
 | JWT (signed) | Multiple independent verifiers · stateless verification required | Immediate revocation is a requirement and no denylist exists |
+| PASETO | Same case as JWT · a versioned protocol removes algorithm negotiation entirely | Ecosystem lacks a maintained library for the stack |
 | API key | Machine caller · long-lived · one owner | A human identity is behind it |
 | mTLS certificate | Service-to-service inside a controlled network | Clients are browsers |
 
+PASETO removes §2's whole failure class by construction — the version pins the
+algorithm, so there is no `alg` header to confuse. Prefer it over JWT on a new
+system where library support exists; JWT stays the interoperability default.
+
 Rules:
 
-- Default to **opaque server-side session tokens** for browser sessions. JWT for a browser session buys statelessness and pays for it in revocation (§5).
+- Default to **opaque server-side session tokens** for browser sessions. JWT for a browser session buys statelessness and pays for it in revocation (§6).
 - JWT is justified by multiple verifiers that cannot share a session store. One service verifying its own tokens is ✗ a justification.
 - ✗ mix formats on one interface. Two accepted formats mean two validation paths, and the weaker one decides security.
 - Encrypted tokens (JWE) only when claims carry data the client must not read. Signing ✗ hides contents — a signed JWT is readable by anyone holding it.
@@ -46,7 +52,27 @@ Rules:
 
 ---
 
-## 2. Signing Policy
+## 2. Sender Constraining
+
+A bearer token is bearer: whoever holds it may use it. Sender constraining binds
+a token to a key the client proves it holds, so a stolen token is inert.
+
+| Mechanism | Where | Status |
+|---|---|---|
+| mTLS-bound tokens (RFC 8705) | Service-to-service · controlled network | Use where the network already carries client certificates |
+| DPoP (RFC 9449) | Public clients · browsers · agents | Use where the authorization server advertises `dpop_signing_alg_values_supported` |
+| Rotating refresh tokens (§6) | Public clients | The fallback · RFC 9700 requires rotation **or** sender constraining, ✗ neither |
+
+Rules:
+
+- A public client uses sender-constrained tokens **or** rotating refresh tokens with reuse detection (§6). Neither is ✗ acceptable — that pair is the RFC 9700 requirement.
+- ✗ block on DPoP support: adoption among authorization servers is thin, so rotation is the conforming fallback, ✗ a shortcut.
+- Where the AS advertises DPoP, prefer it for public clients — theft of a DPoP-bound token gives an attacker nothing without the private key.
+- Agent clients are public clients. An agent holding a long-lived bearer is the same exposure as a browser holding one.
+
+---
+
+## 3. Signing Policy
 
 | Rule | Detail |
 |---|---|
@@ -61,13 +87,13 @@ The allowlist rule is load-bearing: a verifier that honours the token's own `alg
 
 ---
 
-## 3. Claim Validation
+## 4. Claim Validation
 
 Every claim is **verified**, ✗ read. A decoded token is untrusted input until each row below passes.
 
 | Claim | Rule |
 |---|---|
-| `alg` | Matches the verifier's allowlist (§2) before signature check |
+| `alg` | Matches the verifier's allowlist (§3) before signature check |
 | signature | Verified before any claim is read |
 | `exp` | Present and in the future · required, ✗ optional |
 | `nbf` | If present, in the past |
@@ -75,7 +101,7 @@ Every claim is **verified**, ✗ read. A decoded token is untrusted input until 
 | `iss` | Matches the expected issuer exactly. ✗ prefix | substring match |
 | `aud` | Contains this service's identifier. A token for another audience is rejected |
 | `sub` | Present · the identity the request acts as |
-| `jti` | Required when a denylist (§5) is in use |
+| `jti` | Required when a denylist (§6) is in use |
 
 Rules:
 
@@ -87,7 +113,7 @@ Rules:
 
 ---
 
-## 4. Key Management
+## 5. Key Management
 
 | Rule | Detail |
 |---|---|
@@ -102,11 +128,11 @@ Rules:
 
 Rotation without an overlap window invalidates every live token at the instant of rotation. The overlap is what makes rotation a non-event, so it is a hard requirement, ✗ a convenience.
 
-Compromise response is different from rotation: retire the key immediately, accept the mass invalidation, and revoke the refresh chains (§5).
+Compromise response is different from rotation: retire the key immediately, accept the mass invalidation, and revoke the refresh chains (§6).
 
 ---
 
-## 5. Revocation
+## 6. Revocation
 
 The JWT weak point, and the reason §1 defaults to opaque tokens. A signed token is valid until it expires — nothing about it consults the issuer.
 
@@ -127,7 +153,7 @@ Rules:
 
 ---
 
-## 6. Client Storage
+## 7. Client Storage
 
 | Location | Verdict |
 |---|---|
@@ -146,7 +172,7 @@ Rules:
 
 ---
 
-## 7. Scope and Audience
+## 8. Scope and Audience
 
 | Rule | Detail |
 |---|---|
@@ -160,7 +186,7 @@ An empty scope claim meaning "everything" is a standing outage: any bug that dro
 
 ---
 
-## 8. Service-to-Service
+## 9. Service-to-Service
 
 | Rule | Detail |
 |---|---|
@@ -173,34 +199,37 @@ An empty scope claim meaning "everything" is a standing outage: any bug that dro
 
 ---
 
-## 9. Anti-Patterns
+## 10. Anti-Patterns
 
 | Anti-pattern | Symptom | Correction |
 |---|---|---|
-| Trusting `alg` | Verifier honours the token's algorithm header | Allowlist in the verifier (§2) |
-| `alg: none` accepted | Unsigned tokens verify | Reject unconditionally (§2) |
-| Decode without verify | Claims read before signature check | Verify first, always (§3) |
-| Missing `aud` check | A token minted for another service is accepted | Verify audience (§3) |
-| Missing `iss` check | Any issuer's token with the right shape works | Exact issuer match (§3) |
-| Long-lived access token | 24 h access token "to avoid refresh complexity" | Short access + rotating refresh (§5) |
-| Revocation deferred | JWT chosen, revocation "later" | Choose the strategy before the format (§5) |
-| Client-side logout | Token deleted in the browser, still valid | Revoke the chain server-side (§5) |
-| Token in `localStorage` | Any injected script exfiltrates it | `HttpOnly` cookie | memory (§6) |
-| Token in a URL | Appears in access logs and referrers | Header only (§6) |
-| Empty scope = full access | A dropped claim grants everything | Absent means none (§7) |
-| Shared service credential | One key used by every service | Per-service identity (§8) |
-| User token forwarded downstream | Deputy acts with the user's full rights | Service token + explicit delegation (§8) |
-| Key rotation without overlap | Every live token dies at rotation | Overlap ≥ one max lifetime (§4) |
-| Unknown `kid` falls back | Verifier tries a default key | Reject unknown `kid` (§4) |
-| Tokens in logs | Bearer values in request logs | Redact at the logging boundary (§6) |
+| Trusting `alg` | Verifier honours the token's algorithm header | Allowlist in the verifier (§3) |
+| `alg: none` accepted | Unsigned tokens verify | Reject unconditionally (§3) |
+| Decode without verify | Claims read before signature check | Verify first, always (§4) |
+| Missing `aud` check | A token minted for another service is accepted | Verify audience (§4) |
+| Missing `iss` check | Any issuer's token with the right shape works | Exact issuer match (§4) |
+| Long-lived access token | 24 h access token "to avoid refresh complexity" | Short access + rotating refresh (§6) |
+| Revocation deferred | JWT chosen, revocation "later" | Choose the strategy before the format (§6) |
+| Client-side logout | Token deleted in the browser, still valid | Revoke the chain server-side (§6) |
+| Token in `localStorage` | Any injected script exfiltrates it | `HttpOnly` cookie | memory (§7) |
+| Token in a URL | Appears in access logs and referrers | Header only (§7) |
+| Empty scope = full access | A dropped claim grants everything | Absent means none (§8) |
+| Shared service credential | One key used by every service | Per-service identity (§9) |
+| User token forwarded downstream | Deputy acts with the user's full rights | Service token + explicit delegation (§9) |
+| Key rotation without overlap | Every live token dies at rotation | Overlap ≥ one max lifetime (§5) |
+| Unknown `kid` falls back | Verifier tries a default key | Reject unknown `kid` (§5) |
+| Tokens in logs | Bearer values in request logs | Redact at the logging boundary (§7) |
+| Bearer-only public client | Agent | browser holds a bearer with no rotation and no binding | Rotate with reuse detection, | bind (§2) |
+| DPoP made a blocker | Rollout stalls waiting for issuer support | Rotation is the conforming fallback (§2) |
 
 ---
 
-## 10. Scale Matrix
+## 11. Scale Matrix
 
 | Dimension | Prototype | Production | Scale |
 |---|---|---|---|
 | Format | Opaque session token | Opaque, | JWT with a chosen revocation strategy | JWT + JWKS + denylist |
+| Sender constraining | Rotation only | Rotation with reuse detection | DPoP | mTLS where the AS supports it |
 | Signing | HS256, single domain | Asymmetric when verifiers are independent | Asymmetric · `kid` required · per-environment keys |
 | Key rotation | Manual | Scheduled with overlap window | Automated · overlap ≥ one max lifetime · audited |
 | Revocation | Short expiry | Refresh-chain revocation | Immediate by `jti` denylist |
@@ -210,10 +239,12 @@ An empty scope claim meaning "everything" is a standing outage: any bug that dro
 
 ---
 
-## 11. Checklist
+## 12. Checklist
 
 - [ ] Token format chosen from the revocation requirement, not familiarity
 - [ ] One token format per interface
+- [ ] Public clients use sender-constrained tokens or rotating refresh tokens with reuse detection — never neither
+- [ ] DPoP is used where the authorization server advertises it, and its absence does not block rollout
 - [ ] Verifier validates against an algorithm allowlist it owns
 - [ ] `alg: none` rejected unconditionally in every environment
 - [ ] Asymmetric signing wherever verifiers are independent of the issuer
