@@ -113,18 +113,19 @@ All standards are complete. Tier determines when a project loads them — see [R
 | 26 | `data_pipeline/` | ETL · data validation · schema enforcement · batch |
 | 27 | `ml/` | Model lifecycle · experiment tracking · data versioning |
 | 28 | `agent/` | CLAUDE.md · AGENTS.md · context engineering · density rules |
-| 29 | `html_generation/` | Offline-first output (STANDARDS.md) · theming · CSS (THEMING.md) · charts · controls (CHARTS.md) |
+| 29 | `llm/` | Prompt artifacts · model pinning + migration · output contracts · degradation · cost (STANDARDS.md) · eval sets · graders · gates (EVALUATION.md) · injection · tool authorization · agent autonomy · prompt privacy (SAFETY.md) |
+| 30 | `html_generation/` | Offline-first output (STANDARDS.md) · theming · CSS (THEMING.md) · charts · controls (CHARTS.md) |
 
 ### Language — loaded per language
 
 | # | Directory | Standard |
 |---|---|---|
-| 30 | `python/` | Style · typing · packaging · virtual envs · tooling |
-| 31 | `rust/` | Ownership idioms · crate structure · error handling · unsafe |
-| 32 | `go/` | Package layout · interfaces · error returns · concurrency |
-| 33 | `typescript/` | Types · modules · async (STANDARDS.md) · build · lint (TOOLING.md) |
-| 34 | `shell/` | Script structure · error handling (STANDARDS.md) · portability · security (HARDENING.md) |
-| 35 | `sql/` | Query style · schema conventions · migration format |
+| 31 | `python/` | Style · typing · packaging · virtual envs · tooling |
+| 32 | `rust/` | Ownership idioms · crate structure · error handling · unsafe |
+| 33 | `go/` | Package layout · interfaces · error returns · concurrency |
+| 34 | `typescript/` | Types · modules · async (STANDARDS.md) · build · lint (TOOLING.md) |
+| 35 | `shell/` | Script structure · error handling (STANDARDS.md) · portability · security (HARDENING.md) |
+| 36 | `sql/` | Query style · schema conventions · migration format |
 
 ---
 
@@ -139,6 +140,7 @@ architecture ← foundation for all standards
 ├── api ← database · web · local_mcp
 ├── testing ← cicd · code_review · expectation
 ├── security ← api · database · web · devops · dependencies
+├── llm ← agent · expectation · ml · security (prompt injection · evals · token cost)
 ├── observability ← devops · data_pipeline · ml
 ├── git ← cicd · workflow · code_review
 └── workflow ← references all standards as lifecycle phases

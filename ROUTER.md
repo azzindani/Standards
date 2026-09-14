@@ -157,6 +157,9 @@ Scale relief: at **Prototype** scale, `cicd` reduces to lint+test on push and `c
 | [local_mcp/DELIVERY.md](local_mcp/DELIVERY.md) | MCP testing · install · distribution · docs |
 | [data_pipeline/STANDARDS.md](data_pipeline/STANDARDS.md) | ETL · data validation · schema enforcement · batch |
 | [ml/STANDARDS.md](ml/STANDARDS.md) | Model lifecycle · experiment tracking · data versioning |
+| [llm/STANDARDS.md](llm/STANDARDS.md) | Prompt artifacts · model pinning + migration · output contracts · degradation · token cost |
+| [llm/EVALUATION.md](llm/EVALUATION.md) | Eval sets · graders · scoring · gates · adversarial cases |
+| [llm/SAFETY.md](llm/SAFETY.md) | Trust boundaries · prompt injection · tool authorization · agent autonomy · prompt privacy |
 | [agent/STANDARDS.md](agent/STANDARDS.md) | CLAUDE.md · AGENTS.md · context engineering · density |
 | [html_generation/STANDARDS.md](html_generation/STANDARDS.md) | Offline-first HTML output · module structure · security |
 | [html_generation/THEMING.md](html_generation/THEMING.md) | Theme system · CSS architecture · UX patterns |
@@ -189,9 +192,10 @@ Always-On Set (§3) is implied in every row — only the additions are listed.
 | Web app (TS front + back) | `typescript/*` · `web` · `api` · `database` · `sql` · `performance` · `devops` |
 | REST/gRPC service (Go/Rust) | `go` \| `rust` · `api` · `database` · `sql` · `performance` · `devops` |
 | ML project | `python` · `ml` · `data_pipeline` · `database` · `performance` |
+| LLM-backed feature in any app | `llm/*` · `expectation` · surface route |
 | Shell tooling | `shell/*` |
 | Report / dashboard generator | `html_generation/*` · `python` (or `typescript`) |
-| Agent / LLM system | `agent` · `expectation` · `local_mcp/*` (if tool-serving) |
+| Agent / LLM system | `llm/*` · `agent` · `expectation` · `local_mcp/*` (if tool-serving) |
 | Library / SDK | language route · `api` (public surface = contract) · `documentation` |
 
 ---
@@ -210,6 +214,7 @@ Add per surface the system actually exposes. A system with three surfaces loads 
 | Public package | `dependencies` · `documentation` · `api` | Anything others import |
 | Batch / scheduled job | `data_pipeline` · `observability` | Anything running unattended |
 | Model artifact | `ml` | Anything with trained weights |
+| Language-model call | `llm/*` | Any code path whose behavior depends on a model response |
 
 ---
 
@@ -245,7 +250,11 @@ Topics that multiple standards are tempted to claim. The **Owner** states the ru
 | Offline-first HTML output · theming | [html_generation](html_generation/STANDARDS.md) | local_mcp: cross-reference only |
 | Input validation boundary | [security](security/STANDARDS.md) | each standard: its own injection vectors |
 | Accessibility (WCAG) · i18n/l10n | [web](web/STANDARDS.md) | html_generation: cross-reference only |
-| Cost — infra spend · LLM token spend | [devops](devops/STANDARDS.md) | agent + ml: cross-reference only |
+| Cost — infra spend | [devops](devops/STANDARDS.md) | agent + ml: cross-reference only |
+| LLM token + call cost budgets | [llm](llm/STANDARDS.md) | devops: infra spend only · agent: context-file token budget only |
+| Prompt injection · untrusted model context · tool authorization | [llm/safety](llm/SAFETY.md) | security: non-LLM injection vectors + the validation boundary it owns |
+| Eval sets · graders · eval gates | [llm/evaluation](llm/EVALUATION.md) | expectation: quality dimensions + rubric form · testing: tier classification + CI wiring |
+| Model lifecycle — which model, pinned how | [llm](llm/STANDARDS.md) for hosted inference · [ml](ml/STANDARDS.md) for models you train | each defers to the other at the train/serve seam |
 
 ### Resolved contradictions
 

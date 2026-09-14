@@ -4,7 +4,7 @@
 
 **ID** `expectation` · **Tier** Core · **Version** 1.0
 **Owns** peak comparator model · quality dimensions · grading rubrics · failure taxonomy · benchmark targets · expectation-driven evaluation · the quality bar
-**Defers to** coverage · pyramid · mocking policy · test classification → [testing](../testing/STANDARDS.md) · load · soak · chaos execution → [testing/PRESSURE.md](../testing/PRESSURE.md) · density + authoring rules → [agent](../agent/STANDARDS.md) · latency/throughput budgets → [performance](../performance/STANDARDS.md)
+**Defers to** coverage · pyramid · mocking policy · test classification → [testing](../testing/STANDARDS.md) · load · soak · chaos execution → [testing/PRESSURE.md](../testing/PRESSURE.md) · density + authoring rules → [agent](../agent/STANDARDS.md) · latency/throughput budgets → [performance](../performance/STANDARDS.md) · LLM eval sets · graders · eval gates → [llm/evaluation](../llm/EVALUATION.md)
 **Load with** [testing](../testing/STANDARDS.md) · [agent](../agent/STANDARDS.md)
 
 ---
