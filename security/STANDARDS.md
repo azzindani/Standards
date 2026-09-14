@@ -4,8 +4,8 @@
 
 **ID** `security` · **Tier** Core · **Version** 1.0
 **Owns** input-validation boundary · injection prevention · authn/authz (RBAC/ABAC · token lifetimes · default-deny) · secrets (token classes · rotation cadence · derived values) · PII/data protection · supply-chain integrity (SLSA · SBOM) · output encoding · transport/TLS · security audit events
-**Defers to** tier/layer model → [architecture](../architecture/STANDARDS.md) · error taxonomy + boundaries → [error_handling](../error_handling/STANDARDS.md) · structured log format + retention → [observability](../observability/STANDARDS.md) · license policy → [dependencies](../dependencies/STANDARDS.md) · config cascade → [configuration](../configuration/STANDARDS.md) · vault/injection mechanics → [devops](../devops/STANDARDS.md) · pipeline secret scoping → [cicd](../cicd/STANDARDS.md) · cookie/CSRF/frontend gating → [web](../web/STANDARDS.md) · API protocol specifics → [api](../api/STANDARDS.md)
-**Load with** [architecture](../architecture/STANDARDS.md) · [error_handling](../error_handling/STANDARDS.md) · [observability](../observability/STANDARDS.md)
+**Defers to** token format selection · signing algorithm policy · claim validation · key rotation + JWKS · revocation strategy · client token storage · scope/audience → [TOKENS.md](TOKENS.md) · tier/layer model → [architecture](../architecture/STANDARDS.md) · error taxonomy + boundaries → [error_handling](../error_handling/STANDARDS.md) · structured log format + retention → [observability](../observability/STANDARDS.md) · license policy → [dependencies](../dependencies/STANDARDS.md) · config cascade → [configuration](../configuration/STANDARDS.md) · vault/injection mechanics → [devops](../devops/STANDARDS.md) · pipeline secret scoping → [cicd](../cicd/STANDARDS.md) · cookie/CSRF/frontend gating → [web](../web/STANDARDS.md) · API protocol specifics → [api](../api/STANDARDS.md)
+**Load with** [TOKENS.md](TOKENS.md) · [architecture](../architecture/STANDARDS.md) · [error_handling](../error_handling/STANDARDS.md) · [observability](../observability/STANDARDS.md)
 
 ---
 
@@ -122,7 +122,7 @@ User-supplied data rendered in any output context requires context-aware encodin
 
 ## 5. Authentication
 
-Authentication proves WHO. Verify identity in Tier 3 before any request reaches Tier 2. This standard owns token lifetimes and classes; `web` keeps cookie attributes/CSRF, `api` keeps protocol specifics.
+Authentication proves WHO. Verify identity in Tier 3 before any request reaches Tier 2. This standard owns token lifetimes and classes; signing, claim validation, key rotation and revocation mechanics → [TOKENS.md](TOKENS.md); `web` keeps cookie attributes/CSRF, `api` keeps protocol specifics.
 
 ### Principles
 

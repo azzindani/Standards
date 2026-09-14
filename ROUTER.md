@@ -116,6 +116,7 @@ Scale relief: at **Prototype** scale, `cicd` reduces to lint+test on push and `c
 | [testing/PRESSURE.md](testing/PRESSURE.md) | Load · soak · chaos · survival · penetration |
 | [error_handling/STANDARDS.md](error_handling/STANDARDS.md) | Error types · boundaries · recovery · reporting |
 | [security/STANDARDS.md](security/STANDARDS.md) | Validation boundary · secrets · access control · supply chain |
+| [security/TOKENS.md](security/TOKENS.md) | Token format · signing policy · claim validation · key rotation · revocation |
 | [observability/STANDARDS.md](observability/STANDARDS.md) | Structured logging · metrics · traces · SLOs · health |
 | [performance/STANDARDS.md](performance/STANDARDS.md) | Budgets · profiling · caching · optimization |
 | [configuration/STANDARDS.md](configuration/STANDARDS.md) | Cascade · environment · secrets · feature flags |
