@@ -78,7 +78,7 @@ All standards are complete. Tier determines when a project loads them — see [R
 | 6 | `maturity/` | Maturity levels · proof breadth · numeric evidence · motion + resource metrics |
 | 7 | `testing/` | Pyramid · coverage · mocking (STANDARDS.md) · reality dimensions (REALITY.md) · pressure · survival · penetration (PRESSURE.md) |
 | 8 | `error_handling/` | Error types · boundaries · recovery · reporting |
-| 9 | `security/` | Validation boundary · secrets · access control · supply chain (STANDARDS.md) · token format · signing · claims · rotation · revocation (TOKENS.md) |
+| 9 | `security/` | Validation boundary · secrets · access control · supply chain (STANDARDS.md) · token format · signing · claims · rotation · revocation (TOKENS.md) · OAuth + OIDC flow security (OAUTH.md) |
 | 10 | `observability/` | Structured logging · metrics · traces · SLOs · health |
 | 11 | `performance/` | Budgets · profiling · caching · optimization |
 | 12 | `configuration/` | Cascade · environment · secrets · feature flags |

@@ -4,8 +4,8 @@
 
 **ID** `security/tokens` · **Tier** Core · **Version** 1.0
 **Owns** token format selection · sender constraining · signing algorithm policy · claim set + validation rules · key management + rotation · JWKS · revocation strategy · client-side storage · scope + audience separation · service-to-service tokens · token anti-patterns
-**Defers to** token classes · lifetimes · session management · password rules · rate limiting → [security](STANDARDS.md) · RBAC/ABAC · default-deny · resource checks → [security §6](STANDARDS.md#6-authorization) · secret storage + rotation cadence → [security §7](STANDARDS.md#7-secrets-management) · cookie attributes · CSRF · frontend gating → [web](../web/STANDARDS.md) · wire contracts · versioning · error shape → [api](../api/STANDARDS.md) · config cascade for key material → [configuration](../configuration/STANDARDS.md) · vault + injection mechanics → [devops](../devops/STANDARDS.md) · audit event format → [observability](../observability/STANDARDS.md)
-**Load with** [security](STANDARDS.md) · [api](../api/STANDARDS.md) · [web](../web/STANDARDS.md)
+**Defers to** OAuth + OIDC flow security · PKCE · authorization codes · redirect validation · consent → [OAUTH.md](OAUTH.md) · token classes · lifetimes · session management · password rules · rate limiting → [security](STANDARDS.md) · RBAC/ABAC · default-deny · resource checks → [security §6](STANDARDS.md#6-authorization) · secret storage + rotation cadence → [security §7](STANDARDS.md#7-secrets-management) · cookie attributes · CSRF · frontend gating → [web](../web/STANDARDS.md) · wire contracts · versioning · error shape → [api](../api/STANDARDS.md) · config cascade for key material → [configuration](../configuration/STANDARDS.md) · vault + injection mechanics → [devops](../devops/STANDARDS.md) · audit event format → [observability](../observability/STANDARDS.md)
+**Load with** [security](STANDARDS.md) · [OAUTH.md](OAUTH.md) · [api](../api/STANDARDS.md) · [web](../web/STANDARDS.md)
 
 ---
 
