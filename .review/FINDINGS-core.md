@@ -30,12 +30,34 @@ Pass 1 · security tier. Method: search for current authoritative guidance, comp
 
 ---
 
+## Verified current — no change needed
+
+Spot-checked against the sources that would most likely have moved. Recording
+these matters: a review that only lists defects implies the unexamined rest is
+also defective.
+
+| Standard | Checked against | Result |
+|---|---|---|
+| `cicd/` §2 | DORA 2025 State of DevOps | Already correct, and ahead of most secondary writing: explicitly records that the Elite/High/Medium/Low four-cluster model was retired in 2025 and marks the 2024 numbers as dated reference. Several sources found in this search still present the retired clusters as current |
+| `observability/` | OpenTelemetry semantic conventions | Cites OTel as the vendor-neutral emission path and names its semantic conventions · RED · USE · golden signals · SLOs + error budgets all present |
+| `rust/` §1 | Current toolchain | Edition 2024 default with 2021 permitted only below MSRV 1.85 · `unsafe_code = "forbid"` default · Miri in CI · `cargo-fuzz` on unsafe boundaries |
+| `dependencies/` | SLSA · SBOM practice | SLSA, signing, dependency confusion, typosquatting, SBOM-as-release-artifact and SBOM diffing all present |
+
+---
+
 ## Remaining tiers
 
 Not yet reviewed: Foundation (5) · Core (9 of 10) · Delivery (5) · Interface (4) · Domain (5) · Language (6). Highest expected yield, in order:
 
-1. `cicd/` · `workflow/` against DORA — four metrics are stable and citable.
-2. `observability/` against OpenTelemetry semantic conventions — naming is now standardised and a repo-local convention would conflict.
-3. `devops/` against NIST SP 800-190 + CIS Benchmarks — container thresholds are externally fixed.
-4. `dependencies/` against SLSA + SSDF — provenance requirements moved recently.
-5. Language standards against their current toolchain defaults — these age fastest.
+1. `devops/` against NIST SP 800-190 + CIS Benchmarks — container thresholds are externally fixed.
+2. `api/` against OpenAPI 3.1 + the Microsoft and Google API design guides.
+3. `web/` against the current OWASP Top 10 and browser platform changes.
+4. `database/` · `sql/` — index, isolation and migration guidance ages quietly.
+5. Remaining language standards (`python/` `go/` `typescript/` `shell/`) against current toolchain defaults — these age fastest.
+6. `testing/` · `ml/` · `data_pipeline/` — mutation-testing and eval practice moved with AI tooling.
+
+Expectation after pass 1: the yield is low and the findings are additive rather
+than corrective. Both standards examined in depth were substantially right, and
+`cicd/` was more current than several secondary sources describing the same
+material. Budget the remaining passes accordingly — the value is in the few real
+gaps, ✗ in a finding per standard.
