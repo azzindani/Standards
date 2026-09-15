@@ -107,7 +107,7 @@ A registry entry missing `eval_set` or `output_contract` is incomplete — ✗ d
 | Select on measured fit | Model choice follows eval scores, cost per task, and p95 latency — ✗ benchmark leaderboards, ✗ parameter count |
 | Cheapest model that passes | Route each task to the smallest model whose eval scores clear the gate. Escalate on failure, ✗ by default |
 | One escalation hop | A cheap-model failure escalates to one stronger model, then falls through to the degradation ladder (§9) — ✗ unbounded chains |
-| Provider abstraction is thin | Wrap the provider SDK behind a narrow interface → [dependencies §4](../dependencies/STANDARDS.md#4-wrapping-external-dependencies). The wrapper normalizes errors, retries, token accounting, and streaming — ✗ hides parameters the caller must set |
+| Provider abstraction is thin | Wrap the provider SDK behind a narrow interface → [dependencies §3](../dependencies/STANDARDS.md#3-wrapper-pattern). The wrapper normalizes errors, retries, token accounting, and streaming — ✗ hides parameters the caller must set |
 
 Capability floor — a prompt declares what it requires; a model lacking any declared capability is ineligible regardless of score:
 
@@ -160,7 +160,7 @@ Summarization of evicted history is itself an LLM call: it has a prompt ID, an o
 |---|---|
 | Schema-first | Any output a program consumes has a declared schema before the prompt is written |
 | Provider enforcement preferred | Use constrained decoding or a native structured-output mode when available. Post-hoc parsing is the fallback, ✗ the default |
-| Schema is the contract | The schema is versioned with the prompt and changes under [api §7](../api/STANDARDS.md#7-versioning) rules — additive fields are compatible; removed or retyped fields are breaking |
+| Schema is the contract | The schema is versioned with the prompt and changes under [api §5](../api/STANDARDS.md#5-versioning--deprecation) rules — additive fields are compatible; removed or retyped fields are breaking |
 | Closed enumerations | Every categorical field is a closed enum with an explicit "other" or "unknown" member. An open string field invites drift |
 | No prose in data fields | Freeform explanation lives in its own declared field, never mixed into an identifier, number, or enum |
 | Refusal is in the schema | The contract has a representable refusal or abstention state. A model with no way to say "I cannot" fabricates instead (§9) |

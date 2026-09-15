@@ -89,7 +89,7 @@ Rules:
 - `message` is for humans only. ✗ parse it, ✗ assert on it, ✗ build an alert on its text → [testing/reality §10](../testing/REALITY.md#10-observability-assertions).
 - Values a consumer branches on live in `attrs` as typed fields, ✗ interpolated into `message`.
 - A field name means the same thing in every component. Two meanings for one name makes the store unqueryable.
-- New fields are additive. Removing or retyping an indexed field is a breaking change to the store's consumers → [api §7](../api/STANDARDS.md#7-versioning).
+- New fields are additive. Removing or retyping an indexed field is a breaking change to the store's consumers → [api §5](../api/STANDARDS.md#5-versioning--deprecation).
 - Excluded content is excluded before the record is built, ✗ redacted at query time → [security](../security/STANDARDS.md).
 
 ---

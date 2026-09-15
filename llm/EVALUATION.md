@@ -122,7 +122,7 @@ Rules:
 | Segment the aggregate | By difficulty, origin, language, and input length. A uniform total across diverging segments is uninformative |
 | Cost and latency are scored | Every eval run records tokens, cost, and p95 latency per case → [llm §10](STANDARDS.md#10-token-and-cost-budgets) |
 | Results are committed | Baseline scores live with the prompt version in version control, ✗ in a dashboard that is overwritten |
-| Absent evidence is never a pass | A case that errored or timed out is a failure, ✗ excluded from the denominator → [maturity §4](../maturity/STANDARDS.md#4-numeric-evidence) |
+| Absent evidence is never a pass | A case that errored or timed out is a failure, ✗ excluded from the denominator → [maturity §4](../maturity/STANDARDS.md#4-numeric-evidence-rule) |
 
 ---
 

@@ -54,7 +54,15 @@ RE_TOC_ENTRY = re.compile(r"^\d+\. \[(.+?)\]\(#(.+?)\)$")
 RE_ID = re.compile(r"^\*\*ID\*\* `([a-z0-9_/]+)`", re.MULTILINE)
 RE_TIER = re.compile(r"\*\*Tier\*\* ([A-Za-z]+)")
 RE_VERSION = re.compile(r"\*\*Version\*\* (\d+\.\d+)")
-RE_LINK = re.compile(r"\[[^\]]*\]\((?!https?://|#)([^)#]+)(?:#[^)]*)?\)")
+# Link text, path, and fragment — all three captured. The fragment used to be
+# matched and DISCARDED, so a cross-reference to a heading that does not exist
+# passed here and failed only in CI's lychee job. Four shipped that way.
+RE_LINK = re.compile(r"\[([^\]]*)\]\((?!https?://|#)([^)#]+)(?:#([^)]*))?\)")
+# Inline code spans — stripped before link extraction for the same reason fenced
+# blocks are skipped: the content is an example, ✗ a navigable link.
+RE_INLINE_CODE = re.compile(r"`[^`]*`")
+# "§5" | "§ 5" in link text — the section number a reader is promised.
+RE_SECTION_REF = re.compile(r"§\s*(\d+)")
 RE_FENCE = re.compile(r"^```")
 
 
@@ -205,11 +213,96 @@ def check_code_blocks(r: Result, lines: list[str], domain: str) -> None:
         )
 
 
+def slugify(heading: str) -> str:
+    """GitHub's heading → anchor rule: lowercase · drop punctuation · spaces → `-`.
+
+    `## 5. Versioning & Deprecation` → `5-versioning--deprecation` (the removed
+    `&` leaves the two hyphens its surrounding spaces produced).
+    """
+    s = heading.strip().lower()
+    s = re.sub(r"[^\w\s-]", "", s)  # keep word chars, whitespace, hyphens
+    return re.sub(r"\s", "-", s)
+
+
+def anchors_of(path: Path) -> dict[str, int | None]:
+    """Every heading anchor in a markdown file → its section number, if numbered."""
+    out: dict[str, int | None] = {}
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return out
+    for line in text.splitlines():
+        if not line.startswith("#"):
+            continue
+        heading = line.lstrip("#").strip()
+        m = re.match(r"(\d+)\.", heading)
+        out[slugify(heading)] = int(m.group(1)) if m else None
+    return out
+
+
 def check_links(r: Result, lines: list[str], path: Path) -> None:
+    """Dead file · dead fragment · a §N in the text that points at another N.
+
+    ! All three are the same defect from a reader's side: the cross-reference
+    does not land where it says. The repo is a web of them, so a broken one
+    silently drops a rule from view.
+    """
+    in_fence = False
     for i, line in enumerate(lines, 1):
-        for target in RE_LINK.findall(line):
-            if not (path.parent / target).resolve().exists():
+        if RE_FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        # ! A link inside code is a sample of the link FORMAT, ✗ a link. Both
+        # CLAUDE.md and TEMPLATE.md teach the cross-reference syntax by showing
+        # it, complete with a `../<std>/` placeholder that resolves nowhere.
+        if in_fence:
+            continue
+        for text, target, fragment in RE_LINK.findall(RE_INLINE_CODE.sub("", line)):
+            dest = (path.parent / target).resolve()
+            if not dest.exists():
                 r.errors.append(f"line {i}: dead link → {target}")
+                continue
+            if not fragment or dest.suffix != ".md":
+                continue
+
+            anchors = anchors_of(dest)
+            if fragment not in anchors:
+                r.errors.append(
+                    f"line {i}: dead fragment → {target}#{fragment} · "
+                    f"no heading in {dest.name} slugifies to it"
+                )
+                continue
+
+            # The number a reader is promised must be the one they land on.
+            promised = RE_SECTION_REF.search(text)
+            actual = anchors[fragment]
+            if promised and actual is not None and int(promised.group(1)) != actual:
+                r.errors.append(
+                    f"line {i}: link text says §{promised.group(1)} but "
+                    f"{target}#{fragment} is §{actual}"
+                )
+
+
+def check_loose_markdown_links(standards: list[Path]) -> list[Result]:
+    """Link-check every OTHER markdown file in the repo.
+
+    ! `validate()` runs only over standards, so a dead link or fragment in
+    README, CHANGELOG, TEMPLATE, ROUTER or a doc under tools/ was checked by
+    nothing local — CI's lychee walks the whole tree and was the only thing that
+    would have caught it, on a branch where CI does not run.
+    """
+    known = {p.resolve() for p in standards}
+    results: list[Result] = []
+    for path in sorted(ROOT.rglob("*.md")):
+        if path.resolve() in known or any(
+            part in {".git", "node_modules"} for part in path.parts
+        ):
+            continue
+        r = Result(path)
+        check_links(r, path.read_text(encoding="utf-8").splitlines(), path)
+        if r.errors or r.warnings:
+            results.append(r)
+    return results
 
 
 def check_router_coverage(standards: list[Path]) -> Result:
@@ -540,6 +633,7 @@ def main() -> int:
 
     results = [validate(p) for p in standards]
     results.append(check_router_coverage(standards))
+    results.extend(check_loose_markdown_links(standards))
 
     n_err = sum(len(r.errors) for r in results)
     n_warn = sum(len(r.warnings) for r in results)
