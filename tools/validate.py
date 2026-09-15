@@ -223,6 +223,35 @@ def check_router_coverage(standards: list[Path]) -> Result:
         rel = str(p.relative_to(ROOT))
         if rel not in text:
             r.errors.append(f"standard not registered in catalog: {rel}")
+
+    # ! Routing is the OTHER half of the contract. A standard in the catalog but
+    # absent from every route is never loaded; a route naming a standard that
+    # does not exist binds nothing and says nothing. Both are silent until a
+    # consumer notices at runtime, which is where the seam broke before.
+    known = [path_to_id(str(p.relative_to(ROOT))) for p in standards]
+    UNRESOLVED_ROUTE_TOKENS.clear()
+    routes = build_routes(known)
+    for token, why in dict.fromkeys(UNRESOLVED_ROUTE_TOKENS):
+        r.errors.append(
+            f"route names `{token}` — {why}. A route target that does not resolve "
+            f"is dropped from index.json, so the route binds fewer standards than "
+            f"written and no consumer is told"
+        )
+
+    routed: set[str] = set(routes["always_on"])
+    for table in ("by_type", "by_surface"):
+        for route in routes[table].values():
+            routed.update(route.get("add", []))
+            for group in route.get("alternatives", []):
+                routed.update(group)
+            for cond in route.get("conditional", []):
+                routed.update(cond.get("add", []))
+    for sid in known:
+        if sid not in routed:
+            r.errors.append(
+                f"standard '{sid}' is in the catalog but on no route — "
+                f"an unrouted standard is never loaded by any project"
+            )
     return r
 
 
@@ -341,15 +370,32 @@ def build_standard(path: Path) -> dict:
     return entry
 
 
+# Backticked route tokens that resolved to nothing. A route naming a standard
+# that does not exist used to vanish here: expand_token returned [], the segment
+# looked like prose, and the emitted route silently bound fewer standards than
+# ROUTER said. Nothing failed on either side of the seam — the consumer only
+# reported "unknown route key" at runtime, inside one action's blocking list.
+UNRESOLVED_ROUTE_TOKENS: list[tuple[str, str]] = []
+
+
 def expand_token(token: str, known: list[str]) -> list[str]:
     """`local_mcp/*` → every id in that domain · `testing/PRESSURE.md` → id · else itself."""
     if token.endswith("/*"):
         prefix = token[:-2]
         hits = [i for i in known if i == prefix or i.startswith(prefix + "/")]
+        if not hits:
+            UNRESOLVED_ROUTE_TOKENS.append((token, "no standard in that domain"))
         return sorted(hits, key=lambda i: (i != prefix, i))  # domain root first
     if token.endswith(".md"):
-        return [path_to_id(token)]
-    return [token] if token in known else []
+        sid = path_to_id(token)
+        if sid not in known:
+            UNRESOLVED_ROUTE_TOKENS.append((token, "no such standard"))
+            return []
+        return [sid]
+    if token in known:
+        return [token]
+    UNRESOLVED_ROUTE_TOKENS.append((token, "no such standard"))
+    return []
 
 
 def parse_route_cell(cell: str, known: list[str]) -> dict:

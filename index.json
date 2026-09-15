@@ -14,8 +14,11 @@
     "design",
     "directory",
     "code_writing",
+    "primitives",
     "error_handling",
     "testing",
+    "testing/reality",
+    "maturity",
     "security",
     "observability",
     "configuration",
@@ -113,6 +116,17 @@
         "conditional": [],
         "raw": "`python` · `ml` · `data_pipeline` · `database` · `performance`"
       },
+      "LLM-backed feature in any app": {
+        "add": [
+          "llm",
+          "llm/evaluation",
+          "llm/safety",
+          "expectation"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`llm/*` · `expectation` · surface route"
+      },
       "Shell tooling": {
         "add": [
           "shell",
@@ -139,6 +153,9 @@
       },
       "Agent / LLM system": {
         "add": [
+          "llm",
+          "llm/evaluation",
+          "llm/safety",
           "agent",
           "expectation"
         ],
@@ -154,7 +171,7 @@
             "when": "tool-serving"
           }
         ],
-        "raw": "`agent` · `expectation` · `local_mcp/*` (if tool-serving)"
+        "raw": "`llm/*` · `agent` · `expectation` · `local_mcp/*` (if tool-serving)"
       },
       "Library / SDK": {
         "add": [
@@ -171,21 +188,24 @@
         "add": [
           "api",
           "security",
+          "security/oauth",
+          "security/tokens",
           "performance"
         ],
         "alternatives": [],
         "conditional": [],
-        "raw": "`api` · `security` · `performance`",
+        "raw": "`api` · `security/*` · `performance`",
         "trigger": "Any network-callable endpoint"
       },
       "Persistent store": {
         "add": [
           "database",
+          "database/engines",
           "sql"
         ],
         "alternatives": [],
         "conditional": [],
-        "raw": "`database` · `sql`",
+        "raw": "`database/*` · `sql`",
         "trigger": "Any durable state beyond files"
       },
       "Command line": {
@@ -200,24 +220,31 @@
       "Browser UI": {
         "add": [
           "web",
+          "web/security",
           "html_generation",
           "html_generation/charts",
-          "html_generation/theming"
+          "html_generation/theming",
+          "security",
+          "security/oauth",
+          "security/tokens"
         ],
         "alternatives": [],
         "conditional": [],
-        "raw": "`web` · `html_generation/*`",
+        "raw": "`web/*` · `html_generation/*` · `security/*`",
         "trigger": "Any rendered UI"
       },
       "Deployed service": {
         "add": [
           "devops",
+          "devops/containers",
           "observability",
-          "testing/pressure"
+          "observability/logs",
+          "testing/pressure",
+          "testing/probes"
         ],
         "alternatives": [],
         "conditional": [],
-        "raw": "`devops` · `observability` · `testing/PRESSURE.md`",
+        "raw": "`devops/*` · `observability/*` · `testing/PRESSURE.md` · `testing/PROBES.md`",
         "trigger": "Anything with uptime expectations"
       },
       "Public package": {
@@ -249,6 +276,17 @@
         "conditional": [],
         "raw": "`ml`",
         "trigger": "Anything with trained weights"
+      },
+      "Language-model call": {
+        "add": [
+          "llm",
+          "llm/evaluation",
+          "llm/safety"
+        ],
+        "alternatives": [],
+        "conditional": [],
+        "raw": "`llm/*`",
+        "trigger": "Any code path whose behavior depends on a model response"
       }
     }
   },
@@ -320,6 +358,10 @@
         {
           "topic": "MCP tool serving",
           "to": "local_mcp"
+        },
+        {
+          "topic": "LLM call cost",
+          "to": "llm"
         }
       ],
       "load_with": [
@@ -504,6 +546,10 @@
         {
           "topic": "access control",
           "to": "security"
+        },
+        {
+          "topic": "reuse registry",
+          "to": "primitives"
         }
       ],
       "load_with": [
@@ -854,6 +900,10 @@
         {
           "topic": "API docs",
           "to": "documentation"
+        },
+        {
+          "topic": "unit kinds",
+          "to": "primitives"
         }
       ],
       "load_with": [
@@ -1127,6 +1177,10 @@
         {
           "topic": "coverage + pyramid",
           "to": "testing"
+        },
+        {
+          "topic": "engine migration",
+          "to": "database/engines"
         }
       ],
       "load_with": [
@@ -1134,6 +1188,87 @@
         "sql",
         "security",
         "performance"
+      ]
+    },
+    {
+      "id": "database/engines",
+      "domain": "database",
+      "path": "database/ENGINES.md",
+      "title": "Database Engine Standards",
+      "purpose": "Which database a project runs in production, what it takes to add a second one, and how engines are versioned, upgraded, and migrated.",
+      "tier": "Interface",
+      "version": "1.0",
+      "lines": 256,
+      "checklist": [
+        "Production runs PostgreSQL, or an ADR names the measured reason it does not",
+        "Exactly one source of truth per fact, with the authoritative store named",
+        "Any second store passed every §4 gate, including a consistency model and an exit plan",
+        "Workloads that look like they need another engine were measured against the covering Postgres feature first",
+        "Every extension in use is pinned and present in every environment",
+        "Embedded SQLite use meets every §5 condition and is declared in an ADR",
+        "Caches may lose their entire dataset without data loss, and that has been tested",
+        "Derived stores are rebuildable from the source of truth by a scheduled, tested job",
+        "Analytics run on a replica with statement timeouts and a separate pool",
+        "Managed-provider compatibility gaps are documented before the project depends on them",
+        "Engine major version is pinned in config and still receiving security patches",
+        "Major upgrades are tested against a production-shaped copy with a measured rollback path",
+        "dev · test · CI · staging · production run the same engine, major version, and extensions",
+        "Integration tests run against the real engine, not an in-memory substitute",
+        "Any engine migration has a numeric verification step and a flag-reversible cutover"
+      ],
+      "owns": [
+        "production engine default",
+        "single-store rule + justification bar for a second store",
+        "PostgreSQL extension coverage map",
+        "embedded + local-first exception",
+        "analytical store rule",
+        "managed vs self-hosted decision",
+        "engine version + upgrade policy",
+        "engine migration protocol",
+        "engine parity between environments"
+      ],
+      "defers_to": [
+        {
+          "topic": "WAL/PITR mechanics",
+          "to": "database"
+        },
+        {
+          "topic": "migration file format",
+          "to": "sql"
+        },
+        {
+          "topic": "infrastructure cost",
+          "to": "devops"
+        },
+        {
+          "topic": "container base image + runtime hardening",
+          "to": "devops/containers"
+        },
+        {
+          "topic": "access control",
+          "to": "security"
+        },
+        {
+          "topic": "log store engine + retention",
+          "to": "observability/logs"
+        },
+        {
+          "topic": "vector store for embeddings in an LLM application",
+          "to": "llm"
+        },
+        {
+          "topic": "cache strategy",
+          "to": "performance"
+        },
+        {
+          "topic": "environment definitions",
+          "to": "configuration"
+        }
+      ],
+      "load_with": [
+        "database",
+        "sql",
+        "devops"
       ]
     },
     {
@@ -1223,7 +1358,7 @@
       "purpose": "Rules for shaping modules, interfaces, abstractions, and patterns inside the structure architecture defines.",
       "tier": "Foundation",
       "version": "1.0",
-      "lines": 479,
+      "lines": 497,
       "checklist": [
         "Every module has one named responsibility (§1, §7)",
         "No module named `utils` · `helpers` · `common` · `misc` (§2, §7)",
@@ -1253,7 +1388,11 @@
         "Every pipeline declares its failure policy (§9)",
         "Events are immutable, schema-defined, and dead-lettered on failure (§9)",
         "Every request has an explicit timeout (§9)",
-        "No anti-pattern from §10 present in the change"
+        "No anti-pattern from §10 present in the change",
+        "Every field a consumer reads has a producer that writes it",
+        "Consumers distinguish \"never written\" from \"written empty\"",
+        "No threshold is declared that nothing measures",
+        "Orphan reads are detected mechanically, not left to review attention"
       ],
       "owns": [
         "SOLID",
@@ -1265,7 +1404,8 @@
         "abstraction rules",
         "module design",
         "state machines",
-        "data flow patterns"
+        "data flow patterns",
+        "producer–consumer completeness"
       ],
       "defers_to": [
         {
@@ -1291,6 +1431,10 @@
         {
           "topic": "seams",
           "to": "testing"
+        },
+        {
+          "topic": "duplication budget",
+          "to": "primitives"
         }
       ],
       "load_with": [
@@ -1306,11 +1450,19 @@
       "purpose": "Infrastructure provisioning, containers, deployment, environment management, incident response, on-call, backup/DR, and cost — the operational layer that keeps a service alive.",
       "tier": "Delivery",
       "version": "1.0",
-      "lines": 481,
+      "lines": 455,
       "checklist": [
         "Infrastructure defined in IaC, committed to version control (§1)",
         "All resources tagged: environment, service, team, cost-center, managed-by (§1)",
         "Container image: minimal base, non-root, read-only rootfs, health check, within size budget (§2)",
+        "No container runs with `--privileged`",
+        "Capabilities dropped to ALL, with additions justified per workload",
+        "`no-new-privileges` is set",
+        "The default seccomp profile is in force, not `unconfined`",
+        "An AppArmor or SELinux profile is applied",
+        "The Docker socket is not mounted into any container",
+        "Every container declares memory and CPU limits, and a PID limit",
+        "Host network, PID and IPC namespaces are not shared without a recorded justification",
         "Image scanned; no critical/high findings (§2)",
         "Deployment strategy selected with automated rollback (§3)",
         "All environments provisioned from IaC; parity validated (§4)",
@@ -1356,6 +1508,10 @@
       ],
       "defers_to": [
         {
+          "topic": "image lifecycle",
+          "to": "devops/containers"
+        },
+        {
           "topic": "alert design + resource thresholds",
           "to": "observability"
         },
@@ -1382,13 +1538,93 @@
         {
           "topic": "application security + authz",
           "to": "security"
+        },
+        {
+          "topic": "LLM token + call cost budgets",
+          "to": "llm"
         }
       ],
       "load_with": [
+        "devops/containers",
         "cicd",
         "observability",
         "security",
         "configuration"
+      ]
+    },
+    {
+      "id": "devops/containers",
+      "domain": "devops",
+      "path": "devops/CONTAINERS.md",
+      "title": "Container Standards",
+      "purpose": "What goes into a container image, and what the container may do once it is running.",
+      "tier": "Delivery",
+      "version": "1.0",
+      "lines": 131,
+      "checklist": [
+        "Base image is distroless or alpine unless the runtime requires otherwise",
+        "Base image is pinned by digest, never by a mutable tag",
+        "Base images are rebuilt at least monthly",
+        "Every image is CVE-scanned before registry push, blocking critical and high",
+        "Build uses multi-stage; build dependencies are absent from the final image",
+        "No secret appears in a build arg, ENV, or COPY",
+        "Image size is within budget — under 500 MB, or 100 MB for distroless",
+        "The container runs as a non-root user",
+        "The root filesystem is mounted read-only, with writable volumes only for data paths",
+        "Every container defines a health check",
+        "SIGTERM drains connections and exits within the grace period",
+        "No container runs with `--privileged`",
+        "Capabilities are dropped to ALL, with any addition justified per workload",
+        "`no-new-privileges` is set",
+        "The default seccomp profile is in force, never `unconfined`",
+        "An AppArmor or SELinux profile is applied",
+        "The Docker socket is not mounted into any container",
+        "Every container declares memory, CPU, and PID limits",
+        "Host network, PID, and IPC namespaces are not shared without a recorded justification",
+        "Every hardening exception records what required it and is narrowed to that workload",
+        "The same image is promoted across environments, never rebuilt per environment",
+        "Image retention purges untagged images older than 7 days"
+      ],
+      "owns": [
+        "base image selection + pinning",
+        "image build rules",
+        "runtime hardening (capabilities",
+        "seccomp",
+        "MAC",
+        "resource limits",
+        "namespaces)",
+        "image lifecycle + retention"
+      ],
+      "defers_to": [
+        {
+          "topic": "cost",
+          "to": "devops"
+        },
+        {
+          "topic": "SBOM",
+          "to": "dependencies"
+        },
+        {
+          "topic": "image build stage + size gate in the pipeline",
+          "to": "cicd"
+        },
+        {
+          "topic": "secret storage + rotation cadence",
+          "to": "security"
+        },
+        {
+          "topic": "runtime secret injection mechanics",
+          "to": "devops"
+        },
+        {
+          "topic": "health check semantics + probes",
+          "to": "observability"
+        }
+      ],
+      "load_with": [
+        "devops",
+        "cicd",
+        "security"
       ]
     },
     {
@@ -1673,6 +1909,10 @@
         {
           "topic": "latency/throughput budgets",
           "to": "performance"
+        },
+        {
+          "topic": "eval gates",
+          "to": "llm/evaluation"
         }
       ],
       "load_with": [
@@ -2077,6 +2317,283 @@
       ]
     },
     {
+      "id": "llm",
+      "domain": "llm",
+      "path": "llm/STANDARDS.md",
+      "title": "LLM Application Standards",
+      "purpose": "Rules for software whose behavior depends on a language model — prompt artifacts, model pinning and migration, context assembly, output contracts, degradation, cost control, and call observability.",
+      "tier": "Domain",
+      "version": "1.0",
+      "lines": 359,
+      "checklist": [
+        "Every prompt is a registry entry with an ID, version, owner, and eval set",
+        "No prompt text is inlined at a call site",
+        "Every prompt pins an exact model version — no floating aliases",
+        "Model choice is justified by eval scores, cost per task, and p95 latency",
+        "Context assembly is budgeted and deterministic; truncation is visible to the model and the log",
+        "Retrieved content carries provenance and enters as delimited data, never as instruction",
+        "Every program-consumed output has a versioned schema with a representable refusal state",
+        "Output is validated syntactically, schematically, semantically, and at its sink before any consumer sees it",
+        "At most one repair retry per call; no retry-until-valid loops",
+        "Every state in the degradation ladder has declared behavior: outage · rate limit · timeout · refusal · truncation · filter · validation failure",
+        "Every call path declares token, output, and call-count budgets, enforced before the call",
+        "Token usage and cost are recorded per call and attributed to tenant, feature, and prompt version",
+        "Tests assert invariants, not exact strings; unit-tier tests use recorded fixtures",
+        "Every call emits a record carrying prompt version, requested and served model, tokens, finish reason, and outcome",
+        "Live metrics are compared against eval-set expectations, with alerts on drift",
+        "Every pinned model has a named migration owner, and migration starts on deprecation notice",
+        "Rollback to the previous prompt version is a config change, not a deploy"
+      ],
+      "owns": [
+        "LLM application lifecycle",
+        "prompt as versioned artifact",
+        "prompt registry + rollback",
+        "model pinning + migration protocol",
+        "context assembly contract",
+        "retrieval grounding rules",
+        "structured-output contract",
+        "output validation boundary",
+        "degradation ladder (outage",
+        "refusal",
+        "truncation",
+        "rate limit)",
+        "token + cost budgets",
+        "non-determinism policy",
+        "LLM call observability"
+      ],
+      "defers_to": [
+        {
+          "topic": "regression detection",
+          "to": "llm/evaluation"
+        },
+        {
+          "topic": "PII in prompts + logs",
+          "to": "llm/safety"
+        },
+        {
+          "topic": "drift monitoring",
+          "to": "ml"
+        },
+        {
+          "topic": "PII policy",
+          "to": "security"
+        },
+        {
+          "topic": "caveman density rules",
+          "to": "agent"
+        },
+        {
+          "topic": "mocking policy",
+          "to": "testing"
+        },
+        {
+          "topic": "failure taxonomy",
+          "to": "expectation"
+        },
+        {
+          "topic": "alert routing",
+          "to": "observability"
+        },
+        {
+          "topic": "config cascade",
+          "to": "configuration"
+        },
+        {
+          "topic": "caching mechanics",
+          "to": "performance"
+        },
+        {
+          "topic": "retry",
+          "to": "error_handling"
+        },
+        {
+          "topic": "versioning",
+          "to": "api"
+        },
+        {
+          "topic": "CI stages",
+          "to": "cicd"
+        }
+      ],
+      "load_with": [
+        "llm/evaluation",
+        "llm/safety",
+        "expectation",
+        "observability"
+      ]
+    },
+    {
+      "id": "llm/evaluation",
+      "domain": "llm",
+      "path": "llm/EVALUATION.md",
+      "title": "LLM Evaluation Standards",
+      "purpose": "Rules for measuring LLM application quality — eval set construction, grader selection, scoring, gates, regression detection, and keeping evals honest as the system changes.",
+      "tier": "Domain",
+      "version": "1.0",
+      "lines": 236,
+      "checklist": [
+        "Every production prompt has a versioned eval set with committed baseline scores",
+        "At least 20 cases before ship, 100+ before production traffic",
+        "Cases carry an origin label; synthetic cases are under half the set",
+        "Every production incident has become a permanent eval case",
+        "A holdout split exists and is never inspected case-by-case during iteration",
+        "The cheapest adequate grader is used per property; schema grading is always applied to structured output",
+        "Any LLM judge is a versioned prompt with a pinned model, its own eval set, and measured agreement against human labels",
+        "Components are evaluated independently: retriever, router, generator, grounding, tool selection",
+        "Non-deterministic cases run n ≥ 3 with variance reported",
+        "Errored and timed-out cases count as failures, not exclusions",
+        "Gates cover quality, per-case inversion, cost, latency, and safety",
+        "Every gate has been observed to fail on a deliberately broken prompt",
+        "Accepted regressions are written down with reason, new baseline, and owner",
+        "Live metrics are compared against eval expectations; drift triggers set repair",
+        "A set scoring ≥ 95% is hardened with new cases rather than left in place",
+        "Adversarial cases are permanent, always-run, and gate at 100% for blocking categories",
+        "Overrefusal is measured alongside every restriction added",
+        "The full eval set is re-run and re-baselined on every model pin change"
+      ],
+      "owns": [
+        "eval set construction",
+        "case provenance + holdout discipline",
+        "grader taxonomy + selection",
+        "LLM-as-judge rules",
+        "scoring + variance reporting",
+        "eval gates + regression detection",
+        "component vs end-to-end evals",
+        "eval set maintenance + staleness",
+        "human review protocol",
+        "adversarial + red-team eval cases"
+      ],
+      "defers_to": [
+        {
+          "topic": "cost budgets",
+          "to": "llm"
+        },
+        {
+          "topic": "PII",
+          "to": "llm/safety"
+        },
+        {
+          "topic": "failure taxonomy",
+          "to": "expectation"
+        },
+        {
+          "topic": "coverage",
+          "to": "testing"
+        },
+        {
+          "topic": "experiment tracking",
+          "to": "ml"
+        },
+        {
+          "topic": "CI stage wiring",
+          "to": "cicd"
+        },
+        {
+          "topic": "evidence rules",
+          "to": "maturity"
+        },
+        {
+          "topic": "dashboards",
+          "to": "observability"
+        }
+      ],
+      "load_with": [
+        "llm",
+        "expectation",
+        "testing"
+      ]
+    },
+    {
+      "id": "llm/safety",
+      "domain": "llm",
+      "path": "llm/SAFETY.md",
+      "title": "LLM Safety Standards",
+      "purpose": "Rules for the adversarial surface of LLM applications — untrusted content boundaries, prompt injection, tool authorization, agent autonomy limits, output-side controls, and privacy in prompts and logs.",
+      "tier": "Domain",
+      "version": "1.0",
+      "lines": 247,
+      "checklist": [
+        "Every prompt declares which variables carry untrusted content; undeclared variables are treated as untrusted",
+        "Untrusted content is delimited, labeled, escaped, size-bounded, and rendered by a templating layer",
+        "Provider role separation is used where offered",
+        "Every indirect-injection entry point is documented with a named owner",
+        "Injection filters are used for detection only, never as the authorization control",
+        "Each prompt is granted the narrowest tool set its task requires",
+        "Every tool authorizes against the end caller's identity, not a service account",
+        "Tool arguments from model output are validated like any external input",
+        "Tools enforce cumulative rate, quantity, and value caps, not only per-call checks",
+        "No turn combines private data, untrusted content, and an outbound channel without a gate",
+        "No credentials, keys, or connection strings appear in any prompt",
+        "Outbound URLs in output are allowlisted; rendered output is escaped and sanitized",
+        "Model-generated code executes only in a sandbox with no credentials and no network",
+        "Prompt variables are classified; sensitive fields are minimized or redacted before the provider call",
+        "Provider retention, training use, and sub-processors are documented and reviewed",
+        "Prompt and output logs store digests with pointers, under the source data's retention",
+        "Deletion requests propagate to prompt logs, eval sets, and caches",
+        "Irreversible, outward-facing, and privileged actions require confirmation showing concrete arguments",
+        "Approvals are scoped to one action, one target, one time",
+        "Agent loops have step, time, token, and cumulative-effect caps that halt and report",
+        "Sub-agents inherit a subset of the parent's authority",
+        "Retrieval filters by tenant before ranking; caches are keyed by tenant",
+        "Adversarial evals covering injection, exfiltration, jailbreak, and overrefusal run on every model pin change"
+      ],
+      "owns": [
+        "LLM trust boundary model",
+        "untrusted content delimitation",
+        "prompt-injection defense",
+        "indirect injection via retrieval + tools + files",
+        "tool authorization + least privilege for model-initiated actions",
+        "agent autonomy limits + human-in-the-loop triggers",
+        "output-side controls",
+        "exfiltration channels",
+        "privacy in prompts + logs + provider retention",
+        "multi-tenant isolation"
+      ],
+      "defers_to": [
+        {
+          "topic": "overrefusal",
+          "to": "llm/evaluation"
+        },
+        {
+          "topic": "degradation",
+          "to": "llm"
+        },
+        {
+          "topic": "audit events",
+          "to": "security"
+        },
+        {
+          "topic": "claims",
+          "to": "security/tokens"
+        },
+        {
+          "topic": "CSRF",
+          "to": "web/security"
+        },
+        {
+          "topic": "boundaries",
+          "to": "error_handling"
+        },
+        {
+          "topic": "audit trail",
+          "to": "observability"
+        },
+        {
+          "topic": "container + runtime hardening",
+          "to": "devops/containers"
+        },
+        {
+          "topic": "MCP tool design + state",
+          "to": "local_mcp"
+        }
+      ],
+      "load_with": [
+        "llm",
+        "security",
+        "llm/evaluation"
+      ]
+    },
+    {
       "id": "local_mcp",
       "domain": "local_mcp",
       "path": "local_mcp/STANDARDS.md",
@@ -2407,6 +2924,96 @@
       ]
     },
     {
+      "id": "maturity",
+      "domain": "maturity",
+      "path": "maturity/STANDARDS.md",
+      "title": "Maturity Standards",
+      "purpose": "How much of a system is actually proven: the levels of proof, what each level demands, and the rule that evidence reaching an agent arrives as numbers.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 287,
+      "checklist": [
+        "Maturity level is computed from evidence present, never asserted",
+        "Every level 0–N criterion still passes, not only the newest level's",
+        "Absent evidence is treated as level not reached, never as a pass",
+        "Every metric carries an explicit unit",
+        "Every metric carries its capture conditions — hardware class, concurrency, dataset size, build profile",
+        "No comparison rests on a prose description of behavior",
+        "Screenshots, video, and traces appear only as supporting artifacts, never as the finding",
+        "Motion metrics report percentiles for latency and frame interval, not means",
+        "Target frame interval is declared, not inferred",
+        "Spatial properties, where present, are reduced to scalars",
+        "Resource metrics are captured per stage, not only per run",
+        "Throttled capture exists at level 5",
+        "Efficiency is reported as a ratio, not an absolute",
+        "Stress runs record the breaking point, not only a pass at target",
+        "Fixtures from real data record their derivation and secret-stripping step",
+        "Secrets found in captures are removed before the metric record is written",
+        "Every metric record is reproducible by re-running its declared capture",
+        "Baselines are scoped per environment, route, and hardware class",
+        "Baseline creation is an explicit action, never automatic on first run",
+        "No baseline was moved to clear a failing gate",
+        "Every gated metric declares its regression direction",
+        "No metric with variance exceeding its budget is used as a gate",
+        "Level 5 budget violations fail the build rather than warn",
+        "Every report names missing evidence specifically",
+        "Level, gaps, and regressions are reported on every run"
+      ],
+      "owns": [
+        "maturity levels",
+        "proof-breadth model",
+        "level entry criteria",
+        "numeric-evidence rule",
+        "motion + spatial metric set",
+        "resource + efficiency metric set",
+        "evidence artifact policy",
+        "maturity reporting"
+      ],
+      "defers_to": [
+        {
+          "topic": "mocking",
+          "to": "testing"
+        },
+        {
+          "topic": "drift",
+          "to": "testing/reality"
+        },
+        {
+          "topic": "survival",
+          "to": "testing/pressure"
+        },
+        {
+          "topic": "SLOs",
+          "to": "observability"
+        },
+        {
+          "topic": "optimization",
+          "to": "performance"
+        },
+        {
+          "topic": "containers",
+          "to": "devops"
+        },
+        {
+          "topic": "runners",
+          "to": "cicd"
+        },
+        {
+          "topic": "comparator model",
+          "to": "expectation"
+        },
+        {
+          "topic": "reuse",
+          "to": "primitives"
+        }
+      ],
+      "load_with": [
+        "testing",
+        "observability",
+        "expectation"
+      ]
+    },
+    {
       "id": "ml",
       "domain": "ml",
       "path": "ml/STANDARDS.md",
@@ -2498,6 +3105,10 @@
         {
           "topic": "latency budgets",
           "to": "performance"
+        },
+        {
+          "topic": "prompt injection",
+          "to": "llm"
         }
       ],
       "load_with": [
@@ -2561,11 +3172,108 @@
         {
           "topic": "backup/DR",
           "to": "devops"
+        },
+        {
+          "topic": "motion + resource metric sets",
+          "to": "maturity"
+        },
+        {
+          "topic": "storage tiering",
+          "to": "observability/logs"
         }
       ],
       "load_with": [
         "architecture",
         "error_handling",
+        "security"
+      ]
+    },
+    {
+      "id": "observability/logs",
+      "domain": "observability",
+      "path": "observability/LOGS.md",
+      "title": "Log Store Standards",
+      "purpose": "Rules for logs as a queryable database and as a machine-read artifact — storage, schema, correlation, verbosity modes, query surface, and the evidence contract an automated consumer depends on.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 301,
+      "checklist": [
+        "Logs are written to a durable, queryable store, not only to files or a terminal",
+        "Every component writes the same record schema to the same store",
+        "The log store's engine follows the production default, or an ADR names why not",
+        "Every record carries timestamp, level, `event`, component, correlation keys, actor, and outcome code",
+        "`event` and `code` are stable contracts; `message` is never parsed, asserted on, or alerted on",
+        "Values a consumer branches on are typed fields, never interpolated into prose",
+        "Correlation keys are generated at the boundary and propagated across every async boundary, subprocess, and queue hop",
+        "Every error surfaced to a caller carries a correlation key that retrieves its records",
+        "Verbosity is a runtime setting, scoped to a component or a single run, with no rebuild",
+        "Content exclusions hold identically at every verbosity mode",
+        "Error records are actionable at default verbosity",
+        "A failing run's records plus its returned result explain the outcome without re-running it",
+        "\"Not logged\" is distinguishable from \"logged as empty\"",
+        "Truncated payloads are flagged with their original size",
+        "The store exposes a bounded query surface, indexed, cursor-paginated, with default caps",
+        "The same queries work locally and in production",
+        "Log writes are asynchronous and bounded; a log store outage degrades logging only",
+        "Backpressure drops by level, never errors, and every drop is counted in a metric",
+        "Errors, audit events, and state changes are never sampled; sampled events expose their rate",
+        "Indexed fields have bounded cardinality and log volume has a declared budget",
+        "The store is time-partitioned, expiry is scheduled and monitored, and deletion requests reach the cold tier",
+        "Records are append-only, written through one boundary, with production read access authorized and audited"
+      ],
+      "owns": [
+        "log store as a queryable database",
+        "log record schema + indexed fields",
+        "ingestion + buffering + backpressure",
+        "correlation key set",
+        "verbosity modes + runtime control",
+        "query surface for machine consumers",
+        "log-derived evidence rules",
+        "storage tiering + volume budgets",
+        "sampling policy",
+        "log store integrity"
+      ],
+      "defers_to": [
+        {
+          "topic": "retention duration",
+          "to": "observability"
+        },
+        {
+          "topic": "engine selection",
+          "to": "database"
+        },
+        {
+          "topic": "[database/engines](../database/ENGINES.md)",
+          "to": "database/engines"
+        },
+        {
+          "topic": "audit event catalog",
+          "to": "security"
+        },
+        {
+          "topic": "error taxonomy",
+          "to": "error_handling"
+        },
+        {
+          "topic": "what tests assert on signals",
+          "to": "testing/reality"
+        },
+        {
+          "topic": "probe runs that read logs",
+          "to": "testing/probes"
+        },
+        {
+          "topic": "prompt + output logging for model calls",
+          "to": "llm/safety"
+        },
+        {
+          "topic": "context-file density",
+          "to": "agent"
+        }
+      ],
+      "load_with": [
+        "observability",
+        "database",
         "security"
       ]
     },
@@ -2646,12 +3354,108 @@
         {
           "topic": "infra cost + capacity spend",
           "to": "devops"
+        },
+        {
+          "topic": "evidence artifacts",
+          "to": "maturity"
         }
       ],
       "load_with": [
         "architecture",
         "observability",
         "database"
+      ]
+    },
+    {
+      "id": "primitives",
+      "domain": "primitives",
+      "path": "primitives/STANDARDS.md",
+      "title": "Primitives Standards",
+      "purpose": "Rules for building systems from small reusable units — what qualifies as a primitive, how parts compose into components, and how a unit earns reuse.",
+      "tier": "Foundation",
+      "version": "1.0",
+      "lines": 340,
+      "checklist": [
+        "Every unit declares its kind — primitive · part · component · composite",
+        "Dependency direction is downward only; no unit imports a kind above it",
+        "Every primitive passes all seven qualification rows (§2)",
+        "No primitive imports a third-party dependency",
+        "No primitive reads environment, global state, or files",
+        "No primitive name contains a domain noun",
+        "No unit was promoted before its third call site across two components",
+        "Promotion commits contain no behavior change",
+        "Every reusable unit publishes an explicit typed contract with enumerated failure modes",
+        "Thread-safety is stated explicitly on every reusable unit",
+        "Registry is generated from source in CI, never hand-edited",
+        "Every reusable unit appears in the registry with owner and version",
+        "Search-before-write was performed and is evidenced in review",
+        "Composition depth ≤ 4 levels",
+        "No Part imports more than 7 primitives",
+        "Units with fan-in above the scale threshold are marked frozen",
+        "Near-duplicate count is within the scale-matrix budget",
+        "No two registered units answer the same question",
+        "Contract changes carry the correct semver bump",
+        "No behavior change shipped under an unchanged signature",
+        "No unit deleted while call sites remain",
+        "No unit deprecated longer than two release cycles",
+        "Every primitive has standalone tests importing nothing from the project",
+        "Every failure variant of every primitive is exercised by a test",
+        "Primitive regression tests live with the primitive, not the call site",
+        "Every project tool is committed, registered, and has one documented entry point",
+        "Every destructive project tool defaults to dry-run",
+        "No project tool was copied to a second project instead of being promoted",
+        "Agent changes query the registry before writing new units",
+        "No unit merged with zero declared call sites"
+      ],
+      "owns": [
+        "unit taxonomy",
+        "primitive qualification",
+        "part/component/composite model",
+        "promotion path",
+        "reuse contract",
+        "primitive registry",
+        "duplication budget",
+        "primitive versioning + deprecation",
+        "project tool conventions"
+      ],
+      "defers_to": [
+        {
+          "topic": "module boundaries",
+          "to": "architecture"
+        },
+        {
+          "topic": "pattern selection",
+          "to": "design"
+        },
+        {
+          "topic": "complexity thresholds",
+          "to": "code_writing"
+        },
+        {
+          "topic": "directory naming",
+          "to": "directory"
+        },
+        {
+          "topic": "result types",
+          "to": "error_handling"
+        },
+        {
+          "topic": "test doubles",
+          "to": "testing"
+        },
+        {
+          "topic": "lock files",
+          "to": "dependencies"
+        },
+        {
+          "topic": "public wire contracts",
+          "to": "api"
+        }
+      ],
+      "load_with": [
+        "architecture",
+        "design",
+        "directory"
       ]
     },
     {
@@ -2873,6 +3677,14 @@
       ],
       "defers_to": [
         {
+          "topic": "consent",
+          "to": "security/oauth"
+        },
+        {
+          "topic": "scope/audience",
+          "to": "security/tokens"
+        },
+        {
           "topic": "tier/layer model",
           "to": "architecture"
         },
@@ -2907,12 +3719,198 @@
         {
           "topic": "API protocol specifics",
           "to": "api"
+        },
+        {
+          "topic": "tool authorization for model-initiated actions",
+          "to": "llm/safety"
         }
       ],
       "load_with": [
+        "security/tokens",
+        "security/oauth",
         "architecture",
         "error_handling",
         "observability"
+      ]
+    },
+    {
+      "id": "security/oauth",
+      "domain": "security",
+      "path": "security/OAUTH.md",
+      "title": "OAuth and OIDC Standards",
+      "purpose": "Flow security for delegated authorization: what the client, the resource server, and the authorization server each must enforce, independent of what the tokens themselves look like.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 228,
+      "checklist": [
+        "Every client is classified by where it runs, and no public client ships a secret",
+        "Implicit and resource-owner-password grants are absent, not merely discouraged",
+        "Each client is permitted only the grants it uses",
+        "The code grant requires PKCE, and `code_challenge_method` `plain` is refused rather than accepted as a fallback",
+        "`state` is unguessable, transaction-specific, and bound to the user-agent session",
+        "`state` and PKCE are both present; neither is excused by the other",
+        "Authorization codes are single-use",
+        "Reusing a code revokes every token that code issued, not only the second request",
+        "Authorization codes expire within 10 minutes",
+        "The `redirect_uri` is validated against a per-client allowlist by exact string comparison",
+        "The client validates `iss` when it can talk to more than one authorization server",
+        "Access and refresh tokens never reach a browser-based frontend behind a backend-for-frontend",
+        "The resource server verifies audience before any authorization decision",
+        "Authorization decisions use `sub`, `scope`, and `authorization_details` where present",
+        "Users are identified by claims that cannot be reassigned, typically `iss` plus `sub`",
+        "Required authentication strength or recency is verified against `acr`, `amr`, or `auth_time`",
+        "Confidential clients authenticate on token, PAR, and revocation requests",
+        "Dynamic client registration is capped, aged out, and gated by consent",
+        "Consent names the client, the scopes, and the resource, and a scope increase re-prompts",
+        "Users can revoke refresh and reference access tokens through an interface they can reach",
+        "ID tokens are never accepted as authorization",
+        "The OIDC `nonce` is verified against the value sent in the authentication request",
+        "The ID token `aud` equals this client's `client_id`",
+        "Authorization server metadata is rejected unless its issuer exactly matches the pre-configured value"
+      ],
+      "owns": [
+        "role responsibilities (client",
+        "resource server",
+        "authorization server)",
+        "redirect URI validation",
+        "authorization code rules",
+        "PKCE",
+        "state + nonce binding",
+        "grant restriction",
+        "mix-up defence",
+        "dynamic client registration",
+        "client authentication",
+        "consent",
+        "OIDC client obligations"
+      ],
+      "defers_to": [
+        {
+          "topic": "scope semantics",
+          "to": "security/tokens"
+        },
+        {
+          "topic": "rate limiting",
+          "to": "security"
+        },
+        {
+          "topic": "default-deny",
+          "to": "security"
+        },
+        {
+          "topic": "frontend gating",
+          "to": "web"
+        },
+        {
+          "topic": "versioning",
+          "to": "api"
+        },
+        {
+          "topic": "TLS + transport",
+          "to": "security"
+        }
+      ],
+      "load_with": [
+        "security",
+        "security/tokens",
+        "web"
+      ]
+    },
+    {
+      "id": "security/tokens",
+      "domain": "security",
+      "path": "security/TOKENS.md",
+      "title": "Token Authentication Standards",
+      "purpose": "How bearer tokens are chosen, signed, validated, rotated, revoked, and stored — the mechanics behind the token classes security defines.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 274,
+      "checklist": [
+        "Token format chosen from the revocation requirement, not familiarity",
+        "One token format per interface",
+        "Public clients use sender-constrained tokens or rotating refresh tokens with reuse detection — never neither",
+        "DPoP is used where the authorization server advertises it, and its absence does not block rollout",
+        "Verifier validates against an algorithm allowlist it owns",
+        "`alg: none` rejected unconditionally in every environment",
+        "The algorithm allowlist holds one family; mixing symmetric and asymmetric carries extra key-confusion controls",
+        "`jku`, `x5u`, `jwk` and `x5c` are validated against an allowlist of trusted sources, never fetched as given",
+        "Token type is validated — only access tokens authorize, only ID tokens prove authentication",
+        "Asymmetric signing wherever verifiers are independent of the issuer",
+        "Signature verified before any claim is read",
+        "`exp` required and enforced; clock skew tolerance ≤ 60 s",
+        "`iss` matched exactly, never by prefix or substring",
+        "`aud` verified to contain this service",
+        "No authorization decision reads a claim the client could set",
+        "Every token carries `kid`; unknown `kid` is rejected with no default-key fallback",
+        "Signing keys rotate on a schedule with an overlap of at least one max token lifetime",
+        "Private key material comes from the config cascade or a vault, never the repo or an image",
+        "A revocation strategy was chosen before the token format",
+        "Logout revokes the refresh chain server-side",
+        "Refresh tokens are single-use and rotate; reuse revokes the whole chain and raises an event",
+        "Privilege change revokes the refresh chain",
+        "Revoke-and-verify is covered by a test",
+        "No token is stored in localStorage or sessionStorage",
+        "No token appears in a URL, query string, or path",
+        "Tokens are redacted at the logging boundary, not per call site",
+        "Absent scope denies; an empty scope set never means full access",
+        "Each service authenticates with its own identity",
+        "No user token is forwarded as a service credential"
+      ],
+      "owns": [
+        "token format selection",
+        "sender constraining",
+        "signing algorithm policy",
+        "claim set + validation rules",
+        "key management + rotation",
+        "JWKS",
+        "revocation strategy",
+        "client-side storage",
+        "scope + audience separation",
+        "service-to-service tokens",
+        "token anti-patterns"
+      ],
+      "defers_to": [
+        {
+          "topic": "consent",
+          "to": "security/oauth"
+        },
+        {
+          "topic": "rate limiting",
+          "to": "security"
+        },
+        {
+          "topic": "resource checks",
+          "to": "security"
+        },
+        {
+          "topic": "secret storage + rotation cadence",
+          "to": "security"
+        },
+        {
+          "topic": "frontend gating",
+          "to": "web"
+        },
+        {
+          "topic": "error shape",
+          "to": "api"
+        },
+        {
+          "topic": "config cascade for key material",
+          "to": "configuration"
+        },
+        {
+          "topic": "vault + injection mechanics",
+          "to": "devops"
+        },
+        {
+          "topic": "audit event format",
+          "to": "observability"
+        }
+      ],
+      "load_with": [
+        "security",
+        "security/oauth",
+        "api",
+        "web"
       ]
     },
     {
@@ -3133,6 +4131,10 @@
         {
           "topic": "pipeline stages",
           "to": "cicd"
+        },
+        {
+          "topic": "engine version + upgrade policy",
+          "to": "database/engines"
         }
       ],
       "load_with": [
@@ -3218,6 +4220,10 @@
           "to": "expectation"
         },
         {
+          "topic": "motion metrics",
+          "to": "maturity"
+        },
+        {
           "topic": "test framework choice + invocation",
           "to": "python"
         },
@@ -3232,6 +4238,10 @@
         {
           "topic": "[typescript](../typescript/STANDARDS.md)",
           "to": "typescript"
+        },
+        {
+          "topic": "probe scheduling + triage",
+          "to": "testing/probes"
         }
       ],
       "load_with": [
@@ -3328,6 +4338,105 @@
       ]
     },
     {
+      "id": "testing/probes",
+      "domain": "testing",
+      "path": "testing/PROBES.md",
+      "title": "Probe Testing Standards",
+      "purpose": "Rules for probes — tests that exercise a running deployment the way a user does, assert on the response and the emitted logs together, and stand in for manual QA.",
+      "tier": "Core",
+      "version": "1.0",
+      "lines": 287,
+      "checklist": [
+        "Every critical user journey is listed, with the probes covering it named",
+        "Journeys with no probe appear in the coverage report as gaps, not as silence",
+        "Probes run against a deployed system over real client interfaces",
+        "Every probe asserts on the response **and** on the emitted log records",
+        "Log assertions retrieve records by correlation key and match on `event` and `code`, never on prose",
+        "A green response accompanied by an error-level record fails the probe",
+        "Expected error paths assert that the error record exists",
+        "Probes asserting on the response only are counted as half-covered",
+        "Every probe has been observed to fail against a deliberately broken target",
+        "Each role boundary has a positive and a negative permission probe",
+        "Each external dependency has a probe that detects its degradation",
+        "Probes run as tagged test identities, never as real users",
+        "Probe-created state is cleaned up by the probe, and cleanup failure is reported",
+        "Irreversible side effects are routed to a sandbox in production probes",
+        "Probe traffic is excluded from SLO, usage, and billing metrics",
+        "Continuous probes run at an interval set by the detection budget",
+        "A suite that has not run inside its interval reports as stale, not as passing",
+        "The probe scheduler is itself monitored",
+        "Probe results are stored with a run id so trends are readable",
+        "The full suite gates release; failure post-deploy triggers the documented rollback",
+        "Every failure is classified — product, environment, dependency, or probe defect",
+        "Probes over the false-positive budget are fixed or quarantined with a dated owner",
+        "No probe assertion has been loosened to silence a failure",
+        "Every incident that reached a user has a probe reproducing it"
+      ],
+      "owns": [
+        "probe definition + boundary against health checks",
+        "probe taxonomy",
+        "dual assertion (response + log)",
+        "probe as a release gate",
+        "continuous probe scheduling",
+        "probe data + side-effect policy",
+        "environment placement",
+        "failure triage + noise budget",
+        "probe coverage of user journeys",
+        "probe authoring from incidents"
+      ],
+      "defers_to": [
+        {
+          "topic": "mocking policy",
+          "to": "testing"
+        },
+        {
+          "topic": "what tests assert on signals",
+          "to": "testing/reality"
+        },
+        {
+          "topic": "penetration",
+          "to": "testing/pressure"
+        },
+        {
+          "topic": "log levels + content",
+          "to": "observability"
+        },
+        {
+          "topic": "query surface",
+          "to": "observability/logs"
+        },
+        {
+          "topic": "failure taxonomy",
+          "to": "expectation"
+        },
+        {
+          "topic": "absent-evidence rule",
+          "to": "maturity"
+        },
+        {
+          "topic": "deploy stages",
+          "to": "cicd"
+        },
+        {
+          "topic": "incident response",
+          "to": "devops"
+        },
+        {
+          "topic": "test account policy",
+          "to": "security"
+        },
+        {
+          "topic": "eval sets for model-backed behavior",
+          "to": "llm/evaluation"
+        }
+      ],
+      "load_with": [
+        "testing",
+        "observability/logs",
+        "maturity"
+      ]
+    },
+    {
       "id": "testing/reality",
       "domain": "testing",
       "path": "testing/REALITY.md",
@@ -3406,6 +4515,10 @@
         {
           "topic": "benchmark rubrics",
           "to": "expectation"
+        },
+        {
+          "topic": "probes against a deployed system",
+          "to": "testing/probes"
         }
       ],
       "load_with": [
@@ -3573,7 +4686,7 @@
       "purpose": "Rules for structuring web applications — frontend, backend, their contract, accessibility, and internationalization.",
       "tier": "Interface",
       "version": "1.0",
-      "lines": 495,
+      "lines": 399,
       "checklist": [
         "One primary rendering strategy per app; per-route exceptions explicit",
         "Core content and primary actions work without JavaScript",
@@ -3585,6 +4698,10 @@
         "`Cache-Control` set explicitly on every response",
         "Static assets content-hashed + immutable; HTML entry point `no-cache`; served via CDN",
         "CSP enforced without `unsafe-inline` / `unsafe-eval`; HSTS + `nosniff` set",
+        "Every third-party script and stylesheet carries Subresource Integrity",
+        "`Permissions-Policy` denies features the application does not use",
+        "`Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy` are set",
+        "Trusted Types are required for script sinks where browser support allows",
         "Output context-encoded against XSS; no raw HTML injection without a sanitizer",
         "CORS uses an explicit origin allowlist (no wildcard for authenticated APIs)",
         "Auth cookies `HttpOnly` · `Secure` · `SameSite`; auth tokens never in `localStorage`",
@@ -3618,6 +4735,10 @@
         "HTTP/CDN caching + static-asset delivery"
       ],
       "defers_to": [
+        {
+          "topic": "route gating",
+          "to": "web/security"
+        },
         {
           "topic": "authn/authz model + token lifetimes + secrets",
           "to": "security"
@@ -3656,10 +4777,86 @@
         }
       ],
       "load_with": [
+        "web/security",
         "architecture",
         "api",
         "security",
         "performance"
+      ]
+    },
+    {
+      "id": "web/security",
+      "domain": "web",
+      "path": "web/SECURITY.md",
+      "title": "Web Security Standards",
+      "purpose": "What the browser enforces on a page's behalf: headers, escaping, cross-origin rules, cookies, CSRF, and where a token may live.",
+      "tier": "Interface",
+      "version": "1.0",
+      "lines": 146,
+      "checklist": [
+        "`Content-Security-Policy` is set with an explicit allowlist and a `default-src 'self'` baseline",
+        "CSP contains neither `unsafe-inline` nor `unsafe-eval`; inline scripts carry a nonce or hash",
+        "CSP shipped in report-only mode first and was enforced only once clean",
+        "`Strict-Transport-Security`, `X-Content-Type-Options`, `Referrer-Policy` and `frame-ancestors` are set",
+        "`Permissions-Policy` denies features the application does not use",
+        "`Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy` are set",
+        "Every third-party script and stylesheet carries Subresource Integrity with `crossorigin`",
+        "Trusted Types are required for script sinks where browser support allows",
+        "Output is escaped for its context — HTML, attribute, JS, URL, CSS — not escaped once generically",
+        "CORS rejects disallowed origins rather than reflecting the request origin",
+        "No token is stored in `localStorage` or `sessionStorage`",
+        "Session cookies set `Secure`, `HttpOnly` and `SameSite`",
+        "The session identifier is regenerated on login, logout and privilege change",
+        "Logout invalidates the session server-side rather than deleting a client-side value",
+        "State-changing requests carry CSRF protection, or rely on `SameSite` deliberately and documented",
+        "Frontend route gating is treated as presentation only, with the real check server-side"
+      ],
+      "owns": [
+        "security headers",
+        "Subresource Integrity",
+        "Trusted Types",
+        "XSS escaping contexts",
+        "CORS",
+        "browser token storage",
+        "cookie attributes",
+        "browser session handling",
+        "CSRF",
+        "frontend route gating"
+      ],
+      "defers_to": [
+        {
+          "topic": "Core Web Vitals",
+          "to": "web"
+        },
+        {
+          "topic": "access control model",
+          "to": "security"
+        },
+        {
+          "topic": "revocation",
+          "to": "security/tokens"
+        },
+        {
+          "topic": "redirect validation",
+          "to": "security/oauth"
+        },
+        {
+          "topic": "token classes + lifetimes + session timeouts",
+          "to": "security"
+        },
+        {
+          "topic": "problem details",
+          "to": "api"
+        },
+        {
+          "topic": "TLS termination + CDN config",
+          "to": "devops"
+        }
+      ],
+      "load_with": [
+        "web",
+        "security",
+        "security/tokens"
       ]
     },
     {

@@ -69,8 +69,10 @@ Non-negotiable. Every project, every size, from first commit.
 | [design](design/STANDARDS.md) | Module + abstraction rules govern all modules |
 | [directory](directory/STANDARDS.md) | Layout + naming govern all files |
 | [code_writing](code_writing/STANDARDS.md) | Readability + function style govern all functions |
+| [primitives](primitives/STANDARDS.md) | Reusable-unit taxonomy + duplication control govern all code |
 | [error_handling](error_handling/STANDARDS.md) | Every system fails; failure is not optional |
-| [testing](testing/STANDARDS.md) | Untested code is unproven code |
+| [testing](testing/STANDARDS.md) · [testing/REALITY.md](testing/REALITY.md) | Untested code is unproven code · reality dimensions apply to every suite |
+| [maturity](maturity/STANDARDS.md) | Every project needs to know how much of it is actually proven |
 | [security](security/STANDARDS.md) | Validation boundary + secrets apply to all input |
 | [observability](observability/STANDARDS.md) | Unobservable production is unoperable production |
 | [configuration](configuration/STANDARDS.md) | Every project has environments and secrets |
@@ -103,6 +105,7 @@ Scale relief: at **Prototype** scale, `cicd` reduces to lint+test on push and `c
 | [design/STANDARDS.md](design/STANDARDS.md) | Design patterns · module design · abstraction rules |
 | [directory/STANDARDS.md](directory/STANDARDS.md) | Project layout · file organization · naming |
 | [code_writing/STANDARDS.md](code_writing/STANDARDS.md) | Clean code · readability · function style · naming |
+| [primitives/STANDARDS.md](primitives/STANDARDS.md) | Unit taxonomy · promotion path · reuse contract · registry · duplication budget |
 
 ### Core
 
@@ -111,14 +114,19 @@ Scale relief: at **Prototype** scale, `cicd` reduces to lint+test on push and `c
 | [testing/STANDARDS.md](testing/STANDARDS.md) | Pyramid · classification · coverage · mocking · contract tests |
 | [testing/REALITY.md](testing/REALITY.md) | Reality dimensions · faults · concurrency · time · drift |
 | [testing/PRESSURE.md](testing/PRESSURE.md) | Load · soak · chaos · survival · penetration |
+| [testing/PROBES.md](testing/PROBES.md) | Probes against a running deployment · dual response+log assertion · continuous QA |
 | [error_handling/STANDARDS.md](error_handling/STANDARDS.md) | Error types · boundaries · recovery · reporting |
 | [security/STANDARDS.md](security/STANDARDS.md) | Validation boundary · secrets · access control · supply chain |
+| [security/TOKENS.md](security/TOKENS.md) | Token format · signing policy · claim validation · key rotation · revocation |
+| [security/OAUTH.md](security/OAUTH.md) | OAuth + OIDC flow security · PKCE · codes · redirect validation · consent |
 | [observability/STANDARDS.md](observability/STANDARDS.md) | Structured logging · metrics · traces · SLOs · health |
+| [observability/LOGS.md](observability/LOGS.md) | Log store as a database · correlation · verbosity modes · machine consumers |
 | [performance/STANDARDS.md](performance/STANDARDS.md) | Budgets · profiling · caching · optimization |
 | [configuration/STANDARDS.md](configuration/STANDARDS.md) | Cascade · environment · secrets · feature flags |
 | [dependencies/STANDARDS.md](dependencies/STANDARDS.md) | Versioning · isolation · wrappers · lock files |
 | [documentation/STANDARDS.md](documentation/STANDARDS.md) | Code docs · API docs · ADRs · runbooks |
 | [expectation/STANDARDS.md](expectation/STANDARDS.md) | Peak comparator · quality dimensions · failure taxonomy |
+| [maturity/STANDARDS.md](maturity/STANDARDS.md) | Maturity levels · proof breadth · numeric evidence · motion + resource metrics |
 
 ### Delivery
 
@@ -127,7 +135,8 @@ Scale relief: at **Prototype** scale, `cicd` reduces to lint+test on push and `c
 | [git/STANDARDS.md](git/STANDARDS.md) | Branching · commits · tags · history |
 | [cicd/STANDARDS.md](cicd/STANDARDS.md) | Build · test · lint · deploy · release stages |
 | [code_review/STANDARDS.md](code_review/STANDARDS.md) | Review criteria · approval flow · feedback style |
-| [devops/STANDARDS.md](devops/STANDARDS.md) | Infrastructure · containers · deployment · monitoring |
+| [devops/STANDARDS.md](devops/STANDARDS.md) | Infrastructure · deployment · environments · incident · backup · cost |
+| [devops/CONTAINERS.md](devops/CONTAINERS.md) | Base image · build · runtime hardening · image lifecycle |
 | [workflow/STANDARDS.md](workflow/STANDARDS.md) | Idea → PoC → production lifecycle · task management |
 
 ### Interface
@@ -136,8 +145,10 @@ Scale relief: at **Prototype** scale, `cicd` reduces to lint+test on push and `c
 |---|---|
 | [api/STANDARDS.md](api/STANDARDS.md) | API design · protocols · contracts · versioning |
 | [database/STANDARDS.md](database/STANDARDS.md) | Schema design · migrations · queries · transactions |
+| [database/ENGINES.md](database/ENGINES.md) | Production engine default (PostgreSQL) · second-store bar · versions · parity |
 | [cli/STANDARDS.md](cli/STANDARDS.md) | Argument parsing · output format · exit codes · help |
-| [web/STANDARDS.md](web/STANDARDS.md) | Routing · middleware · state · auth · frontend/backend |
+| [web/STANDARDS.md](web/STANDARDS.md) | Rendering · routing · middleware · state · a11y · i18n · Core Web Vitals |
+| [web/SECURITY.md](web/SECURITY.md) | Security headers · SRI · XSS · CORS · cookies · CSRF · route gating |
 
 ### Domain
 
@@ -149,6 +160,9 @@ Scale relief: at **Prototype** scale, `cicd` reduces to lint+test on push and `c
 | [local_mcp/DELIVERY.md](local_mcp/DELIVERY.md) | MCP testing · install · distribution · docs |
 | [data_pipeline/STANDARDS.md](data_pipeline/STANDARDS.md) | ETL · data validation · schema enforcement · batch |
 | [ml/STANDARDS.md](ml/STANDARDS.md) | Model lifecycle · experiment tracking · data versioning |
+| [llm/STANDARDS.md](llm/STANDARDS.md) | Prompt artifacts · model pinning + migration · output contracts · degradation · token cost |
+| [llm/EVALUATION.md](llm/EVALUATION.md) | Eval sets · graders · scoring · gates · adversarial cases |
+| [llm/SAFETY.md](llm/SAFETY.md) | Trust boundaries · prompt injection · tool authorization · agent autonomy · prompt privacy |
 | [agent/STANDARDS.md](agent/STANDARDS.md) | CLAUDE.md · AGENTS.md · context engineering · density |
 | [html_generation/STANDARDS.md](html_generation/STANDARDS.md) | Offline-first HTML output · module structure · security |
 | [html_generation/THEMING.md](html_generation/THEMING.md) | Theme system · CSS architecture · UX patterns |
@@ -181,9 +195,10 @@ Always-On Set (§3) is implied in every row — only the additions are listed.
 | Web app (TS front + back) | `typescript/*` · `web` · `api` · `database` · `sql` · `performance` · `devops` |
 | REST/gRPC service (Go/Rust) | `go` \| `rust` · `api` · `database` · `sql` · `performance` · `devops` |
 | ML project | `python` · `ml` · `data_pipeline` · `database` · `performance` |
+| LLM-backed feature in any app | `llm/*` · `expectation` · surface route |
 | Shell tooling | `shell/*` |
 | Report / dashboard generator | `html_generation/*` · `python` (or `typescript`) |
-| Agent / LLM system | `agent` · `expectation` · `local_mcp/*` (if tool-serving) |
+| Agent / LLM system | `llm/*` · `agent` · `expectation` · `local_mcp/*` (if tool-serving) |
 | Library / SDK | language route · `api` (public surface = contract) · `documentation` |
 
 ---
@@ -194,14 +209,15 @@ Add per surface the system actually exposes. A system with three surfaces loads 
 
 | Surface | Add | Trigger |
 |---|---|---|
-| HTTP / gRPC API | `api` · `security` · `performance` | Any network-callable endpoint |
-| Persistent store | `database` · `sql` | Any durable state beyond files |
+| HTTP / gRPC API | `api` · `security/*` · `performance` | Any network-callable endpoint |
+| Persistent store | `database/*` · `sql` | Any durable state beyond files |
 | Command line | `cli` | Any user-invoked binary or entrypoint |
-| Browser UI | `web` · `html_generation/*` | Any rendered UI |
-| Deployed service | `devops` · `observability` · `testing/PRESSURE.md` | Anything with uptime expectations |
+| Browser UI | `web/*` · `html_generation/*` · `security/*` | Any rendered UI |
+| Deployed service | `devops/*` · `observability/*` · `testing/PRESSURE.md` · `testing/PROBES.md` | Anything with uptime expectations |
 | Public package | `dependencies` · `documentation` · `api` | Anything others import |
 | Batch / scheduled job | `data_pipeline` · `observability` | Anything running unattended |
 | Model artifact | `ml` | Anything with trained weights |
+| Language-model call | `llm/*` | Any code path whose behavior depends on a model response |
 
 ---
 
@@ -232,12 +248,20 @@ Topics that multiple standards are tempted to claim. The **Owner** states the ru
 | Semver · changelog format · release tagging | [git](git/STANDARDS.md) | cicd: release automation · documentation: changelog rendering · cli: compatibility promise |
 | Backup · DR · RTO/RPO · failover cadence | [devops](devops/STANDARDS.md) | database: WAL/PITR · replica lag · restore mechanics |
 | Alert design rules · resource thresholds | [observability](observability/STANDARDS.md) | devops: which infra metrics to collect |
+| Log levels · content · retention duration | [observability](observability/STANDARDS.md) | observability/logs: where logs are stored and queried, ✗ what to log |
+| Log store · correlation · verbosity modes | [observability/logs](observability/LOGS.md) | database: schema + index mechanics · security: PII classes |
+| Which database engine runs in production | [database/engines](database/ENGINES.md) | sql: dialect + syntax · devops: hosting + backup cadence |
+| Probes against a running deployment | [testing/probes](testing/PROBES.md) | observability: health-check semantics · testing: pyramid + tier classification |
 | License policy · allowed license tiers | [dependencies](dependencies/STANDARDS.md) | every other standard: cross-reference only |
 | Coverage thresholds · mocking policy · pyramid | [testing](testing/STANDARDS.md) | language standards: framework choice + invocation only |
 | Offline-first HTML output · theming | [html_generation](html_generation/STANDARDS.md) | local_mcp: cross-reference only |
 | Input validation boundary | [security](security/STANDARDS.md) | each standard: its own injection vectors |
 | Accessibility (WCAG) · i18n/l10n | [web](web/STANDARDS.md) | html_generation: cross-reference only |
-| Cost — infra spend · LLM token spend | [devops](devops/STANDARDS.md) | agent + ml: cross-reference only |
+| Cost — infra spend | [devops](devops/STANDARDS.md) | agent + ml: cross-reference only |
+| LLM token + call cost budgets | [llm](llm/STANDARDS.md) | devops: infra spend only · agent: context-file token budget only |
+| Prompt injection · untrusted model context · tool authorization | [llm/safety](llm/SAFETY.md) | security: non-LLM injection vectors + the validation boundary it owns |
+| Eval sets · graders · eval gates | [llm/evaluation](llm/EVALUATION.md) | expectation: quality dimensions + rubric form · testing: tier classification + CI wiring |
+| Model lifecycle — which model, pinned how | [llm](llm/STANDARDS.md) for hosted inference · [ml](ml/STANDARDS.md) for models you train | each defers to the other at the train/serve seam |
 
 ### Resolved contradictions
 
@@ -252,6 +276,7 @@ These were conflicting across standards. The value below is now authoritative �
 | Coverage gate | Tiered **branch** coverage by tier — ✗ flat line-coverage gate. Stated in `testing` |
 | LGPL | Permitted with caution — dynamic linking only. ✗ flat ban |
 | OFFSET pagination | Keyset by default · OFFSET only on datasets < 10K rows (stricter of the two prior values wins) |
+| Production database engine | **PostgreSQL** by default for every project · SQLite only where every embedded condition holds · anything else needs an ADR with the measured limit. Stated in `database/engines` |
 
 ---
 

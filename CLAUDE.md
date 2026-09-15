@@ -9,6 +9,7 @@
   - **Strip:** articles (`a/an/the`) · weak modals (`should/would/may`) · scaffolding (`make sure to`, `always remember to`, `be careful to`) · meta (`note that`, `keep in mind`, `it is important`) · hedging (`generally/typically/usually`) · obvious subjects · restatements
   - **Operators:** `→` leads-to/use-instead · `·` co-required · `|` alternative · `✗` never/forbidden · `;` except · `!` critical
   - **Structure over prose:** comparisons → tables · condition+action → `X → Y` · workflow → `A → B → C` · related bullets → one merged line
+  - **! Escape `\|` inside table cells.** The `|` operator collides with markdown's column separator — an unescaped one silently splits the cell and CI's markdownlint fails on column count
   - **✗ compress (load-bearing):** negations (`never/not/no` — stripping inverts rule) · hard thresholds · exception clauses · code blocks · technical names · ordered sequences
 
 ---
@@ -47,6 +48,15 @@ python3 tools/validate.py
 
 Checks: line cap · header schema · ID↔directory match · tier validity · TOC↔section parity · sequential numbering · checklist present and unticked · code-block policy · dead cross-references · router registration.
 
+`index.json` is the machine-readable contract Pipeline reads instead of re-parsing markdown. Regenerate it in the same commit as any standard, route, or header change:
+
+```bash
+python3 tools/validate.py --emit-index   # regenerate
+python3 tools/validate.py --check-index  # CI runs this — stale index fails the build
+```
+
+! CI runs only on `main` and on PRs to it, so a feature branch never proves itself. Before every commit run the full gate locally: `validate.py` · `--check-index` · `npx markdownlint-cli2 "**/*.md" "#node_modules"` · no trailing whitespace · no tabs · newline at EOF.
+
 Must pass before every commit. CI runs it on push and PR — see `.github/workflows/standards.yml`.
 
 ---
@@ -69,60 +79,63 @@ All standards are complete. Tier determines when a project loads them — see [R
 | 2 | `design/` | Design patterns · module design · abstraction rules |
 | 3 | `directory/` | Project layout · file organization · naming |
 | 4 | `code_writing/` | Clean code · readability · function style · identifier naming |
+| 5 | `primitives/` | Unit taxonomy · promotion path · reuse contract · registry · duplication budget · project tools |
 
 ### Core — always loaded
 
 | # | Directory | Standard |
 |---|---|---|
-| 5 | `testing/` | Pyramid · coverage · mocking (STANDARDS.md) · reality dimensions (REALITY.md) · pressure · survival · penetration (PRESSURE.md) |
-| 6 | `error_handling/` | Error types · boundaries · recovery · reporting |
-| 7 | `security/` | Validation boundary · secrets · access control · supply chain |
-| 8 | `observability/` | Structured logging · metrics · traces · SLOs · health |
-| 9 | `performance/` | Budgets · profiling · caching · optimization |
-| 10 | `configuration/` | Cascade · environment · secrets · feature flags |
-| 11 | `dependencies/` | Versioning · isolation · wrappers · lock files |
-| 12 | `documentation/` | Code docs · API docs · ADRs · runbooks |
-| 13 | `expectation/` | Peak comparator model · quality dimensions · failure taxonomy · benchmarks |
+| 6 | `maturity/` | Maturity levels · proof breadth · numeric evidence · motion + resource metrics |
+| 7 | `testing/` | Pyramid · coverage · mocking (STANDARDS.md) · reality dimensions (REALITY.md) · pressure · survival · penetration (PRESSURE.md) · probes against a running deployment · response+log dual assertion (PROBES.md) |
+| 8 | `error_handling/` | Error types · boundaries · recovery · reporting |
+| 9 | `security/` | Validation boundary · secrets · access control · supply chain (STANDARDS.md) · token format · signing · claims · rotation · revocation (TOKENS.md) · OAuth + OIDC flow security (OAUTH.md) |
+| 10 | `observability/` | Structured logging · metrics · traces · SLOs · health (STANDARDS.md) · log store as a database · correlation · verbosity modes · machine consumers (LOGS.md) |
+| 11 | `performance/` | Budgets · profiling · caching · optimization |
+| 12 | `configuration/` | Cascade · environment · secrets · feature flags |
+| 13 | `dependencies/` | Versioning · isolation · wrappers · lock files |
+| 14 | `documentation/` | Code docs · API docs · ADRs · runbooks |
+| 15 | `expectation/` | Peak comparator model · quality dimensions · failure taxonomy · benchmarks |
 
 ### Delivery — always loaded
 
 | # | Directory | Standard |
 |---|---|---|
-| 14 | `git/` | Branching · commits · tags · workflows · history |
-| 15 | `cicd/` | Build · test · lint · deploy · release stages |
-| 16 | `code_review/` | Review criteria · approval flow · feedback style |
-| 17 | `devops/` | Infrastructure · containers · deployment · monitoring |
-| 18 | `workflow/` | Idea → PoC → production lifecycle · task management |
+| 16 | `git/` | Branching · commits · tags · workflows · history |
+| 17 | `cicd/` | Build · test · lint · deploy · release stages |
+| 18 | `code_review/` | Review criteria · approval flow · feedback style |
+| 19 | `devops/` | Infrastructure · deployment · environments · incident · backup · cost (STANDARDS.md) · base image · build · runtime hardening (CONTAINERS.md) |
+| 20 | `workflow/` | Idea → PoC → production lifecycle · task management |
 
 ### Interface — loaded per surface
 
 | # | Directory | Standard |
 |---|---|---|
-| 19 | `api/` | API design · protocols · contracts · versioning · serialization |
-| 20 | `database/` | Schema design · migrations · queries · transactions |
-| 21 | `cli/` | Argument parsing · output format · exit codes · help |
-| 22 | `web/` | Routing · middleware · state · auth · frontend/backend |
+| 21 | `api/` | API design · protocols · contracts · versioning · serialization |
+| 22 | `database/` | Schema design · migrations · queries · transactions (STANDARDS.md) · production engine default — PostgreSQL · second-store bar · versions · parity (ENGINES.md) |
+| 23 | `cli/` | Argument parsing · output format · exit codes · help |
+| 24 | `web/` | Rendering · routing · middleware · state · a11y · i18n · Core Web Vitals (STANDARDS.md) · headers · SRI · XSS · CORS · cookies · CSRF (SECURITY.md) |
 
 ### Domain — loaded per domain
 
 | # | Directory | Standard |
 |---|---|---|
-| 23 | `local_mcp/` | MCP architecture · engine/server split (STANDARDS.md) · tool design (TOOLS.md) · state · transports (RUNTIME.md) · install · distribution (DELIVERY.md) |
-| 24 | `data_pipeline/` | ETL · data validation · schema enforcement · batch |
-| 25 | `ml/` | Model lifecycle · experiment tracking · data versioning |
-| 26 | `agent/` | CLAUDE.md · AGENTS.md · context engineering · density rules |
-| 27 | `html_generation/` | Offline-first output (STANDARDS.md) · theming · CSS (THEMING.md) · charts · controls (CHARTS.md) |
+| 25 | `local_mcp/` | MCP architecture · engine/server split (STANDARDS.md) · tool design (TOOLS.md) · state · transports (RUNTIME.md) · install · distribution (DELIVERY.md) |
+| 26 | `data_pipeline/` | ETL · data validation · schema enforcement · batch |
+| 27 | `ml/` | Model lifecycle · experiment tracking · data versioning |
+| 28 | `agent/` | CLAUDE.md · AGENTS.md · context engineering · density rules |
+| 29 | `llm/` | Prompt artifacts · model pinning + migration · output contracts · degradation · cost (STANDARDS.md) · eval sets · graders · gates (EVALUATION.md) · injection · tool authorization · agent autonomy · prompt privacy (SAFETY.md) |
+| 30 | `html_generation/` | Offline-first output (STANDARDS.md) · theming · CSS (THEMING.md) · charts · controls (CHARTS.md) |
 
 ### Language — loaded per language
 
 | # | Directory | Standard |
 |---|---|---|
-| 28 | `python/` | Style · typing · packaging · virtual envs · tooling |
-| 29 | `rust/` | Ownership idioms · crate structure · error handling · unsafe |
-| 30 | `go/` | Package layout · interfaces · error returns · concurrency |
-| 31 | `typescript/` | Types · modules · async (STANDARDS.md) · build · lint (TOOLING.md) |
-| 32 | `shell/` | Script structure · error handling (STANDARDS.md) · portability · security (HARDENING.md) |
-| 33 | `sql/` | Query style · schema conventions · migration format |
+| 31 | `python/` | Style · typing · packaging · virtual envs · tooling |
+| 32 | `rust/` | Ownership idioms · crate structure · error handling · unsafe |
+| 33 | `go/` | Package layout · interfaces · error returns · concurrency |
+| 34 | `typescript/` | Types · modules · async (STANDARDS.md) · build · lint (TOOLING.md) |
+| 35 | `shell/` | Script structure · error handling (STANDARDS.md) · portability · security (HARDENING.md) |
+| 36 | `sql/` | Query style · schema conventions · migration format |
 
 ---
 
@@ -131,10 +144,14 @@ All standards are complete. Tier determines when a project loads them — see [R
 ```text
 architecture ← foundation for all standards
 ├── design · code_writing · directory ← structure the code itself
+├── primitives ← reusable-unit taxonomy under design + architecture
+├── maturity ← proof breadth over testing · observability · performance
 ├── error_handling ← boundaries referenced by every tier
 ├── api ← database · web · local_mcp
 ├── testing ← cicd · code_review · expectation
 ├── security ← api · database · web · devops · dependencies
+├── llm ← agent · expectation · ml · security (prompt injection · evals · token cost)
+├── observability/logs ← testing/probes · database · security (the log store both read and written)
 ├── observability ← devops · data_pipeline · ml
 ├── git ← cicd · workflow · code_review
 └── workflow ← references all standards as lifecycle phases

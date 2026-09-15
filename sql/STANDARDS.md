@@ -4,7 +4,7 @@
 
 **ID** `sql` · **Tier** Language · **Version** 1.0
 **Owns** SQL formatting · identifier + constraint naming · data type selection · query style · parameterization at the call site · CTE + window function usage · migration file format · engine-specific SQL (Postgres · DuckDB · SQLite)
-**Defers to** schema design + normalization + indexing strategy + transaction isolation + migration safety and orchestration → [database](../database/STANDARDS.md) · injection prevention policy + least-privilege DB users → [security](../security/STANDARDS.md) · performance budgets + profiling method → [performance](../performance/STANDARDS.md) · pipeline stages → [cicd](../cicd/STANDARDS.md)
+**Defers to** schema design + normalization + indexing strategy + transaction isolation + migration safety and orchestration → [database](../database/STANDARDS.md) · injection prevention policy + least-privilege DB users → [security](../security/STANDARDS.md) · performance budgets + profiling method → [performance](../performance/STANDARDS.md) · pipeline stages → [cicd](../cicd/STANDARDS.md) · which engine runs in production · engine version + upgrade policy → [database/engines](../database/ENGINES.md)
 **Load with** [database](../database/STANDARDS.md) · [security](../security/STANDARDS.md) · [performance](../performance/STANDARDS.md)
 
 ---

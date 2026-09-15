@@ -3,8 +3,8 @@
 > Rules for shaping modules, interfaces, abstractions, and patterns inside the structure architecture defines.
 
 **ID** `design` · **Tier** Foundation · **Version** 1.0
-**Owns** SOLID · coupling · cohesion · design pattern selection · interface contracts · composition · abstraction rules · module design · state machines · data flow patterns
-**Defers to** layer model · dependency direction · CQS · idempotency · extension registry · interface versioning → [architecture](../architecture/STANDARDS.md) · function body style · parameter count · identifier naming → [code_writing](../code_writing/STANDARDS.md) · file + directory layout → [directory](../directory/STANDARDS.md) · error taxonomy · result types · retry policy → [error_handling](../error_handling/STANDARDS.md) · public API versioning · wire contracts → [api](../api/STANDARDS.md) · test doubles · seams → [testing](../testing/STANDARDS.md)
+**Owns** SOLID · coupling · cohesion · design pattern selection · interface contracts · composition · abstraction rules · module design · state machines · data flow patterns · producer–consumer completeness
+**Defers to** layer model · dependency direction · CQS · idempotency · extension registry · interface versioning → [architecture](../architecture/STANDARDS.md) · function body style · parameter count · identifier naming → [code_writing](../code_writing/STANDARDS.md) · file + directory layout → [directory](../directory/STANDARDS.md) · error taxonomy · result types · retry policy → [error_handling](../error_handling/STANDARDS.md) · public API versioning · wire contracts → [api](../api/STANDARDS.md) · test doubles · seams → [testing](../testing/STANDARDS.md) · unit taxonomy · promotion path · reuse registry · duplication budget → [primitives](../primitives/STANDARDS.md)
 **Load with** [architecture](../architecture/STANDARDS.md) · [code_writing](../code_writing/STANDARDS.md)
 
 ---
@@ -403,6 +403,20 @@ Selection depends on coupling, timing, and cardinality.
 | Request-Response | Retry only on idempotent operations → [architecture](../architecture/STANDARDS.md) §4 |
 | Request-Response | Error response shares the success structure — caller handles one response type |
 
+### Producer–Consumer Completeness
+
+! Every field a consumer reads has a producer that writes it. A read with no writer — an *orphan read* — is a defect, ✗ an unimplemented feature.
+
+| Rule | Detail |
+|---|---|
+| Every read has a writer | A field consumed anywhere is written somewhere. Both sides land in the same change, ✗ "the writer comes later" |
+| Absent ≠ empty | A consumer distinguishes "never written" from "written empty". Collapsing them is what makes an orphan read invisible |
+| Declared gates are measured | A threshold nobody computes gates nothing · declare it only once something produces the number |
+| Checkable | Orphan reads are found by search, ✗ by review attention. A field name read in N places and written in 0 is mechanical to detect — run it in CI |
+| Delete the read | A consumer whose producer was dropped is removed with it. A read left behind returns the empty value forever and reads as working |
+
+The failure is silent by construction: the read path returns a plausible empty value, and every caller treats it as a real answer. A lookup that finds no prior result looks identical to one whose writer never existed, so the bug survives every test that only asserts the call succeeds.
+
 ---
 
 ## 10. Anti-Patterns
@@ -477,3 +491,7 @@ Selection depends on coupling, timing, and cardinality.
 - [ ] Events are immutable, schema-defined, and dead-lettered on failure (§9)
 - [ ] Every request has an explicit timeout (§9)
 - [ ] No anti-pattern from §10 present in the change
+- [ ] Every field a consumer reads has a producer that writes it
+- [ ] Consumers distinguish "never written" from "written empty"
+- [ ] No threshold is declared that nothing measures
+- [ ] Orphan reads are detected mechanically, not left to review attention

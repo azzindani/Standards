@@ -4,7 +4,7 @@
 
 **ID** `agent` · **Tier** Domain · **Version** 1.0
 **Owns** agent context file types · caveman density rules · high-density engineering · token budget · context file structure · role/persona · project-context selection · restriction format · investigation protocol · context maintenance
-**Defers to** prose docs · API docs · ADRs · runbooks → [documentation](../documentation/STANDARDS.md) · repo file structure + header schema → [TEMPLATE.md](../TEMPLATE.md) · catalog + routing → [ROUTER.md](../ROUTER.md) · layer model + dependency direction → [architecture](../architecture/STANDARDS.md) · comparator model + quality dimensions → [expectation](../expectation/STANDARDS.md) · MCP tool serving → [local_mcp](../local_mcp/STANDARDS.md)
+**Defers to** prose docs · API docs · ADRs · runbooks → [documentation](../documentation/STANDARDS.md) · repo file structure + header schema → [TEMPLATE.md](../TEMPLATE.md) · catalog + routing → [ROUTER.md](../ROUTER.md) · layer model + dependency direction → [architecture](../architecture/STANDARDS.md) · comparator model + quality dimensions → [expectation](../expectation/STANDARDS.md) · MCP tool serving → [local_mcp](../local_mcp/STANDARDS.md) · prompt artifacts · model pinning · eval gates · prompt injection · LLM call cost → [llm](../llm/STANDARDS.md)
 **Load with** [documentation](../documentation/STANDARDS.md) · [expectation](../expectation/STANDARDS.md)
 
 ---

@@ -4,7 +4,7 @@
 
 **ID** `performance` · **Tier** Core · **Version** 1.0
 **Owns** performance budgets · percentile measurement · profiling method · caching strategy · memory + I/O optimization · algorithmic discipline · timeouts + load shedding · benchmark regression gates
-**Defers to** pagination + N+1 remediation → [database](../database/STANDARDS.md) · browser metrics (LCP · INP · CLS) → [web](../web/STANDARDS.md) · load · soak · spike · chaos execution → [testing/PRESSURE.md](../testing/PRESSURE.md) · coverage + pyramid → [testing](../testing/STANDARDS.md) · alert thresholds + SLO burn-rate → [observability](../observability/STANDARDS.md) · pipeline stages → [cicd](../cicd/STANDARDS.md) · layer model + backpressure architecture → [architecture](../architecture/STANDARDS.md) · infra cost + capacity spend → [devops](../devops/STANDARDS.md)
+**Defers to** pagination + N+1 remediation → [database](../database/STANDARDS.md) · browser metrics (LCP · INP · CLS) → [web](../web/STANDARDS.md) · load · soak · spike · chaos execution → [testing/PRESSURE.md](../testing/PRESSURE.md) · coverage + pyramid → [testing](../testing/STANDARDS.md) · alert thresholds + SLO burn-rate → [observability](../observability/STANDARDS.md) · pipeline stages → [cicd](../cicd/STANDARDS.md) · layer model + backpressure architecture → [architecture](../architecture/STANDARDS.md) · infra cost + capacity spend → [devops](../devops/STANDARDS.md) · maturity levels · motion metric set · evidence artifacts → [maturity](../maturity/STANDARDS.md)
 **Load with** [architecture](../architecture/STANDARDS.md) · [observability](../observability/STANDARDS.md) · [database](../database/STANDARDS.md)
 
 ---

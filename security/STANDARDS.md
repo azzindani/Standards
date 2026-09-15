@@ -4,8 +4,8 @@
 
 **ID** `security` · **Tier** Core · **Version** 1.0
 **Owns** input-validation boundary · injection prevention · authn/authz (RBAC/ABAC · token lifetimes · default-deny) · secrets (token classes · rotation cadence · derived values) · PII/data protection · supply-chain integrity (SLSA · SBOM) · output encoding · transport/TLS · security audit events
-**Defers to** tier/layer model → [architecture](../architecture/STANDARDS.md) · error taxonomy + boundaries → [error_handling](../error_handling/STANDARDS.md) · structured log format + retention → [observability](../observability/STANDARDS.md) · license policy → [dependencies](../dependencies/STANDARDS.md) · config cascade → [configuration](../configuration/STANDARDS.md) · vault/injection mechanics → [devops](../devops/STANDARDS.md) · pipeline secret scoping → [cicd](../cicd/STANDARDS.md) · cookie/CSRF/frontend gating → [web](../web/STANDARDS.md) · API protocol specifics → [api](../api/STANDARDS.md)
-**Load with** [architecture](../architecture/STANDARDS.md) · [error_handling](../error_handling/STANDARDS.md) · [observability](../observability/STANDARDS.md)
+**Defers to** OAuth + OIDC flow security · PKCE · authorization codes · redirect validation · client registration · consent → [OAUTH.md](OAUTH.md) · token format selection · signing algorithm policy · claim validation · key rotation + JWKS · revocation strategy · client token storage · scope/audience → [TOKENS.md](TOKENS.md) · tier/layer model → [architecture](../architecture/STANDARDS.md) · error taxonomy + boundaries → [error_handling](../error_handling/STANDARDS.md) · structured log format + retention → [observability](../observability/STANDARDS.md) · license policy → [dependencies](../dependencies/STANDARDS.md) · config cascade → [configuration](../configuration/STANDARDS.md) · vault/injection mechanics → [devops](../devops/STANDARDS.md) · pipeline secret scoping → [cicd](../cicd/STANDARDS.md) · cookie/CSRF/frontend gating → [web](../web/STANDARDS.md) · API protocol specifics → [api](../api/STANDARDS.md) · prompt injection · untrusted model context · tool authorization for model-initiated actions → [llm/safety](../llm/SAFETY.md)
+**Load with** [TOKENS.md](TOKENS.md) · [OAUTH.md](OAUTH.md) · [architecture](../architecture/STANDARDS.md) · [error_handling](../error_handling/STANDARDS.md) · [observability](../observability/STANDARDS.md)
 
 ---
 
@@ -122,7 +122,7 @@ User-supplied data rendered in any output context requires context-aware encodin
 
 ## 5. Authentication
 
-Authentication proves WHO. Verify identity in Tier 3 before any request reaches Tier 2. This standard owns token lifetimes and classes; `web` keeps cookie attributes/CSRF, `api` keeps protocol specifics.
+Authentication proves WHO. Verify identity in Tier 3 before any request reaches Tier 2. This standard owns token lifetimes and classes; signing, claim validation, key rotation and revocation mechanics → [TOKENS.md](TOKENS.md); `web` keeps cookie attributes/CSRF, `api` keeps protocol specifics.
 
 ### Principles
 
@@ -157,7 +157,7 @@ Two access-token classes — both apply, scope decides which. ✗ collapse into 
 |---|---|
 | Server-side state | Session data on server; client holds only session ID |
 | Regenerate on auth change | New session ID after login, logout, privilege elevation |
-| Absolute + idle timeout | Expire after max lifetime AND after idle period |
+| Absolute + idle timeout | Both required. NIST SP 800-63B-4 AAL2: absolute ≤ 24 h · idle ≤ 1 h · AAL1: absolute ≤ 30 d |
 | Invalidate on logout | Destroy server-side; ✗ rely on client-side deletion |
 
 Cookie attributes (`Secure` · `HttpOnly` · `SameSite`) → [web](../web/STANDARDS.md).
@@ -168,7 +168,7 @@ Cookie attributes (`Secure` · `HttpOnly` · `SameSite`) → [web](../web/STANDA
 |---|---|
 | Hash with memory-hard algorithm | **Argon2id** (preferred) · scrypt · bcrypt — per-user salt |
 | ✗ plaintext or reversible encryption | — |
-| Minimum length ≥ 12 | ✗ maximum length below 64 |
+| Minimum length ≥ 15 for single-factor · ≥ 12 with a second factor | NIST SP 800-63B-4 · ✗ maximum length below 64 |
 | ✗ composition rules | ✗ require uppercase/special — length matters more |
 | Check breach databases | Reject known-compromised passwords |
 

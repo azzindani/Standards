@@ -4,8 +4,8 @@
 
 **ID** `web` · **Tier** Interface · **Version** 1.0
 **Owns** rendering strategy (SSR/CSR/SSG/hydration) · progressive enhancement · frontend routing + state · browser security (CSP · XSS escaping) · cookie attributes + CSRF + browser token storage + frontend route gating · Core Web Vitals · **accessibility (WCAG)** · **i18n/l10n** · HTTP/CDN caching + static-asset delivery
-**Defers to** authn/authz model + token lifetimes + secrets → [security](../security/STANDARDS.md) · API design + status codes + envelope + versioning → [api](../api/STANDARDS.md) · rate limiting → [api](../api/STANDARDS.md) · caching strategy + profiling → [performance](../performance/STANDARDS.md) · pagination mechanics → [database](../database/STANDARDS.md) · CDN/edge infra + deploy → [devops](../devops/STANDARDS.md) · alert thresholds → [observability](../observability/STANDARDS.md) · coverage + pyramid → [testing](../testing/STANDARDS.md) · pipeline stages → [cicd](../cicd/STANDARDS.md)
-**Load with** [architecture](../architecture/STANDARDS.md) · [api](../api/STANDARDS.md) · [security](../security/STANDARDS.md) · [performance](../performance/STANDARDS.md)
+**Defers to** security headers · SRI · Trusted Types · XSS escaping · CORS · cookies · CSRF · browser token storage · route gating → [SECURITY.md](SECURITY.md) · authn/authz model + token lifetimes + secrets → [security](../security/STANDARDS.md) · API design + status codes + envelope + versioning → [api](../api/STANDARDS.md) · rate limiting → [api](../api/STANDARDS.md) · caching strategy + profiling → [performance](../performance/STANDARDS.md) · pagination mechanics → [database](../database/STANDARDS.md) · CDN/edge infra + deploy → [devops](../devops/STANDARDS.md) · alert thresholds → [observability](../observability/STANDARDS.md) · coverage + pyramid → [testing](../testing/STANDARDS.md) · pipeline stages → [cicd](../cicd/STANDARDS.md)
+**Load with** [SECURITY.md](SECURITY.md) · [architecture](../architecture/STANDARDS.md) · [api](../api/STANDARDS.md) · [security](../security/STANDARDS.md) · [performance](../performance/STANDARDS.md)
 
 ---
 
@@ -16,16 +16,14 @@
 3. [Middleware](#3-middleware)
 4. [Request & Response](#4-request--response)
 5. [Caching & Static Delivery](#5-caching--static-delivery)
-6. [Browser Security](#6-browser-security)
-7. [Session, Auth & CSRF](#7-session-auth--csrf)
-8. [State Management](#8-state-management)
-9. [Frontend Architecture](#9-frontend-architecture)
-10. [Accessibility](#10-accessibility)
-11. [Internationalization](#11-internationalization)
-12. [Real-Time](#12-real-time)
-13. [Core Web Vitals & Performance](#13-core-web-vitals--performance)
-14. [Scale Matrix](#14-scale-matrix)
-15. [Checklist](#15-checklist)
+6. [State Management](#6-state-management)
+7. [Frontend Architecture](#7-frontend-architecture)
+8. [Accessibility](#8-accessibility)
+9. [Internationalization](#9-internationalization)
+10. [Real-Time](#10-real-time)
+11. [Core Web Vitals & Performance](#11-core-web-vitals--performance)
+12. [Scale Matrix](#12-scale-matrix)
+13. [Checklist](#13-checklist)
 
 ---
 
@@ -158,105 +156,7 @@ CDN edge/region topology and deploy mechanics → [devops](../devops/STANDARDS.m
 
 ---
 
-## 6. Browser Security
-
-XSS injection vectors and CSP are web's to own. The validation boundary + secrets are owned by [security](../security/STANDARDS.md).
-
-### Security Headers
-
-| Header | Value | Purpose |
-|---|---|---|
-| `Content-Security-Policy` | Explicit allowlist; `default-src 'self'` baseline | Primary XSS defense — restrict script/style/connect origins |
-| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | Force HTTPS |
-| `X-Content-Type-Options` | `nosniff` | Stop MIME sniffing |
-| `X-Frame-Options` / CSP `frame-ancestors` | `DENY` \| explicit allowlist | Clickjacking defense |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` | Limit referrer leakage |
-
-CSP: ✗ `unsafe-inline` (nonce/hash any inline script) · ✗ `unsafe-eval` · ship `Content-Security-Policy-Report-Only` first, enforce once clean.
-
-### XSS Escaping
-
-| Context | Encoding |
-|---|---|
-| HTML body | HTML-entity encode |
-| HTML attribute | Attribute-encode + always quote |
-| JS string / JSON in page | JS-encode; ✗ interpolate untrusted data into a `<script>` |
-| URL parameter | URL-encode; validate the scheme — ✗ `javascript:` |
-| CSS value | CSS-encode |
-
-Encode on output per context (auto-escaping template engine, encoding matches the sink). ✗ raw HTML injection — `innerHTML` / `dangerouslySetInnerHTML` only through a sanitizer allowlist; build DOM via framework binding or `textContent`, ✗ from strings.
-
-### CORS
-
-Runs at middleware position 4 (§3) — before authentication.
-
-| Rule | Detail |
-|---|---|
-| Explicit allowed origins | Allowlist specific origins. ✗ `Access-Control-Allow-Origin: *` for authenticated APIs — wildcard only for public, unauthenticated, read-only APIs |
-| Credentials mode | `Access-Control-Allow-Credentials: true` requires a specific origin — ✗ wildcard |
-| Methods + headers | List only what the API uses. ✗ allow-all |
-| Preflight | Cache with `Access-Control-Max-Age` ≥ 7200 · respond 204 · ✗ require auth on OPTIONS · exempt from rate limiting |
-
----
-
-## 7. Session, Auth & CSRF
-
-The authn/authz model — RBAC/ABAC, default-deny, resource-level checks, least privilege, **token lifetimes**, secret rotation — is owned by [security](../security/STANDARDS.md). This section covers the web delta only: how credentials live in the browser and how requests are protected. ✗ restate a token lifetime number — token lifetimes (browser-facing and service-to-service classes) are stated in [security](../security/STANDARDS.md).
-
-### Browser Token Storage
-
-| Store | Verdict |
-|---|---|
-| `HttpOnly` cookie | Preferred for session credentials — unreachable from JS |
-| In-memory (JS variable) | Acceptable for a short-lived access token in an SPA — lost on reload, refreshed via cookie |
-| `localStorage` / `sessionStorage` | ✗ for auth tokens — any XSS reads them |
-
-Rely on refresh-token rotation (one-time use) for session continuity; lifetimes and rotation policy → [security](../security/STANDARDS.md).
-
-### Cookie Attributes
-
-| Attribute | Value | Reason |
-|---|---|---|
-| `HttpOnly` | `true` | ✗ JavaScript access to auth cookies |
-| `Secure` | `true` | HTTPS transmission only |
-| `SameSite` | `Lax` minimum · `Strict` for sensitive operations | CSRF mitigation |
-| `Domain` | Narrowest explicit scope | ✗ overly broad |
-| `Path` | `/` or narrower | Limit scope |
-| `Max-Age` / `Expires` | Explicit, matching session policy | ✗ non-expiring session cookies |
-| `__Host-` prefix | For host-locked session cookies | Binds the cookie to the exact host + path |
-
-### Session Handling
-
-| Rule | Detail |
-|---|---|
-| Store server-side | Session data in a database or encrypted cache. ✗ store session state in the cookie payload |
-| Cookie carries the ID only | Opaque session identifier |
-| Rotate on privilege change | New session ID on login and on role change — defeats fixation |
-| Absolute + idle expiry | Absolute cap (24 h default) + sliding idle window |
-| Explicit logout | Destroys the server-side session. ✗ rely on cookie expiry alone |
-| Purge expired sessions | Scheduled cleanup. ✗ unbounded store growth |
-
-### CSRF
-
-| Rule | Detail |
-|---|---|
-| Synchronizer token | Per-session token embedded in forms, validated on every state-changing submit |
-| Double-submit cookie | Alternative: random value in a cookie + matching header, server compares |
-| `SameSite` is defense-in-depth | ✗ sole CSRF defense — legacy browsers and some flows bypass it |
-| Safe methods exempt | GET · HEAD · OPTIONS carry no CSRF token — they must not mutate state |
-| ✗ state mutation via GET | ✗ `/delete?id=5` over GET |
-
-### Frontend Route Gating
-
-| Rule | Detail |
-|---|---|
-| UI gating is UX, not security | Hide/disable what the user can't use — the server re-authorizes every request regardless |
-| Route guards | Auth/permission checks before a route renders; unauthenticated → redirect to login |
-| ✗ permission logic in components | Centralize evaluation → components consume boolean results |
-
----
-
-## 8. State Management
+## 6. State Management
 
 | Rule | Detail |
 |---|---|
@@ -271,7 +171,7 @@ State placement: server state → cache layer with stale-while-revalidate · UI 
 
 ---
 
-## 9. Frontend Architecture
+## 7. Frontend Architecture
 
 | Rule | Detail |
 |---|---|
@@ -290,7 +190,7 @@ State placement: server state → cache layer with stale-while-revalidate · UI 
 
 ---
 
-## 10. Accessibility
+## 8. Accessibility
 
 Target: **WCAG 2.2 Level AA**. Accessibility is a correctness requirement, ✗ an enhancement.
 
@@ -348,7 +248,7 @@ Target: **WCAG 2.2 Level AA**. Accessibility is a correctness requirement, ✗ a
 
 ---
 
-## 11. Internationalization
+## 9. Internationalization
 
 i18n = the app is *translatable and locale-aware*; l10n = a specific locale is *supplied*. Build for i18n from the first screen — retrofitting is a rewrite.
 
@@ -393,7 +293,7 @@ i18n = the app is *translatable and locale-aware*; l10n = a specific locale is *
 
 ---
 
-## 12. Real-Time
+## 10. Real-Time
 
 | Use WebSocket | Use SSE | Use polling |
 |---|---|---|
@@ -411,7 +311,7 @@ i18n = the app is *translatable and locale-aware*; l10n = a specific locale is *
 
 ---
 
-## 13. Core Web Vitals & Performance
+## 11. Core Web Vitals & Performance
 
 Profiling methodology and budget enforcement → [performance](../performance/STANDARDS.md). Server response-time budgets → [api](../api/STANDARDS.md) · [performance](../performance/STANDARDS.md). Web owns the browser-experience metrics.
 
@@ -446,7 +346,7 @@ Supporting: First Contentful Paint ≤ 1.8 s · Time to First Byte ≤ 0.8 s.
 
 ---
 
-## 14. Scale Matrix
+## 12. Scale Matrix
 
 | Dimension | Prototype | Production | Scale |
 |---|---|---|---|
@@ -462,7 +362,7 @@ Supporting: First Contentful Paint ≤ 1.8 s · Time to First Byte ≤ 0.8 s.
 
 ---
 
-## 15. Checklist
+## 13. Checklist
 
 - [ ] One primary rendering strategy per app; per-route exceptions explicit
 - [ ] Core content and primary actions work without JavaScript
@@ -474,6 +374,10 @@ Supporting: First Contentful Paint ≤ 1.8 s · Time to First Byte ≤ 0.8 s.
 - [ ] `Cache-Control` set explicitly on every response
 - [ ] Static assets content-hashed + immutable; HTML entry point `no-cache`; served via CDN
 - [ ] CSP enforced without `unsafe-inline` / `unsafe-eval`; HSTS + `nosniff` set
+- [ ] Every third-party script and stylesheet carries Subresource Integrity
+- [ ] `Permissions-Policy` denies features the application does not use
+- [ ] `Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy` are set
+- [ ] Trusted Types are required for script sinks where browser support allows
 - [ ] Output context-encoded against XSS; no raw HTML injection without a sanitizer
 - [ ] CORS uses an explicit origin allowlist (no wildcard for authenticated APIs)
 - [ ] Auth cookies `HttpOnly` · `Secure` · `SameSite`; auth tokens never in `localStorage`
