@@ -71,7 +71,7 @@ Non-negotiable. Every project, every size, from first commit.
 | [code_writing](code_writing/STANDARDS.md) | Readability + function style govern all functions |
 | [primitives](primitives/STANDARDS.md) | Reusable-unit taxonomy + duplication control govern all code |
 | [error_handling](error_handling/STANDARDS.md) | Every system fails; failure is not optional |
-| [testing](testing/STANDARDS.md) | Untested code is unproven code |
+| [testing](testing/STANDARDS.md) · [testing/REALITY.md](testing/REALITY.md) | Untested code is unproven code · reality dimensions apply to every suite |
 | [maturity](maturity/STANDARDS.md) | Every project needs to know how much of it is actually proven |
 | [security](security/STANDARDS.md) | Validation boundary + secrets apply to all input |
 | [observability](observability/STANDARDS.md) | Unobservable production is unoperable production |
@@ -209,11 +209,11 @@ Add per surface the system actually exposes. A system with three surfaces loads 
 
 | Surface | Add | Trigger |
 |---|---|---|
-| HTTP / gRPC API | `api` · `security` · `performance` | Any network-callable endpoint |
+| HTTP / gRPC API | `api` · `security/*` · `performance` | Any network-callable endpoint |
 | Persistent store | `database/*` · `sql` | Any durable state beyond files |
 | Command line | `cli` | Any user-invoked binary or entrypoint |
-| Browser UI | `web` · `html_generation/*` | Any rendered UI |
-| Deployed service | `devops` · `observability/*` · `testing/PRESSURE.md` · `testing/PROBES.md` | Anything with uptime expectations |
+| Browser UI | `web/*` · `html_generation/*` · `security/*` | Any rendered UI |
+| Deployed service | `devops/*` · `observability/*` · `testing/PRESSURE.md` · `testing/PROBES.md` | Anything with uptime expectations |
 | Public package | `dependencies` · `documentation` · `api` | Anything others import |
 | Batch / scheduled job | `data_pipeline` · `observability` | Anything running unattended |
 | Model artifact | `ml` | Anything with trained weights |

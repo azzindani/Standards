@@ -17,6 +17,7 @@
     "primitives",
     "error_handling",
     "testing",
+    "testing/reality",
     "maturity",
     "security",
     "observability",
@@ -187,11 +188,13 @@
         "add": [
           "api",
           "security",
+          "security/oauth",
+          "security/tokens",
           "performance"
         ],
         "alternatives": [],
         "conditional": [],
-        "raw": "`api` · `security` · `performance`",
+        "raw": "`api` · `security/*` · `performance`",
         "trigger": "Any network-callable endpoint"
       },
       "Persistent store": {
@@ -217,18 +220,23 @@
       "Browser UI": {
         "add": [
           "web",
+          "web/security",
           "html_generation",
           "html_generation/charts",
-          "html_generation/theming"
+          "html_generation/theming",
+          "security",
+          "security/oauth",
+          "security/tokens"
         ],
         "alternatives": [],
         "conditional": [],
-        "raw": "`web` · `html_generation/*`",
+        "raw": "`web/*` · `html_generation/*` · `security/*`",
         "trigger": "Any rendered UI"
       },
       "Deployed service": {
         "add": [
           "devops",
+          "devops/containers",
           "observability",
           "observability/logs",
           "testing/pressure",
@@ -236,7 +244,7 @@
         ],
         "alternatives": [],
         "conditional": [],
-        "raw": "`devops` · `observability/*` · `testing/PRESSURE.md` · `testing/PROBES.md`",
+        "raw": "`devops/*` · `observability/*` · `testing/PRESSURE.md` · `testing/PROBES.md`",
         "trigger": "Anything with uptime expectations"
       },
       "Public package": {
