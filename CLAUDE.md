@@ -46,7 +46,7 @@ Three meta files govern the repo. Read them before touching any standard:
 python3 tools/validate.py
 ```
 
-Checks: line cap · header schema · ID↔directory match · tier validity · TOC↔section parity · sequential numbering · checklist present and unticked · code-block policy · dead cross-references · router registration.
+Checks: line cap · header schema · ID↔directory match · tier validity · TOC↔section parity · sequential numbering · checklist present and unticked · code-block policy · router registration · every standard reachable by a route · route targets resolve · **dead links, dead fragments, and `§N` text that points at another N** — across every markdown file, ✗ only standards.
 
 `index.json` is the machine-readable contract Pipeline reads instead of re-parsing markdown. Regenerate it in the same commit as any standard, route, or header change:
 
@@ -55,7 +55,19 @@ python3 tools/validate.py --emit-index   # regenerate
 python3 tools/validate.py --check-index  # CI runs this — stale index fails the build
 ```
 
-! CI runs only on `main` and on PRs to it, so a feature branch never proves itself. Before every commit run the full gate locally: `validate.py` · `--check-index` · `npx markdownlint-cli2 "**/*.md" "#node_modules"` · no trailing whitespace · no tabs · newline at EOF.
+! CI runs only on `main` and on PRs to it, so a feature branch never proves itself. Before every commit run the full gate locally:
+
+| Gate | Command |
+|---|---|
+| Conformance + links | `python3 tools/validate.py` |
+| Index freshness | `python3 tools/validate.py --check-index` |
+| Markdown lint | `npx markdownlint-cli2 "**/*.md" "#node_modules"` |
+| Hygiene | no trailing whitespace · no tabs · newline at EOF |
+
+! Four dead fragments once shipped to `main` because `validate.py` matched the
+`#anchor` and threw it away, and CI's lychee job — the only thing that checked
+anchors — does not run on a branch. `validate.py` now owns that check, so the
+local gate and CI agree.
 
 Must pass before every commit. CI runs it on push and PR — see `.github/workflows/standards.yml`.
 
